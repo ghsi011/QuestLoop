@@ -43,8 +43,18 @@ class QuestLoopEngine(
         previousTotalXp: Long,
         newRecord: CompletionRecord,
         history: List<CompletionRecord>,
+    ): CompletionEffect = recordCompletion(previousTotalXp, newRecord, deriveContext(newRecord, history))
+
+    /**
+     * Score a completion against an already-computed [RewardContext]. Lets a
+     * caller build the context cheaply (e.g. from aggregate DB queries) instead
+     * of materialising the full history.
+     */
+    fun recordCompletion(
+        previousTotalXp: Long,
+        newRecord: CompletionRecord,
+        context: RewardContext,
     ): CompletionEffect {
-        val context = deriveContext(newRecord, history)
         val outcome = rewardEngine.score(newRecord, context)
         val newTotal = (previousTotalXp + outcome.xp).coerceAtLeast(0)
         val prevLevel = LevelSystem.levelForXp(previousTotalXp)
@@ -58,36 +68,37 @@ class QuestLoopEngine(
         )
     }
 
-    internal fun deriveContext(record: CompletionRecord, history: List<CompletionRecord>): RewardContext {
-        // Anti-farm targets repeating the *same* quest multiple times on the
-        // *same day* (the actual exploit). Completing a daily habit across
-        // consecutive days is consistency, not farming, and must not be decayed.
-        val priorSame = history.count {
+    /**
+     * Builds a [RewardContext] from the pieces the repository can fetch cheaply:
+     * the *same-day* records (for anti-farm and per-day caps) and the set of all
+     * active days (for the streak). Pure and unit-testable.
+     */
+    fun contextFrom(
+        record: CompletionRecord,
+        sameDayRecords: List<CompletionRecord>,
+        activeEpochDays: Set<Long>,
+    ): RewardContext {
+        val others = sameDayRecords.filter { it.instanceId != record.instanceId }
+        val priorSame = others.count {
             it.questId == record.questId &&
-                it.epochDay == record.epochDay &&
                 (it.result == CompletionResult.COMPLETED || it.result == CompletionResult.PARTIAL)
         }
-        val sameDay = history.filter { it.epochDay == record.epochDay }
-        // We can only know XP already applied today if the caller stored it; we
-        // approximate meta/penalty usage by re-scoring same-day records with a
-        // neutral context. This stays deterministic and conservative.
-        val metaToday = sameDay.filter { it.isMeta }.sumOf {
-            rewardEngine.score(it, RewardContext()).xp.coerceAtLeast(0)
-        }
-        val penaltyToday = sameDay.sumOf {
-            val xp = rewardEngine.score(it, RewardContext()).xp
-            if (xp < 0) -xp else 0
-        }
-        val activeDays = history
-            .filter { it.result == CompletionResult.COMPLETED || it.result == CompletionResult.PARTIAL }
-            .map { it.epochDay }
-            .toSet()
-        val streak = StreakTracker.currentStreak(activeDays, record.epochDay, streakGraceDays)
+        val metaToday = others.filter { it.isMeta }.sumOf { it.xpAwarded.coerceAtLeast(0) }
+        val penaltyToday = others.sumOf { if (it.xpAwarded < 0) -it.xpAwarded else 0L }
         return RewardContext(
             priorSameQuestCompletions = priorSame,
             metaXpEarnedToday = metaToday,
             penaltyXpAppliedToday = penaltyToday,
-            currentStreakDays = streak,
+            currentStreakDays = StreakTracker.currentStreak(activeEpochDays, record.epochDay, streakGraceDays),
         )
+    }
+
+    internal fun deriveContext(record: CompletionRecord, history: List<CompletionRecord>): RewardContext {
+        val sameDay = history.filter { it.epochDay == record.epochDay }
+        val activeDays = history
+            .filter { it.result == CompletionResult.COMPLETED || it.result == CompletionResult.PARTIAL }
+            .map { it.epochDay }
+            .toSet()
+        return contextFrom(record, sameDay, activeDays)
     }
 }

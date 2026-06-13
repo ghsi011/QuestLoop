@@ -3,46 +3,63 @@ package com.questloop.app.data
 import com.questloop.app.data.local.CompletionDao
 import com.questloop.app.data.local.QuestDao
 import com.questloop.core.QuestLoopEngine
+import com.questloop.core.completion.CompletionPolicy
 import com.questloop.core.completion.CompletionScaling
 import com.questloop.core.generation.QuestGenerator
 import com.questloop.core.generation.RoutineQuestFactory
 import com.questloop.core.model.CompletionRecord
 import com.questloop.core.model.CompletionResult
+import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.DayPart
 import com.questloop.core.model.EnergyCheckIn
 import com.questloop.core.model.Quest
 import com.questloop.core.model.VerificationMethod
 import com.questloop.core.reward.Achievement
 import com.questloop.core.reward.AchievementEngine
+import com.questloop.core.reward.LevelSystem
 import com.questloop.core.reward.ProgressStats
-import com.questloop.core.reward.StreakTracker
 import com.questloop.core.reward.RewardAllowanceCalculator
+import com.questloop.core.reward.StreakTracker
 import com.questloop.core.review.ReviewGenerator
 import com.questloop.core.safety.SafetyGuard
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlin.math.roundToInt
 
 /**
  * Single source of truth for the UI. Wraps persistence (Room + DataStore) and
- * the pure [QuestLoopEngine]/generators, exposing reactive flows and suspend
- * actions. All economy decisions are delegated to :core.
+ * the pure [QuestLoopEngine]/generators.
+ *
+ * Total XP is derived from the completion ledger (`SUM(xpAwarded)`), so there is
+ * a single authority for it: completions are idempotent per `instanceId`, and
+ * re-logging an instance replaces its prior grant rather than stacking.
  */
 class QuestRepository(
     private val questDao: QuestDao,
     private val completionDao: CompletionDao,
-    private val profileStore: ProfileStore,
+    private val profileStore: ProfilePreferences,
     private val engine: QuestLoopEngine = QuestLoopEngine(),
     private val generator: QuestGenerator = QuestGenerator(),
     private val safetyGuard: SafetyGuard = SafetyGuard(),
 ) {
+    /** Days of history loaded for same-day reward context (cheap, bounded). */
+    private val contextWindowDays = 2L
+
+    /** Days of history considered for safety signals. */
+    private val safetyWindowDays = 30L
+
     val quests: Flow<List<Quest>> = questDao.observeActive().map { list -> list.map { it.toModel() } }
 
     val completions: Flow<List<CompletionRecord>> =
         completionDao.observeAll().map { list -> list.map { it.toModel() } }
 
     val profile = profileStore.profile
+
+    /** Total XP, derived from the ledger (the single source of truth). */
+    val totalXp: Flow<Long> = completionDao.observeTotalXp()
+
+    suspend fun totalXp(): Long = completionDao.totalXp()
 
     suspend fun addQuest(quest: Quest) = questDao.upsert(quest.toEntity())
 
@@ -62,8 +79,8 @@ class QuestRepository(
     ): QuestGenerator.DailyPlan {
         val profile = profileStore.profile.first()
         val candidates = questDao.getActive().map { it.toModel() }
-            .filter { it.id !in completedQuestIdsToday(epochDay) }
-        val history = completionDao.getAll().map { it.toModel() }
+        // Recent history is only needed for avoidance scoring (skipped quests).
+        val history = completionDao.since(epochDay - 14).map { it.toModel() }
         return generator.generateDaily(
             QuestGenerator.Request(
                 epochDay = epochDay,
@@ -72,26 +89,58 @@ class QuestRepository(
                 history = history,
                 checkIn = checkIn,
                 routineQuests = RoutineQuestFactory.routinesFor(dayPart),
+                dismissedToday = dismissedQuestIdsToday(epochDay),
             ),
         )
     }
 
-    private suspend fun completedQuestIdsToday(epochDay: Long): Set<String> =
-        completionDao.between(epochDay, epochDay)
-            .filter { it.result == CompletionResult.COMPLETED.name || it.result == CompletionResult.PARTIAL.name }
+    /**
+     * Quest ids that should not appear again today. Style-aware: a partially
+     * logged QUANTITATIVE/DURATION quest is *not* dismissed so the user can keep
+     * adding progress.
+     */
+    private suspend fun dismissedQuestIdsToday(epochDay: Long): Set<String> {
+        val styleById = questDao.getActive().associate { it.id to it.toModel().completionStyle }
+        return completionDao.between(epochDay, epochDay)
+            .map { it.toModel() }
+            .filter { rec ->
+                val style = styleById[rec.questId] ?: CompletionStyle.BINARY
+                CompletionPolicy.dismissedForToday(style, rec.result)
+            }
             .map { it.questId }
             .toSet()
+    }
 
     /**
-     * Records a completion: scores it via the engine, persists the record, and
-     * updates the user's XP. Returns the engine effect so the UI can celebrate
-     * level-ups and show the explanation.
+     * Today's logged progress per quest (count for QUANTITATIVE, minutes for
+     * DURATION), so the UI can resume partial logging from where it left off.
      */
+    suspend fun todayProgress(epochDay: Long): Map<String, Int> {
+        val quests = questDao.getActive().map { it.toModel() }.associateBy { it.id }
+        return buildMap {
+            for (e in completionDao.between(epochDay, epochDay)) {
+                val quest = quests[e.questId] ?: continue
+                val target = when (quest.completionStyle) {
+                    CompletionStyle.QUANTITATIVE -> quest.targetCount ?: continue
+                    CompletionStyle.DURATION -> quest.estimatedMinutes
+                    else -> continue
+                }
+                put(quest.id, (e.fraction * target).roundToInt())
+            }
+        }
+    }
+
     data class CompleteOutcome(
         val effect: QuestLoopEngine.CompletionEffect,
         val newlyUnlocked: List<Achievement>,
     )
 
+    /**
+     * Records a completion idempotently. The record is keyed by `instanceId`
+     * (`questId@epochDay`); re-logging the same instance replaces its prior grant
+     * via the ledger, so XP never double-counts (the prior `xpAwarded` is netted
+     * out before the new grant is applied).
+     */
     suspend fun completeQuest(
         quest: Quest,
         epochDay: Long,
@@ -99,10 +148,14 @@ class QuestRepository(
         fraction: Double = if (result == CompletionResult.COMPLETED) 1.0 else 0.0,
         verification: VerificationMethod = VerificationMethod.MANUAL,
     ): CompleteOutcome {
-        val profile = profileStore.profile.first()
-        val history = completionDao.getAll().map { it.toModel() }
+        val instanceId = "${quest.id}@$epochDay"
+        val existing = completionDao.find(instanceId)
+        val ledgerSum = completionDao.totalXp()
+        // The user's total as if this instance had never been logged.
+        val baseline = (ledgerSum - (existing?.xpAwarded ?: 0L)).coerceAtLeast(0L)
+
         val record = CompletionRecord(
-            instanceId = "${quest.id}@$epochDay",
+            instanceId = instanceId,
             questId = quest.id,
             category = quest.category,
             difficulty = quest.difficulty,
@@ -113,57 +166,72 @@ class QuestRepository(
             fraction = fraction,
             isMeta = quest.category.isMeta,
         )
-        val before = statsFrom(history, profile.totalXp)
-        val effect = engine.recordCompletion(profile.totalXp, record, history)
-        completionDao.insert(record.toEntity(effect.outcome.xp))
-        profileStore.setTotalXp(effect.newTotalXp)
-        val after = statsFrom(history + record, effect.newTotalXp)
-        return CompleteOutcome(effect, AchievementEngine.newlyUnlocked(before, after))
+
+        val sameDay = completionDao.between(epochDay, epochDay).map { it.toModel() }
+        val activeDays = completionDao.activeDays().toSet()
+        val context = engine.contextFrom(record, sameDay, activeDays)
+
+        val before = progressStats(ledgerSum, activeDays)
+        val effect = engine.recordCompletion(baseline, record, context)
+        completionDao.upsert(record.copy(xpAwarded = effect.outcome.xp).toEntity())
+
+        // Level-up reflects the user's real before/after totals (handles re-logs).
+        val newTotal = (baseline + effect.outcome.xp).coerceAtLeast(0L)
+        val corrected = effect.copy(
+            previousLevel = LevelSystem.levelForXp(ledgerSum),
+            newLevel = LevelSystem.levelForXp(newTotal),
+            leveledUp = LevelSystem.levelForXp(newTotal) > LevelSystem.levelForXp(ledgerSum),
+            newTotalXp = newTotal,
+        )
+        val after = progressStats(newTotal, completionDao.activeDays().toSet())
+        return CompleteOutcome(corrected, AchievementEngine.newlyUnlocked(before, after))
     }
 
     /**
      * Completes a non-binary quest from a measured value:
-     * - QUANTITATIVE: [value] is progress toward [Quest.targetCount].
-     * - DURATION: [value] is minutes spent toward [Quest.estimatedMinutes].
-     * - SUBJECTIVE: [value] is a 1..5 self-rating of effort/progress.
-     * Progress is always credited proportionally and never penalised (SPEC §8).
+     * - QUANTITATIVE: [value] is the running total toward [Quest.targetCount].
+     * - DURATION: [value] is minutes toward [Quest.estimatedMinutes].
+     * - SUBJECTIVE: [value] is a 1..5 self-rating.
+     * For counting/timed quests progress is monotonic (never decreases on re-log)
+     * and credited proportionally — never penalised (SPEC §8).
      */
     suspend fun completeMeasured(quest: Quest, epochDay: Long, value: Int): CompleteOutcome {
+        val existingProgress = todayProgress(epochDay)[quest.id] ?: 0
         val scaled = when (quest.completionStyle) {
-            com.questloop.core.model.CompletionStyle.QUANTITATIVE ->
-                CompletionScaling.quantitative(value, (quest.targetCount ?: 1).coerceAtLeast(1))
-            com.questloop.core.model.CompletionStyle.DURATION ->
-                CompletionScaling.duration(value, quest.estimatedMinutes.coerceAtLeast(1))
-            com.questloop.core.model.CompletionStyle.SUBJECTIVE ->
+            CompletionStyle.QUANTITATIVE ->
+                CompletionScaling.quantitative(maxOf(existingProgress, value), (quest.targetCount ?: 1).coerceAtLeast(1))
+            CompletionStyle.DURATION ->
+                CompletionScaling.duration(maxOf(existingProgress, value), quest.estimatedMinutes.coerceAtLeast(1))
+            CompletionStyle.SUBJECTIVE ->
                 CompletionScaling.subjective(value)
-            com.questloop.core.model.CompletionStyle.BINARY ->
+            CompletionStyle.BINARY ->
                 CompletionScaling.Scaled(CompletionResult.COMPLETED, 1.0)
         }
         val verification = when (quest.completionStyle) {
-            com.questloop.core.model.CompletionStyle.DURATION -> VerificationMethod.TIMER
-            com.questloop.core.model.CompletionStyle.QUANTITATIVE -> VerificationMethod.CHECKLIST
+            CompletionStyle.DURATION -> VerificationMethod.TIMER
+            CompletionStyle.QUANTITATIVE -> VerificationMethod.CHECKLIST
             else -> VerificationMethod.MANUAL
         }
         return completeQuest(quest, epochDay, scaled.result, scaled.fraction, verification)
     }
 
-    private fun statsFrom(history: List<CompletionRecord>, totalXp: Long): ProgressStats {
-        val active = history
-            .filter { it.result == CompletionResult.COMPLETED || it.result == CompletionResult.PARTIAL }
-            .map { it.epochDay }.toSet()
-        return ProgressStats.from(history, totalXp, StreakTracker.longestStreak(active))
-    }
+    /** Aggregate progress for achievements, built from cheap DB queries. */
+    private suspend fun progressStats(totalXp: Long, activeDays: Set<Long>): ProgressStats = ProgressStats(
+        totalCompleted = completionDao.countCompleted(),
+        level = LevelSystem.levelForXp(totalXp),
+        longestStreak = StreakTracker.longestStreak(activeDays),
+        distinctCategories = completionDao.countDistinctCompletedCategories(),
+        honestyLogs = completionDao.countHonestyLogs(),
+        reductionWins = completionDao.countReductionWins(),
+    )
 
-    suspend fun unlockedAchievements(): List<Achievement> {
-        val profile = profileStore.profile.first()
-        val history = completionDao.getAll().map { it.toModel() }
-        return AchievementEngine.unlocked(statsFrom(history, profile.totalXp))
-    }
+    suspend fun unlockedAchievements(): List<Achievement> =
+        AchievementEngine.unlocked(progressStats(completionDao.totalXp(), completionDao.activeDays().toSet()))
 
     suspend fun review(periodLabel: String, fromEpochDay: Long, toEpochDay: Long): ReviewGenerator.Review {
-        val records = completionDao.between(fromEpochDay, toEpochDay).map { it.toModel() }
-        val xpByInstance = completionDao.between(fromEpochDay, toEpochDay)
-            .associate { it.instanceId to it.xpAwarded }
+        val rows = completionDao.between(fromEpochDay, toEpochDay)
+        val xpByInstance = rows.associate { it.instanceId to it.xpAwarded }
+        val records = rows.map { it.toModel() }
         return ReviewGenerator.generate(periodLabel, records) { xpByInstance[it.instanceId] ?: 0L }
     }
 
@@ -184,19 +252,10 @@ class QuestRepository(
     }
 
     suspend fun safetySignals(today: Long): List<SafetyGuard.Signal> {
-        val records = completionDao.getAll().map { it.toModel() }
-        val active = records
-            .filter { it.result == CompletionResult.COMPLETED || it.result == CompletionResult.PARTIAL }
-            .map { it.epochDay }.toSet()
+        val records = completionDao.since(today - safetyWindowDays).map { it.toModel() }
+        val active = completionDao.activeDays().toSet()
         return safetyGuard.evaluate(records, active, today)
     }
-
-    /** Combined snapshot used by the Today screen header. */
-    fun headerState(): Flow<HeaderState> = combine(profile, completions) { p, comps ->
-        HeaderState(totalXp = p.totalXp, totalCompletions = comps.size)
-    }
-
-    data class HeaderState(val totalXp: Long, val totalCompletions: Int)
 
     suspend fun setBudgetCap(value: Double) = profileStore.setBudgetCap(value)
     suspend fun setMaxDaily(value: Int) = profileStore.setMaxDaily(value)

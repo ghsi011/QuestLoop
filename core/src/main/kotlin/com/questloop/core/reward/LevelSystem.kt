@@ -31,8 +31,12 @@ object LevelSystem {
         // Invert xpForLevel: solve BASE/2 * (L-1)L <= xp.
         // (L-1)L <= 2*xp/BASE  ->  L ~= (1 + sqrt(1 + 8*xp/BASE)) / 2
         val n = 2.0 * totalXp / BASE_STEP
-        val l = floor((1.0 + sqrt(1.0 + 4.0 * n)) / 2.0).toInt()
-        return l.coerceAtLeast(1)
+        var l = floor((1.0 + sqrt(1.0 + 4.0 * n)) / 2.0).toInt().coerceAtLeast(1)
+        // Correct any floating-point drift against the exact integer thresholds
+        // so the result is always the largest L with xpForLevel(L) <= totalXp.
+        while (xpForLevel(l + 1) <= totalXp) l++
+        while (l > 1 && xpForLevel(l) > totalXp) l--
+        return l
     }
 
     /** Progress snapshot for UI / reviews. */

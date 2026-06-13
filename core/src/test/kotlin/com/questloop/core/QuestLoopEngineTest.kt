@@ -62,11 +62,13 @@ class QuestLoopEngineTest {
     }
 
     @Test
-    fun `derives anti-farm context from history`() {
-        val history = listOf(rec("q1", 100), rec("q1", 100))
-        val effect = engine.recordCompletion(100, rec("q1", 100, difficulty = Difficulty.EASY), history)
-        val fresh = engine.recordCompletion(100, rec("q2", 100, difficulty = Difficulty.EASY), emptyList())
-        assertTrue(effect.outcome.xp < fresh.outcome.xp, "repeat should earn less than a fresh quest")
+    fun `re-logging the same instance is not penalised`() {
+        // Re-logging the same quest instance (e.g. updating progress) replaces
+        // the prior record, so it must not trigger anti-farm decay.
+        val prior = rec("q1", 100, difficulty = Difficulty.EASY).copy(xpAwarded = 10)
+        val relog = engine.recordCompletion(10, rec("q1", 100, difficulty = Difficulty.EASY), listOf(prior))
+        val fresh = engine.recordCompletion(0, rec("q2", 100, difficulty = Difficulty.EASY), emptyList())
+        assertEquals(fresh.outcome.xp, relog.outcome.xp)
     }
 
     @Test
@@ -87,7 +89,9 @@ class QuestLoopEngineTest {
             val r = rec("meta$i", 100, category = QuestCategory.META_MAINTENANCE, difficulty = Difficulty.MEDIUM)
             val effect = engine.recordCompletion(total, r, history)
             total = effect.newTotalXp
-            history += r
+            // Store the granted XP, as the repository does, so per-day caps see
+            // the real amounts.
+            history += r.copy(xpAwarded = effect.outcome.xp)
             if (effect.outcome.capReason != null) capHit = true
         }
         assertTrue(total <= 30, "meta total should be capped at 30, was $total")

@@ -49,6 +49,19 @@ class AiQuestValidatorTest {
     }
 
     @Test
+    fun `does not falsely reject words that merely contain a banned substring`() {
+        // "cryptography" contains "crypto", "download" contains "load" — both fine.
+        val result = validator.validate(
+            listOf(
+                q("1", "Study cryptography for class"),
+                q("2", "Download the quarterly report"),
+            ),
+        )
+        assertEquals(2, result.accepted.size)
+        assertTrue(result.rejected.isEmpty())
+    }
+
+    @Test
     fun `rejects medical advice in rationale`() {
         val result = validator.validate(
             listOf(q("1", "Feel better", rationale = "This will diagnose your condition")),

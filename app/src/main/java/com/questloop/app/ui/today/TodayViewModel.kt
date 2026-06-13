@@ -15,7 +15,6 @@ import com.questloop.core.safety.SafetyGuard
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -29,6 +28,8 @@ data class TodayUiState(
     val achievements: List<Achievement> = emptyList(),
     val energy: Int? = null,
     val availableMinutes: Int? = null,
+    /** Today's logged progress per quest id (count or minutes) for non-binary quests. */
+    val todayProgress: Map<String, Int> = emptyMap(),
     val lastEffect: QuestLoopEngine.CompletionEffect? = null,
     val toast: String? = null,
 )
@@ -61,8 +62,9 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
             val plan = repository.todayPlan(today, AppClock.currentDayPart(), checkIn)
             val signals = repository.safetySignals(today)
             val achievements = repository.unlockedAchievements()
-            // Read XP from a one-shot profile snapshot.
-            val xp = repository.profile.first().totalXp
+            val todayProgress = repository.todayProgress(today)
+            // Total XP is sourced from the completion ledger.
+            val xp = repository.totalXp()
             val progress = LevelSystem.progress(xp)
             _state.update {
                 it.copy(
@@ -73,6 +75,7 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
                     levelProgress = progress.fractionToNext,
                     signals = signals,
                     achievements = achievements,
+                    todayProgress = todayProgress,
                 )
             }
         }

@@ -103,7 +103,7 @@ fun TodayContent(state: TodayUiState, actions: TodayActions) {
             }
         }
 
-        item { EnergyCheckInRow(onSelect = actions.onCheckIn) }
+        item { EnergyCheckInRow(selectedEnergy = state.energy, onSelect = actions.onCheckIn) }
 
         item { SectionHeader("Today's quests") }
 
@@ -117,7 +117,11 @@ fun TodayContent(state: TodayUiState, actions: TodayActions) {
             }
         } else {
             items(quests, key = { it.instanceId }) { instance ->
-                QuestRow(instance = instance, actions = actions)
+                QuestRow(
+                    instance = instance,
+                    actions = actions,
+                    progress = state.todayProgress[instance.quest.id] ?: 0,
+                )
             }
         }
 
@@ -146,26 +150,26 @@ fun TodayContent(state: TodayUiState, actions: TodayActions) {
 }
 
 @Composable
-private fun EnergyCheckInRow(onSelect: (energy: Int, minutes: Int) -> Unit) {
+private fun EnergyCheckInRow(selectedEnergy: Int?, onSelect: (energy: Int, minutes: Int) -> Unit) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text("How's your energy today?", fontWeight = FontWeight.SemiBold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                EnergyOption("Low", 2, 60, onSelect)
-                EnergyOption("Medium", 3, 120, onSelect)
-                EnergyOption("High", 5, 240, onSelect)
+                EnergyOption("Low", 2, 60, selectedEnergy, onSelect)
+                EnergyOption("Medium", 3, 120, selectedEnergy, onSelect)
+                EnergyOption("High", 5, 240, selectedEnergy, onSelect)
             }
         }
     }
 }
 
 @Composable
-private fun EnergyOption(label: String, energy: Int, minutes: Int, onSelect: (Int, Int) -> Unit) {
-    FilterChip(selected = false, onClick = { onSelect(energy, minutes) }, label = { Text(label) })
+private fun EnergyOption(label: String, energy: Int, minutes: Int, selected: Int?, onSelect: (Int, Int) -> Unit) {
+    FilterChip(selected = selected == energy, onClick = { onSelect(energy, minutes) }, label = { Text(label) })
 }
 
 @Composable
-private fun QuestRow(instance: QuestInstance, actions: TodayActions) {
+private fun QuestRow(instance: QuestInstance, actions: TodayActions, progress: Int) {
     val quest: Quest = instance.quest
     Card(Modifier.fillMaxWidth().testTag("quest-${quest.id}")) {
         Column(Modifier.padding(16.dp)) {
@@ -187,8 +191,8 @@ private fun QuestRow(instance: QuestInstance, actions: TodayActions) {
 
             when (quest.completionStyle) {
                 CompletionStyle.BINARY -> BinaryActions(quest, actions)
-                CompletionStyle.QUANTITATIVE -> QuantitativeControl(quest, actions)
-                CompletionStyle.DURATION -> DurationControl(quest, actions)
+                CompletionStyle.QUANTITATIVE -> QuantitativeControl(quest, actions, progress)
+                CompletionStyle.DURATION -> DurationControl(quest, actions, progress)
                 CompletionStyle.SUBJECTIVE -> SubjectiveControl(quest, actions)
             }
         }
@@ -209,9 +213,9 @@ private fun BinaryActions(quest: Quest, actions: TodayActions) {
 }
 
 @Composable
-private fun QuantitativeControl(quest: Quest, actions: TodayActions) {
+private fun QuantitativeControl(quest: Quest, actions: TodayActions, progress: Int) {
     val target = (quest.targetCount ?: 1).coerceAtLeast(1)
-    var count by remember(quest.id) { mutableIntStateOf(0) }
+    var count by remember(quest.id, progress) { mutableIntStateOf(progress.coerceIn(0, target)) }
     Column(Modifier.padding(top = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { if (count > 0) count-- }) { Text("−") }
@@ -225,9 +229,9 @@ private fun QuantitativeControl(quest: Quest, actions: TodayActions) {
 }
 
 @Composable
-private fun DurationControl(quest: Quest, actions: TodayActions) {
+private fun DurationControl(quest: Quest, actions: TodayActions, progress: Int) {
     val target = quest.estimatedMinutes.coerceAtLeast(1)
-    var minutes by remember(quest.id) { mutableIntStateOf(target) }
+    var minutes by remember(quest.id, progress) { mutableIntStateOf(if (progress > 0) progress else target) }
     Column(Modifier.padding(top = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { if (minutes >= 5) minutes -= 5 }) { Text("−5") }

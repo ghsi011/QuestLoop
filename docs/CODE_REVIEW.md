@@ -4,6 +4,27 @@ A correctness- and design-focused review of the current code. Findings are
 grouped by severity with `file:line` references, impact, and a suggested fix.
 This is a living document; check items off as they're addressed.
 
+## Resolution status (all addressed)
+
+| # | Status | Where |
+|---|--------|-------|
+| H1 | ✅ Fixed | `CompletionPolicy.dismissedForToday`; `QuestRepository.dismissedQuestIdsToday` (partial counting/timed quests stay visible) |
+| H2 | ✅ Fixed | `QuestRepository.completeQuest` idempotent upsert; XP netted via ledger baseline |
+| H3 | ✅ Fixed | Ledger is source of truth — `CompletionDao.totalXp()`/`observeTotalXp()`; XP no longer in DataStore |
+| M1 | ✅ Fixed | `QuestLoopEngine.contextFrom` uses stored `xpAwarded` for per-day caps |
+| M2 | ✅ Fixed | Windowed (`since`) + aggregate (`count*`, `activeDays`, `SUM`) queries; no `getAll()` on hot paths |
+| M3 | ✅ Fixed | Same-instance re-logs excluded from anti-farm; monotonic accumulation |
+| M4 | ✅ Fixed | `AiQuestValidator` word-boundary regex + false-positive tests |
+| M5 | ✅ Fixed | Energy chip reflects selection (`TodayContent`) |
+| M6 | ✅ Fixed | `LevelSystem.levelForXp` integer-verified against thresholds |
+| L1 | ✅ Fixed | `HorizontalDivider` |
+| L2 | ✅ Fixed | `headerState()` removed |
+| L3 | ✅ Fixed | Uniform tolerant enum parsing (`Mappers.parseEnum`) |
+| L4 | ✅ Fixed | `ProfilePreferences` interface + `QuestRepositoryTest` (Robolectric + in-memory Room) |
+| Tests | ✅ | Added `CompletionPolicyTest`, `QuestRepositoryTest`, guardrail false-positive test; updated scenario/engine tests for the ledger model |
+
+The findings below are retained for context.
+
 ## Summary
 
 The pure-Kotlin `:core` engine is solid, deterministic, and well-tested. The

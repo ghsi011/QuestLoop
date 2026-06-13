@@ -1,6 +1,7 @@
 package com.questloop.core.completion
 
 import com.questloop.core.model.CompletionResult
+import com.questloop.core.model.CompletionStyle
 
 /**
  * Converts non-binary completion inputs into the `(result, fraction)` pair the
@@ -45,5 +46,25 @@ object CompletionScaling {
         fraction >= 1.0 -> Scaled(CompletionResult.COMPLETED, 1.0)
         fraction <= 0.0 -> Scaled(CompletionResult.PARTIAL, 0.0)
         else -> Scaled(CompletionResult.PARTIAL, fraction)
+    }
+}
+
+/**
+ * Decides whether a quest should disappear from today's list given its latest
+ * outcome (SPEC §8). The key nuance: a *partially* logged QUANTITATIVE/DURATION
+ * quest stays visible so the user can keep adding progress; everything else
+ * (finished, skipped, failed, or a one-shot subjective reflection) is done for
+ * the day.
+ */
+object CompletionPolicy {
+    fun dismissedForToday(style: CompletionStyle, result: CompletionResult): Boolean = when (result) {
+        CompletionResult.COMPLETED, CompletionResult.SKIPPED, CompletionResult.FAILED -> true
+        CompletionResult.RESCHEDULED -> false
+        CompletionResult.PARTIAL -> when (style) {
+            // Counting/timed quests can still accept more progress today.
+            CompletionStyle.QUANTITATIVE, CompletionStyle.DURATION -> false
+            // A subjective reflection or a binary quest is a one-shot for the day.
+            CompletionStyle.SUBJECTIVE, CompletionStyle.BINARY -> true
+        }
     }
 }

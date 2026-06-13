@@ -6,7 +6,6 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
-import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.questloop.core.model.QuestCategory
@@ -18,14 +17,25 @@ import kotlinx.coroutines.flow.map
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "questloop_profile")
 
 /**
- * Stores lightweight profile + preference state (XP, budget, settings) in
- * DataStore. Quests and completion history live in Room; this keeps the simple
+ * Lightweight profile/preferences the repository depends on. Extracted as an
+ * interface so the repository can be unit-tested with a simple fake.
+ */
+interface ProfilePreferences {
+    val profile: Flow<UserProfile>
+    suspend fun setBudgetCap(value: Double)
+    suspend fun setMaxDaily(value: Int)
+    suspend fun setAvailableMinutes(value: Int)
+    suspend fun setFocusCategories(cats: Set<QuestCategory>)
+}
+
+/**
+ * Stores lightweight profile + preference state (budget, settings) in DataStore.
+ * Quests, completion history, and total XP live in Room; this keeps the simple
  * key/value state separate and reactive.
  */
-class ProfileStore(private val context: Context) {
+class ProfileStore(private val context: Context) : ProfilePreferences {
 
     private object Keys {
-        val TOTAL_XP = longPreferencesKey("total_xp")
         val MAX_DAILY = intPreferencesKey("max_daily_quests")
         val AVAILABLE_MIN = intPreferencesKey("default_available_minutes")
         val BUDGET_CAP = doublePreferencesKey("monthly_reward_budget_cap")
@@ -34,9 +44,9 @@ class ProfileStore(private val context: Context) {
         val FOCUS = stringSetPreferencesKey("focus_categories")
     }
 
-    val profile: Flow<UserProfile> = context.dataStore.data.map { prefs ->
+    // Total XP is derived from the completion ledger, not stored here.
+    override val profile: Flow<UserProfile> = context.dataStore.data.map { prefs ->
         UserProfile(
-            totalXp = prefs[Keys.TOTAL_XP] ?: 0L,
             preferences = UserPreferences(
                 maxDailyQuests = prefs[Keys.MAX_DAILY] ?: 6,
                 defaultAvailableMinutes = prefs[Keys.AVAILABLE_MIN] ?: 120,
@@ -50,17 +60,15 @@ class ProfileStore(private val context: Context) {
         )
     }
 
-    suspend fun setTotalXp(value: Long) = context.dataStore.edit { it[Keys.TOTAL_XP] = value }
-
-    suspend fun setBudgetCap(value: Double) =
+    override suspend fun setBudgetCap(value: Double) =
         context.dataStore.edit { it[Keys.BUDGET_CAP] = value.coerceAtLeast(0.0) }
 
-    suspend fun setMaxDaily(value: Int) =
+    override suspend fun setMaxDaily(value: Int) =
         context.dataStore.edit { it[Keys.MAX_DAILY] = value.coerceIn(1, 20) }
 
-    suspend fun setAvailableMinutes(value: Int) =
+    override suspend fun setAvailableMinutes(value: Int) =
         context.dataStore.edit { it[Keys.AVAILABLE_MIN] = value.coerceIn(5, 1440) }
 
-    suspend fun setFocusCategories(cats: Set<QuestCategory>) =
+    override suspend fun setFocusCategories(cats: Set<QuestCategory>) =
         context.dataStore.edit { it[Keys.FOCUS] = cats.map { c -> c.name }.toSet() }
 }

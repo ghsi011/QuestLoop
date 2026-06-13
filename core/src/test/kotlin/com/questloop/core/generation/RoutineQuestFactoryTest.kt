@@ -90,7 +90,7 @@ class RoutineGenerationIntegrationTest {
     }
 
     @Test
-    fun `a completed routine does not reappear the same day`() {
+    fun `a dismissed routine does not reappear the same day`() {
         val plan = generator.generateDaily(
             QuestGenerator.Request(
                 epochDay = 100,
@@ -98,6 +98,7 @@ class RoutineGenerationIntegrationTest {
                 candidates = emptyList(),
                 history = listOf(completion(RoutineQuestFactory.MORNING_REVIEW, 100)),
                 routineQuests = RoutineQuestFactory.routinesFor(DayPart.MORNING),
+                dismissedToday = setOf(RoutineQuestFactory.MORNING_REVIEW),
             ),
         )
         assertTrue(plan.quests.none { it.quest.id == RoutineQuestFactory.MORNING_REVIEW })

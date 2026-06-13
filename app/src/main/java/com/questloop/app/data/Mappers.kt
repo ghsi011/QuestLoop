@@ -13,18 +13,23 @@ import com.questloop.core.model.QuestFrequency
 import com.questloop.core.model.QuestOrigin
 import com.questloop.core.model.VerificationMethod
 
+// Enum parsing is uniformly tolerant of unknown stored values (forward/backward
+// compatibility), falling back to a sensible default rather than crashing.
+private inline fun <reified T : Enum<T>> parseEnum(name: String, default: T): T =
+    runCatching { enumValueOf<T>(name) }.getOrDefault(default)
+
 fun QuestEntity.toModel(): Quest = Quest(
     id = id,
     title = title,
-    category = QuestCategory.valueOf(category),
-    frequency = QuestFrequency.valueOf(frequency),
-    difficulty = Difficulty.valueOf(difficulty),
-    priority = Priority.valueOf(priority),
-    origin = QuestOrigin.valueOf(origin),
+    category = parseEnum(category, QuestCategory.LIFE_ADMIN),
+    frequency = parseEnum(frequency, QuestFrequency.ONE_OFF),
+    difficulty = parseEnum(difficulty, Difficulty.MEDIUM),
+    priority = parseEnum(priority, Priority.NORMAL),
+    origin = parseEnum(origin, QuestOrigin.USER_CREATED),
     estimatedMinutes = estimatedMinutes,
     deadlineEpochDay = deadlineEpochDay,
     isReductionQuest = isReductionQuest,
-    completionStyle = runCatching { CompletionStyle.valueOf(completionStyle) }.getOrDefault(CompletionStyle.BINARY),
+    completionStyle = parseEnum(completionStyle, CompletionStyle.BINARY),
     targetCount = targetCount,
     unit = unit,
     tags = if (tags.isBlank()) emptyList() else tags.split(",").map { it.trim() },
@@ -53,17 +58,18 @@ fun Quest.toEntity(archived: Boolean = false): QuestEntity = QuestEntity(
 fun CompletionEntity.toModel(): CompletionRecord = CompletionRecord(
     instanceId = instanceId,
     questId = questId,
-    category = QuestCategory.valueOf(category),
-    difficulty = Difficulty.valueOf(difficulty),
-    priority = Priority.valueOf(priority),
-    result = CompletionResult.valueOf(result),
-    verification = VerificationMethod.valueOf(verification),
+    category = parseEnum(category, QuestCategory.LIFE_ADMIN),
+    difficulty = parseEnum(difficulty, Difficulty.MEDIUM),
+    priority = parseEnum(priority, Priority.NORMAL),
+    result = parseEnum(result, CompletionResult.COMPLETED),
+    verification = parseEnum(verification, VerificationMethod.MANUAL),
     epochDay = epochDay,
     fraction = fraction,
     isMeta = isMeta,
+    xpAwarded = xpAwarded,
 )
 
-fun CompletionRecord.toEntity(xpAwarded: Long): CompletionEntity = CompletionEntity(
+fun CompletionRecord.toEntity(): CompletionEntity = CompletionEntity(
     instanceId = instanceId,
     questId = questId,
     category = category.name,

@@ -30,15 +30,18 @@ class AiQuestValidator(private val config: Config = Config()) {
 
     data class Rejection(val title: String, val reason: String)
 
-    private val bannedSubstrings = listOf(
+    // Word-boundary patterns avoid false positives (e.g. "crypto" must not match
+    // "cryptography", "loan" must not match "download").
+    private val bannedPatterns: List<Regex> = listOf(
         // shame / pressure
         "lazy", "pathetic", "worthless", "failure as a", "you should be ashamed",
         "no excuse", "stop being", "disgusting",
         // financial advice
-        "invest in", "buy stock", "crypto", "guaranteed return", "loan", "leverage",
+        "invest in", "buy stock", "crypto(currenc\\w*|s)?", "guaranteed return",
+        "loan", "leverage",
         // medical advice
-        "diagnos", "prescri", "medication dose", "you have a disorder",
-    )
+        "diagnos\\w*", "prescri\\w*", "medication dose", "you have a disorder",
+    ).map { Regex("\\b$it\\b", RegexOption.IGNORE_CASE) }
 
     fun validate(proposed: List<Quest>, existing: List<Quest> = emptyList()): Result {
         val accepted = mutableListOf<Quest>()
@@ -55,9 +58,10 @@ class AiQuestValidator(private val config: Config = Config()) {
                 rejected += Rejection(raw.title, "Empty title.")
                 continue
             }
-            val unsafe = bannedSubstrings.firstOrNull { title.lowercase().contains(it) || (raw.rationale?.lowercase()?.contains(it) == true) }
+            val haystack = "$title ${raw.rationale.orEmpty()}"
+            val unsafe = bannedPatterns.firstOrNull { it.containsMatchIn(haystack) }
             if (unsafe != null) {
-                rejected += Rejection(title, "Contains disallowed content ('$unsafe').")
+                rejected += Rejection(title, "Contains disallowed content.")
                 continue
             }
             val norm = title.normalized()

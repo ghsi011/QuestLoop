@@ -37,15 +37,20 @@ class ScenarioTest {
         isMeta = category.isMeta,
     )
 
-    /** Records a list of completions in order, threading XP and history. */
+    /**
+     * Records completions the way the repository does: idempotent upsert keyed
+     * by instanceId, with total XP derived from the stored ledger so re-logging
+     * an instance replaces its prior grant rather than stacking.
+     */
     private fun run(records: List<CompletionRecord>): Long {
-        var xp = 0L
-        val history = mutableListOf<CompletionRecord>()
+        val ledger = LinkedHashMap<String, CompletionRecord>()
         for (r in records) {
-            xp = engine.recordCompletion(xp, r, history).newTotalXp
-            history += r
+            val existingXp = ledger[r.instanceId]?.xpAwarded ?: 0
+            val baseline = (ledger.values.sumOf { it.xpAwarded } - existingXp).coerceAtLeast(0)
+            val effect = engine.recordCompletion(baseline, r, ledger.values.toList())
+            ledger[r.instanceId] = r.copy(xpAwarded = effect.outcome.xp)
         }
-        return xp
+        return ledger.values.sumOf { it.xpAwarded }.coerceAtLeast(0)
     }
 
     @Test

@@ -29,9 +29,15 @@ class QuestGenerator(
         /**
          * System routine quests (morning/evening admin) for the minimal daily
          * loop. Always scheduled first and exempt from the variety/meta caps, but
-         * skipped once completed for the day.
+         * skipped once dismissed for the day.
          */
         val routineQuests: List<Quest> = emptyList(),
+        /**
+         * Quest ids that should not appear again today (finished, skipped, or a
+         * one-shot already done). Computed by the caller with style awareness so
+         * partially-logged counting/timed quests can stay visible.
+         */
+        val dismissedToday: Set<String> = emptySet(),
     )
 
     data class DailyPlan(
@@ -91,23 +97,17 @@ class QuestGenerator(
         }
 
         // Routine quests form the minimal daily loop: always shown first (unless
-        // already done today), exempt from the variety/meta caps and the count
+        // dismissed today), exempt from the variety/meta caps and the count
         // limit so the backbone is never crowded out.
-        val completedToday = request.history
-            .filter {
-                it.epochDay == request.epochDay &&
-                    (it.result == CompletionResult.COMPLETED || it.result == CompletionResult.PARTIAL)
-            }
-            .map { it.questId }
-            .toSet()
+        val dismissed = request.dismissedToday
         for (routine in request.routineQuests) {
-            if (routine.id in completedToday) continue
+            if (routine.id in dismissed) continue
             if (selected.any { it.quest.id == routine.id }) continue
             add(routine)
         }
 
         val remaining = scored.map { it.first }
-            .filter { it.id !in completedToday }
+            .filter { it.id !in dismissed }
             .toMutableList()
 
         // Greedy selection honouring the per-category cap so a single category

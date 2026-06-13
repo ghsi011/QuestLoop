@@ -64,8 +64,9 @@ class MappersTest {
             epochDay = 100,
             fraction = 0.5,
             isMeta = false,
+            xpAwarded = 42,
         )
-        val entity = record.toEntity(xpAwarded = 42)
+        val entity = record.toEntity()
         assertEquals(42L, entity.xpAwarded)
         assertEquals(record, entity.toModel())
     }

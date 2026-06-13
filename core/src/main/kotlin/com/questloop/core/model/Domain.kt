@@ -186,6 +186,8 @@ data class CompletionRecord(
     /** 0.0..1.0 for PARTIAL completion; 1.0 for COMPLETED. */
     val fraction: Double = if (result == CompletionResult.COMPLETED) 1.0 else 0.0,
     val isMeta: Boolean = category.isMeta,
+    /** XP this record was granted (signed). Used to derive totals and per-day caps. */
+    val xpAwarded: Long = 0,
 )
 
 /** A good habit the user wants to build. */
