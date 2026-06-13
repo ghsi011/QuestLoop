@@ -85,11 +85,19 @@ class QuestLoopEngine(
         }
         val metaToday = others.filter { it.isMeta }.sumOf { it.xpAwarded.coerceAtLeast(0) }
         val penaltyToday = others.sumOf { if (it.xpAwarded < 0) -it.xpAwarded else 0L }
+        // The streak is the run of active days *leading up to* today; excluding
+        // today keeps it stable whether this is the first log or a re-log, so
+        // re-logging the same instance can't change its reward (idempotency).
+        val streak = StreakTracker.currentStreak(
+            activeEpochDays - record.epochDay,
+            record.epochDay,
+            streakGraceDays,
+        )
         return RewardContext(
             priorSameQuestCompletions = priorSame,
             metaXpEarnedToday = metaToday,
             penaltyXpAppliedToday = penaltyToday,
-            currentStreakDays = StreakTracker.currentStreak(activeEpochDays, record.epochDay, streakGraceDays),
+            currentStreakDays = streak,
         )
     }
 

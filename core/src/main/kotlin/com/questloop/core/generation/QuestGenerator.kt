@@ -123,12 +123,17 @@ class QuestGenerator(
 
         val deferred = remaining
 
-        if (selected.isEmpty() && request.candidates.isNotEmpty()) {
-            // Always offer at least one approachable quest rather than an empty day.
-            val easiest = request.candidates.minByOrNull { it.difficulty.ordinal }!!
-            selected += QuestInstance("${easiest.id}@${request.epochDay}", easiest, request.epochDay)
-            usedMinutes += easiest.estimatedMinutes
-            deferred.remove(easiest)
+        if (selected.isEmpty()) {
+            // Offer at least one approachable quest rather than an empty day —
+            // but never resurface something already dismissed today.
+            val easiest = request.candidates
+                .filter { it.id !in dismissed }
+                .minByOrNull { it.difficulty.ordinal }
+            if (easiest != null) {
+                selected += QuestInstance("${easiest.id}@${request.epochDay}", easiest, request.epochDay)
+                usedMinutes += easiest.estimatedMinutes
+                deferred.remove(easiest)
+            }
         }
 
         if (usedMinutes > availableMinutes) {
