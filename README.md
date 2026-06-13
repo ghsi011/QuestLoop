@@ -75,6 +75,7 @@ the `android-build` job on a standard GitHub-hosted runner.
 - [`docs/REWARD_ECONOMY.md`](docs/REWARD_ECONOMY.md) — how XP, anti-farming, caps and allowances work
 - [`docs/SAFETY_AND_PRIVACY.md`](docs/SAFETY_AND_PRIVACY.md) — safety signals, anti-abuse, privacy posture
 - [`docs/DESIGN_DECISIONS.md`](docs/DESIGN_DECISIONS.md) — answers to the spec's open design questions
+- [`docs/RESEARCH_NOTES.md`](docs/RESEARCH_NOTES.md) — behavioural-design principles behind the MVP and where they live in code
 
 ## Project status
 
