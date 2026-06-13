@@ -41,6 +41,14 @@ class StreakTrackerTest {
     }
 
     @Test
+    fun `longest streak finds the biggest consecutive run`() {
+        val days = setOf(1L, 2L, 3L, 5L, 6L, 10L, 11L, 12L, 13L)
+        assertEquals(4, StreakTracker.longestStreak(days))
+        assertEquals(0, StreakTracker.longestStreak(emptySet()))
+        assertEquals(1, StreakTracker.longestStreak(setOf(7L)))
+    }
+
+    @Test
     fun `streak alive detection respects grace`() {
         val days = setOf(98L, 99L)
         assertTrue(StreakTracker.isStreakAlive(days, today = 100, graceDays = 1))

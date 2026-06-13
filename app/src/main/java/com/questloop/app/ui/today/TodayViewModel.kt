@@ -9,6 +9,7 @@ import com.questloop.core.generation.QuestGenerator
 import com.questloop.core.model.CompletionResult
 import com.questloop.core.model.EnergyCheckIn
 import com.questloop.core.model.Quest
+import com.questloop.core.reward.Achievement
 import com.questloop.core.reward.LevelSystem
 import com.questloop.core.safety.SafetyGuard
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +26,7 @@ data class TodayUiState(
     val level: Int = 1,
     val levelProgress: Double = 0.0,
     val signals: List<SafetyGuard.Signal> = emptyList(),
+    val achievements: List<Achievement> = emptyList(),
     val energy: Int? = null,
     val availableMinutes: Int? = null,
     val lastEffect: QuestLoopEngine.CompletionEffect? = null,
@@ -58,6 +60,7 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
             }
             val plan = repository.todayPlan(today, checkIn)
             val signals = repository.safetySignals(today)
+            val achievements = repository.unlockedAchievements()
             // Read XP from a one-shot profile snapshot.
             val xp = repository.profile.first().totalXp
             val progress = LevelSystem.progress(xp)
@@ -69,6 +72,7 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
                     level = progress.level,
                     levelProgress = progress.fractionToNext,
                     signals = signals,
+                    achievements = achievements,
                 )
             }
         }
@@ -82,11 +86,14 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
     fun complete(quest: Quest, result: CompletionResult) {
         viewModelScope.launch {
             val today = AppClock.todayEpochDay()
-            val effect = repository.completeQuest(quest, today, result)
-            val toast = if (effect.leveledUp) {
-                "Level up! You reached level ${effect.newLevel}. ${effect.outcome.explanation}"
-            } else {
-                effect.outcome.explanation
+            val outcome = repository.completeQuest(quest, today, result)
+            val effect = outcome.effect
+            val toast = buildString {
+                if (effect.leveledUp) append("Level up! You reached level ${effect.newLevel}. ")
+                append(effect.outcome.explanation)
+                outcome.newlyUnlocked.firstOrNull()?.let {
+                    append(" 🏆 Achievement unlocked: ${it.title}!")
+                }
             }
             _state.update { it.copy(lastEffect = effect, toast = toast) }
             refresh()

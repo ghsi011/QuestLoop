@@ -9,6 +9,10 @@ import com.questloop.core.model.CompletionResult
 import com.questloop.core.model.EnergyCheckIn
 import com.questloop.core.model.Quest
 import com.questloop.core.model.VerificationMethod
+import com.questloop.core.reward.Achievement
+import com.questloop.core.reward.AchievementEngine
+import com.questloop.core.reward.ProgressStats
+import com.questloop.core.reward.StreakTracker
 import com.questloop.core.reward.RewardAllowanceCalculator
 import com.questloop.core.review.ReviewGenerator
 import com.questloop.core.safety.SafetyGuard
@@ -75,13 +79,18 @@ class QuestRepository(
      * updates the user's XP. Returns the engine effect so the UI can celebrate
      * level-ups and show the explanation.
      */
+    data class CompleteOutcome(
+        val effect: QuestLoopEngine.CompletionEffect,
+        val newlyUnlocked: List<Achievement>,
+    )
+
     suspend fun completeQuest(
         quest: Quest,
         epochDay: Long,
         result: CompletionResult,
         fraction: Double = if (result == CompletionResult.COMPLETED) 1.0 else 0.0,
         verification: VerificationMethod = VerificationMethod.MANUAL,
-    ): QuestLoopEngine.CompletionEffect {
+    ): CompleteOutcome {
         val profile = profileStore.profile.first()
         val history = completionDao.getAll().map { it.toModel() }
         val record = CompletionRecord(
@@ -96,10 +105,25 @@ class QuestRepository(
             fraction = fraction,
             isMeta = quest.category.isMeta,
         )
+        val before = statsFrom(history, profile.totalXp)
         val effect = engine.recordCompletion(profile.totalXp, record, history)
         completionDao.insert(record.toEntity(effect.outcome.xp))
         profileStore.setTotalXp(effect.newTotalXp)
-        return effect
+        val after = statsFrom(history + record, effect.newTotalXp)
+        return CompleteOutcome(effect, AchievementEngine.newlyUnlocked(before, after))
+    }
+
+    private fun statsFrom(history: List<CompletionRecord>, totalXp: Long): ProgressStats {
+        val active = history
+            .filter { it.result == CompletionResult.COMPLETED || it.result == CompletionResult.PARTIAL }
+            .map { it.epochDay }.toSet()
+        return ProgressStats.from(history, totalXp, StreakTracker.longestStreak(active))
+    }
+
+    suspend fun unlockedAchievements(): List<Achievement> {
+        val profile = profileStore.profile.first()
+        val history = completionDao.getAll().map { it.toModel() }
+        return AchievementEngine.unlocked(statsFrom(history, profile.totalXp))
     }
 
     suspend fun review(periodLabel: String, fromEpochDay: Long, toEpochDay: Long): ReviewGenerator.Review {

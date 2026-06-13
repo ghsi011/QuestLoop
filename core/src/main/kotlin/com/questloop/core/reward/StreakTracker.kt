@@ -51,6 +51,23 @@ object StreakTracker {
         return streak
     }
 
+    /** Longest run of consecutive active days ever recorded (grace not applied). */
+    fun longestStreak(activeEpochDays: Set<Long>): Int {
+        if (activeEpochDays.isEmpty()) return 0
+        val sorted = activeEpochDays.sorted()
+        var longest = 1
+        var current = 1
+        for (i in 1 until sorted.size) {
+            if (sorted[i] == sorted[i - 1] + 1) {
+                current++
+                longest = maxOf(longest, current)
+            } else {
+                current = 1
+            }
+        }
+        return longest
+    }
+
     /** True if completing a quest today would extend (vs. restart) the streak. */
     fun isStreakAlive(activeEpochDays: Set<Long>, today: Long, graceDays: Int = 1): Boolean {
         val mostRecent = activeEpochDays.maxOrNull() ?: return false

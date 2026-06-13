@@ -100,6 +100,13 @@ fun TodayScreen(viewModel: TodayViewModel, snackbarHostState: SnackbarHostState)
             items(notes) { note -> Text("• $note", style = MaterialTheme.typography.bodySmall) }
         }
 
+        if (state.achievements.isNotEmpty()) {
+            item { SectionHeader("Achievements (${state.achievements.size})") }
+            items(state.achievements) { achievement ->
+                InfoCard(title = "🏆 ${achievement.title}", body = achievement.description)
+            }
+        }
+
         val deferred = state.plan?.deferred.orEmpty()
         if (deferred.isNotEmpty()) {
             item { SectionHeader("Deferred (${deferred.size})") }
