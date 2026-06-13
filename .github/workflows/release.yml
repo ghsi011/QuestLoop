@@ -7,6 +7,10 @@ name: Release
 on:
   push:
     tags: ["v*"]
+    # Cutting a release from the dev branch: include "[release]" in the commit
+    # message. (Tags can't be pushed from the dev sandbox, so the workflow
+    # creates the tag + release server-side using GITHUB_TOKEN.)
+    branches: ["claude/gamified-quest-todo-habits-vkiiyl"]
   workflow_dispatch:
     inputs:
       tag:
@@ -21,6 +25,11 @@ jobs:
   release:
     name: Build APK and publish release
     runs-on: ubuntu-latest
+    # On branch pushes, only run when the commit explicitly asks for a release.
+    if: >-
+      github.event_name != 'push' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      contains(github.event.head_commit.message, '[release]')
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -32,7 +41,15 @@ jobs:
 
       - name: Resolve tag
         id: tag
-        run: echo "value=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            T="${{ github.event.inputs.tag }}"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            T="${{ github.ref_name }}"
+          else
+            T="v0.1.0-experimental"
+          fi
+          echo "value=$T" >> "$GITHUB_OUTPUT"
 
       # Run the core test gate before shipping anything.
       - name: Core tests
