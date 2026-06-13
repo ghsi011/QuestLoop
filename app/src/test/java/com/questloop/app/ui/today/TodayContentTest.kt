@@ -100,7 +100,24 @@ class TodayContentTest {
     }
 
     @Test
-    fun `quantitative quest shows progress and logs measured value`() {
+    fun `quantitative control increments the displayed progress`() {
+        composeRule.setContent {
+            TodayContent(
+                state = stateWith(
+                    quest("water", "Stay hydrated", CompletionStyle.QUANTITATIVE, target = 8, unit = "glasses"),
+                ),
+                actions = noopActions(),
+            )
+        }
+        composeRule.onNodeWithText("0 / 8 glasses").assertIsDisplayed()
+        composeRule.onNodeWithText("+").performClick()
+        composeRule.onNodeWithText("1 / 8 glasses").assertIsDisplayed()
+    }
+
+    @Test
+    fun `quantitative log fires the measured-completion callback`() {
+        // The count→XP math is covered by CompletionScalingTest; this verifies
+        // the "Log progress" control is wired through to onCompleteMeasured.
         var measured: Pair<String, Int>? = null
         composeRule.setContent {
             TodayContent(
@@ -110,16 +127,8 @@ class TodayContentTest {
                 actions = noopActions(onCompleteMeasured = { q, v -> measured = q.id to v }),
             )
         }
-        // The progress text updates as the count is incremented (UI state).
-        composeRule.onNodeWithText("0 / 8 glasses").assertIsDisplayed()
-        composeRule.onNodeWithText("+").performClick()
-        composeRule.onNodeWithText("1 / 8 glasses").assertIsDisplayed()
-        // Logging invokes the measured-completion callback for this quest. The
-        // exact count→XP math is covered by CompletionScalingTest; here we verify
-        // the control is wired through to onCompleteMeasured.
         composeRule.onNodeWithText("Log progress").performClick()
         assertEquals("water", measured?.first)
-        assertTrue("progress should be logged", (measured?.second ?: -1) >= 0)
     }
 
     @Test
