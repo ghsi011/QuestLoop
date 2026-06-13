@@ -4,6 +4,7 @@ import com.questloop.app.data.local.CompletionEntity
 import com.questloop.app.data.local.QuestEntity
 import com.questloop.core.model.CompletionRecord
 import com.questloop.core.model.CompletionResult
+import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.Difficulty
 import com.questloop.core.model.Priority
 import com.questloop.core.model.Quest
@@ -23,6 +24,9 @@ fun QuestEntity.toModel(): Quest = Quest(
     estimatedMinutes = estimatedMinutes,
     deadlineEpochDay = deadlineEpochDay,
     isReductionQuest = isReductionQuest,
+    completionStyle = runCatching { CompletionStyle.valueOf(completionStyle) }.getOrDefault(CompletionStyle.BINARY),
+    targetCount = targetCount,
+    unit = unit,
     tags = if (tags.isBlank()) emptyList() else tags.split(",").map { it.trim() },
     rationale = rationale,
 )
@@ -38,6 +42,9 @@ fun Quest.toEntity(archived: Boolean = false): QuestEntity = QuestEntity(
     estimatedMinutes = estimatedMinutes,
     deadlineEpochDay = deadlineEpochDay,
     isReductionQuest = isReductionQuest,
+    completionStyle = completionStyle.name,
+    targetCount = targetCount,
+    unit = unit,
     tags = tags.joinToString(","),
     rationale = rationale,
     archived = archived,

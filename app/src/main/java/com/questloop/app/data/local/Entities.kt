@@ -19,6 +19,9 @@ data class QuestEntity(
     val estimatedMinutes: Int,
     val deadlineEpochDay: Long?,
     val isReductionQuest: Boolean,
+    val completionStyle: String = "BINARY",
+    val targetCount: Int? = null,
+    val unit: String? = null,
     val tags: String, // comma-separated
     val rationale: String?,
     val archived: Boolean = false,

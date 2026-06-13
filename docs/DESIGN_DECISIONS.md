@@ -81,5 +81,25 @@ deferred work. These reflect MVP choices, not permanent commitments.
   layer using `PromptLibrary`.
 - No calendar/health/todo integrations, no cloud sync, no social modes (all
   future per SPEC §10).
-- Instrumented UI tests are minimal; ViewModel/Compose tests are deferred.
 - Reward weights are first-pass defaults pending the research in §16/§17.
+- Compose UI tests run on the JVM via Robolectric (`TodayContentTest`); broader
+  ViewModel and screenshot tests are still future work.
+
+## Minimal daily interaction loop
+
+To keep daily effort to a couple of minutes (a core product goal), the day is
+anchored by a few `META_MAINTENANCE` *routine* quests from `RoutineQuestFactory`:
+a single instant **morning review** micro-quest, and an **evening wrap-up** (mark
+off what you completed + add tomorrow's todos with a quick habit/health
+check-in). These are surfaced by `DayPart` (`QuestGenerator` schedules them first
+and exempt from the variety/meta caps, but they vanish once completed for the
+day) and stay lightly rewarded via the existing meta cap, so the backbone never
+inflates progress.
+
+## Non-binary completion
+
+Not every quest is done/not-done (SPEC §8). `CompletionStyle` supports
+QUANTITATIVE (count vs. target), DURATION (minutes vs. target), and SUBJECTIVE
+(1–5 self-rating) in addition to BINARY. `CompletionScaling` maps each to the
+`(result, fraction)` the reward engine already credits proportionally, recording
+shortfalls as PARTIAL (never FAILED) so progress is rewarded and never punished.

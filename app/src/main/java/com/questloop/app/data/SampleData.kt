@@ -12,11 +12,23 @@ object SampleData {
     val starterQuests: List<Quest> = listOf(
         Quest(
             id = "seed-water",
-            title = "Drink a glass of water",
+            title = "Stay hydrated",
             category = QuestCategory.HEALTH,
             frequency = QuestFrequency.DAILY,
-            difficulty = Difficulty.TRIVIAL,
-            rationale = "An easy daily win to start the streak.",
+            difficulty = Difficulty.EASY,
+            completionStyle = com.questloop.core.model.CompletionStyle.QUANTITATIVE,
+            targetCount = 8,
+            unit = "glasses",
+            rationale = "Log each glass — partial progress still counts.",
+        ),
+        Quest(
+            id = "seed-create",
+            title = "Make progress on a creative project",
+            category = QuestCategory.PERSONAL_GROWTH,
+            frequency = QuestFrequency.DAILY,
+            difficulty = Difficulty.MEDIUM,
+            completionStyle = com.questloop.core.model.CompletionStyle.SUBJECTIVE,
+            rationale = "Hard to measure — just rate how it went. Showing up is the win.",
         ),
         Quest(
             id = "seed-walk",
@@ -42,6 +54,8 @@ object SampleData {
             difficulty = Difficulty.HARD,
             priority = Priority.HIGH,
             estimatedMinutes = 50,
+            completionStyle = com.questloop.core.model.CompletionStyle.DURATION,
+            rationale = "Log the minutes you actually focused — even 20 counts.",
         ),
         Quest(
             id = "seed-call",

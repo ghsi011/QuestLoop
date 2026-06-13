@@ -26,6 +26,12 @@ class QuestGenerator(
         val candidates: List<Quest>,
         val history: List<CompletionRecord> = emptyList(),
         val checkIn: EnergyCheckIn? = null,
+        /**
+         * System routine quests (morning/evening admin) for the minimal daily
+         * loop. Always scheduled first and exempt from the variety/meta caps, but
+         * skipped once completed for the day.
+         */
+        val routineQuests: List<Quest> = emptyList(),
     )
 
     data class DailyPlan(
@@ -84,7 +90,25 @@ class QuestGenerator(
             if (quest.category.isMeta) metaIncluded++
         }
 
-        val remaining = scored.map { it.first }.toMutableList()
+        // Routine quests form the minimal daily loop: always shown first (unless
+        // already done today), exempt from the variety/meta caps and the count
+        // limit so the backbone is never crowded out.
+        val completedToday = request.history
+            .filter {
+                it.epochDay == request.epochDay &&
+                    (it.result == CompletionResult.COMPLETED || it.result == CompletionResult.PARTIAL)
+            }
+            .map { it.questId }
+            .toSet()
+        for (routine in request.routineQuests) {
+            if (routine.id in completedToday) continue
+            if (selected.any { it.quest.id == routine.id }) continue
+            add(routine)
+        }
+
+        val remaining = scored.map { it.first }
+            .filter { it.id !in completedToday }
+            .toMutableList()
 
         // Greedy selection honouring the per-category cap so a single category
         // (e.g. chores) can never dominate the day (SPEC 4: not too repetitive).

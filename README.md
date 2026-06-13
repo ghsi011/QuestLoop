@@ -59,6 +59,11 @@ the `android-build` job on a standard GitHub-hosted runner.
 ## What's implemented (MVP scope, SPEC §10)
 
 - Manual todo/habit entry and a "quick add from a list" path
+- **Minimal daily loop**: one instant morning review micro-quest and a short
+  (~2 min) evening wrap-up (review completed + add todos / quick check-in)
+- **Non-binary completion**: binary, quantitative (6/8 glasses), duration
+  (20/50 focus minutes), and subjective (self-rated) quests — progress is always
+  credited proportionally, never penalised
 - Daily quest generation with time + energy budgeting and category variety
 - XP, a smooth level curve, streaks with grace days, achievements scaffolding
 - Reward economy with **anti-farming**, **gentle capped penalties**,

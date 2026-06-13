@@ -58,7 +58,7 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
                     )
                 } else null
             }
-            val plan = repository.todayPlan(today, checkIn)
+            val plan = repository.todayPlan(today, AppClock.currentDayPart(), checkIn)
             val signals = repository.safetySignals(today)
             val achievements = repository.unlockedAchievements()
             // Read XP from a one-shot profile snapshot.
@@ -94,6 +94,22 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
                 outcome.newlyUnlocked.firstOrNull()?.let {
                     append(" 🏆 Achievement unlocked: ${it.title}!")
                 }
+            }
+            _state.update { it.copy(lastEffect = effect, toast = toast) }
+            refresh()
+        }
+    }
+
+    /** Completes a non-binary quest from a measured value (count/minutes/rating). */
+    fun completeMeasured(quest: Quest, value: Int) {
+        viewModelScope.launch {
+            val today = AppClock.todayEpochDay()
+            val outcome = repository.completeMeasured(quest, today, value)
+            val effect = outcome.effect
+            val toast = buildString {
+                if (effect.leveledUp) append("Level up! You reached level ${effect.newLevel}. ")
+                append(effect.outcome.explanation)
+                outcome.newlyUnlocked.firstOrNull()?.let { append(" 🏆 Achievement unlocked: ${it.title}!") }
             }
             _state.update { it.copy(lastEffect = effect, toast = toast) }
             refresh()

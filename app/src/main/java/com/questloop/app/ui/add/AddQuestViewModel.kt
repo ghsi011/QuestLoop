@@ -24,6 +24,9 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
         priority: Priority,
         frequency: QuestFrequency,
         estimatedMinutes: Int,
+        completionStyle: com.questloop.core.model.CompletionStyle = com.questloop.core.model.CompletionStyle.BINARY,
+        targetCount: Int? = null,
+        unit: String? = null,
         onDone: () -> Unit,
     ) {
         val quest = Quest(
@@ -35,6 +38,9 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
             priority = priority,
             estimatedMinutes = estimatedMinutes,
             isReductionQuest = category == QuestCategory.BAD_HABIT_REDUCTION,
+            completionStyle = completionStyle,
+            targetCount = targetCount,
+            unit = unit,
         )
         viewModelScope.launch {
             repository.addQuest(quest)

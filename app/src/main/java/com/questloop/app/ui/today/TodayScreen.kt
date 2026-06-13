@@ -3,6 +3,7 @@ package com.questloop.app.ui.today
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -14,15 +15,17 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -31,9 +34,19 @@ import com.questloop.app.ui.components.InfoCard
 import com.questloop.app.ui.components.LevelBar
 import com.questloop.app.ui.components.SectionHeader
 import com.questloop.core.model.CompletionResult
+import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestInstance
 
+/** Callbacks the Today screen needs; grouped so the content is easy to test. */
+data class TodayActions(
+    val onComplete: (Quest) -> Unit,
+    val onSkip: (Quest) -> Unit,
+    val onCompleteMeasured: (Quest, Int) -> Unit,
+    val onCheckIn: (energy: Int, minutes: Int) -> Unit,
+)
+
+/** Stateful entry point: wires the ViewModel to the stateless [TodayContent]. */
 @Composable
 fun TodayScreen(viewModel: TodayViewModel, snackbarHostState: SnackbarHostState) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -45,9 +58,23 @@ fun TodayScreen(viewModel: TodayViewModel, snackbarHostState: SnackbarHostState)
         }
     }
 
+    TodayContent(
+        state = state,
+        actions = TodayActions(
+            onComplete = { viewModel.complete(it, CompletionResult.COMPLETED) },
+            onSkip = { viewModel.complete(it, CompletionResult.SKIPPED) },
+            onCompleteMeasured = { quest, value -> viewModel.completeMeasured(quest, value) },
+            onCheckIn = viewModel::setCheckIn,
+        ),
+    )
+}
+
+/** Pure UI for the Today screen — no ViewModel dependency, fully testable. */
+@Composable
+fun TodayContent(state: TodayUiState, actions: TodayActions) {
     if (state.loading && state.plan == null) {
         Column(
-            Modifier.fillMaxSize(),
+            Modifier.fillMaxSize().testTag("today-loading"),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) { CircularProgressIndicator() }
@@ -55,7 +82,7 @@ fun TodayScreen(viewModel: TodayViewModel, snackbarHostState: SnackbarHostState)
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp).testTag("today-list"),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
@@ -69,11 +96,14 @@ fun TodayScreen(viewModel: TodayViewModel, snackbarHostState: SnackbarHostState)
 
         if (state.signals.isNotEmpty()) {
             items(state.signals) { signal ->
-                InfoCard(title = signal.severity.name.lowercase().replaceFirstChar { it.uppercase() }, body = signal.message)
+                InfoCard(
+                    title = signal.severity.name.lowercase().replaceFirstChar { it.uppercase() },
+                    body = signal.message,
+                )
             }
         }
 
-        item { EnergyCheckInRow(onSelect = viewModel::setCheckIn) }
+        item { EnergyCheckInRow(onSelect = actions.onCheckIn) }
 
         item { SectionHeader("Today's quests") }
 
@@ -87,11 +117,7 @@ fun TodayScreen(viewModel: TodayViewModel, snackbarHostState: SnackbarHostState)
             }
         } else {
             items(quests, key = { it.instanceId }) { instance ->
-                QuestRow(
-                    instance = instance,
-                    onComplete = { viewModel.complete(instance.quest, CompletionResult.COMPLETED) },
-                    onSkip = { viewModel.complete(instance.quest, CompletionResult.SKIPPED) },
-                )
+                QuestRow(instance = instance, actions = actions)
             }
         }
 
@@ -115,7 +141,7 @@ fun TodayScreen(viewModel: TodayViewModel, snackbarHostState: SnackbarHostState)
             }
         }
 
-        item { androidx.compose.foundation.layout.Spacer(Modifier.padding(24.dp)) }
+        item { Spacer(Modifier.padding(24.dp)) }
     }
 }
 
@@ -135,14 +161,13 @@ private fun EnergyCheckInRow(onSelect: (energy: Int, minutes: Int) -> Unit) {
 
 @Composable
 private fun EnergyOption(label: String, energy: Int, minutes: Int, onSelect: (Int, Int) -> Unit) {
-    val selected = remember { false }
-    FilterChip(selected = selected, onClick = { onSelect(energy, minutes) }, label = { Text(label) })
+    FilterChip(selected = false, onClick = { onSelect(energy, minutes) }, label = { Text(label) })
 }
 
 @Composable
-private fun QuestRow(instance: QuestInstance, onComplete: () -> Unit, onSkip: () -> Unit) {
+private fun QuestRow(instance: QuestInstance, actions: TodayActions) {
     val quest: Quest = instance.quest
-    Card(Modifier.fillMaxWidth()) {
+    Card(Modifier.fillMaxWidth().testTag("quest-${quest.id}")) {
         Column(Modifier.padding(16.dp)) {
             Text(quest.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Row(
@@ -159,14 +184,69 @@ private fun QuestRow(instance: QuestInstance, onComplete: () -> Unit, onSkip: ()
             quest.rationale?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
             }
-            Row(
-                Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Button(onClick = onComplete) { Text("Complete") }
-                OutlinedButton(onClick = onSkip) {
-                    Text(if (quest.isReductionQuest) "Log honestly" else "Skip")
-                }
+
+            when (quest.completionStyle) {
+                CompletionStyle.BINARY -> BinaryActions(quest, actions)
+                CompletionStyle.QUANTITATIVE -> QuantitativeControl(quest, actions)
+                CompletionStyle.DURATION -> DurationControl(quest, actions)
+                CompletionStyle.SUBJECTIVE -> SubjectiveControl(quest, actions)
+            }
+        }
+    }
+}
+
+@Composable
+private fun BinaryActions(quest: Quest, actions: TodayActions) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Button(onClick = { actions.onComplete(quest) }) { Text("Complete") }
+        OutlinedButton(onClick = { actions.onSkip(quest) }) {
+            Text(if (quest.isReductionQuest) "Log honestly" else "Skip")
+        }
+    }
+}
+
+@Composable
+private fun QuantitativeControl(quest: Quest, actions: TodayActions) {
+    val target = (quest.targetCount ?: 1).coerceAtLeast(1)
+    var count by remember(quest.id) { mutableIntStateOf(0) }
+    Column(Modifier.padding(top = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { if (count > 0) count-- }) { Text("−") }
+            Text("$count / $target ${quest.unit.orEmpty()}".trim(), style = MaterialTheme.typography.bodyMedium)
+            OutlinedButton(onClick = { if (count < target) count++ }) { Text("+") }
+        }
+        Button(onClick = { actions.onCompleteMeasured(quest, count) }, modifier = Modifier.padding(top = 8.dp)) {
+            Text("Log progress")
+        }
+    }
+}
+
+@Composable
+private fun DurationControl(quest: Quest, actions: TodayActions) {
+    val target = quest.estimatedMinutes.coerceAtLeast(1)
+    var minutes by remember(quest.id) { mutableIntStateOf(target) }
+    Column(Modifier.padding(top = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { if (minutes >= 5) minutes -= 5 }) { Text("−5") }
+            Text("$minutes / $target min", style = MaterialTheme.typography.bodyMedium)
+            OutlinedButton(onClick = { minutes += 5 }) { Text("+5") }
+        }
+        Button(onClick = { actions.onCompleteMeasured(quest, minutes) }, modifier = Modifier.padding(top = 8.dp)) {
+            Text("Log time")
+        }
+    }
+}
+
+@Composable
+private fun SubjectiveControl(quest: Quest, actions: TodayActions) {
+    Column(Modifier.padding(top = 8.dp)) {
+        Text("How did it go?", style = MaterialTheme.typography.bodySmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
+            (1..5).forEach { rating ->
+                OutlinedButton(onClick = { actions.onCompleteMeasured(quest, rating) }) { Text("$rating") }
             }
         }
     }

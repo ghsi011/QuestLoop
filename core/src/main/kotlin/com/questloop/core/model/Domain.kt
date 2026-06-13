@@ -88,6 +88,43 @@ enum class VerificationMethod {
 }
 
 /**
+ * How "done" is defined for a quest (SPEC §8: partial completion, subjective
+ * tasks). Not every quest is binary; this lets the app collect the right kind of
+ * completion input and lets the reward engine credit progress fairly.
+ */
+@Serializable
+enum class CompletionStyle {
+    /** Simple done / not-done. */
+    BINARY,
+
+    /** A count toward a target (e.g. 6 of 8 glasses of water). */
+    QUANTITATIVE,
+
+    /** Time spent toward a target duration (e.g. 30 of 50 focus minutes). */
+    DURATION,
+
+    /** Self-rated effort/progress for fuzzy goals (e.g. "made progress writing"). */
+    SUBJECTIVE;
+}
+
+/** Part of the day, used to surface the right minimal-interaction routine. */
+@Serializable
+enum class DayPart {
+    MORNING,
+    MIDDAY,
+    EVENING;
+
+    companion object {
+        /** Maps a 0..23 hour to a day part. Morning < 12, evening >= 17. */
+        fun fromHour(hour: Int): DayPart = when (hour) {
+            in 0..11 -> MORNING
+            in 12..16 -> MIDDAY
+            else -> EVENING
+        }
+    }
+}
+
+/**
  * A single quest definition. `id` is stable across recurrences; a recurring
  * quest produces many [QuestInstance]s over time.
  */
@@ -106,6 +143,12 @@ data class Quest(
     val deadlineEpochDay: Long? = null,
     /** For bad-habit-reduction quests, success = NOT doing the thing. */
     val isReductionQuest: Boolean = category == QuestCategory.BAD_HABIT_REDUCTION,
+    /** How completion is defined/measured for this quest (SPEC §8). */
+    val completionStyle: CompletionStyle = CompletionStyle.BINARY,
+    /** Target for QUANTITATIVE quests (e.g. 8 glasses); null otherwise. */
+    val targetCount: Int? = null,
+    /** Unit label for QUANTITATIVE quests (e.g. "glasses", "pages"). */
+    val unit: String? = null,
     val tags: List<String> = emptyList(),
     /** Optional short rationale shown to the user (AI explainability, SPEC 5). */
     val rationale: String? = null,

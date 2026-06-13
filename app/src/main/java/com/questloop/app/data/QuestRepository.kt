@@ -3,9 +3,12 @@ package com.questloop.app.data
 import com.questloop.app.data.local.CompletionDao
 import com.questloop.app.data.local.QuestDao
 import com.questloop.core.QuestLoopEngine
+import com.questloop.core.completion.CompletionScaling
 import com.questloop.core.generation.QuestGenerator
+import com.questloop.core.generation.RoutineQuestFactory
 import com.questloop.core.model.CompletionRecord
 import com.questloop.core.model.CompletionResult
+import com.questloop.core.model.DayPart
 import com.questloop.core.model.EnergyCheckIn
 import com.questloop.core.model.Quest
 import com.questloop.core.model.VerificationMethod
@@ -51,8 +54,12 @@ class QuestRepository(
         }
     }
 
-    /** Build today's plan from active quests + recent history. */
-    suspend fun todayPlan(epochDay: Long, checkIn: EnergyCheckIn? = null): QuestGenerator.DailyPlan {
+    /** Build today's plan from active quests + recent history + the day's routine. */
+    suspend fun todayPlan(
+        epochDay: Long,
+        dayPart: DayPart,
+        checkIn: EnergyCheckIn? = null,
+    ): QuestGenerator.DailyPlan {
         val profile = profileStore.profile.first()
         val candidates = questDao.getActive().map { it.toModel() }
             .filter { it.id !in completedQuestIdsToday(epochDay) }
@@ -64,6 +71,7 @@ class QuestRepository(
                 candidates = candidates,
                 history = history,
                 checkIn = checkIn,
+                routineQuests = RoutineQuestFactory.routinesFor(dayPart),
             ),
         )
     }
@@ -111,6 +119,32 @@ class QuestRepository(
         profileStore.setTotalXp(effect.newTotalXp)
         val after = statsFrom(history + record, effect.newTotalXp)
         return CompleteOutcome(effect, AchievementEngine.newlyUnlocked(before, after))
+    }
+
+    /**
+     * Completes a non-binary quest from a measured value:
+     * - QUANTITATIVE: [value] is progress toward [Quest.targetCount].
+     * - DURATION: [value] is minutes spent toward [Quest.estimatedMinutes].
+     * - SUBJECTIVE: [value] is a 1..5 self-rating of effort/progress.
+     * Progress is always credited proportionally and never penalised (SPEC §8).
+     */
+    suspend fun completeMeasured(quest: Quest, epochDay: Long, value: Int): CompleteOutcome {
+        val scaled = when (quest.completionStyle) {
+            com.questloop.core.model.CompletionStyle.QUANTITATIVE ->
+                CompletionScaling.quantitative(value, (quest.targetCount ?: 1).coerceAtLeast(1))
+            com.questloop.core.model.CompletionStyle.DURATION ->
+                CompletionScaling.duration(value, quest.estimatedMinutes.coerceAtLeast(1))
+            com.questloop.core.model.CompletionStyle.SUBJECTIVE ->
+                CompletionScaling.subjective(value)
+            com.questloop.core.model.CompletionStyle.BINARY ->
+                CompletionScaling.Scaled(CompletionResult.COMPLETED, 1.0)
+        }
+        val verification = when (quest.completionStyle) {
+            com.questloop.core.model.CompletionStyle.DURATION -> VerificationMethod.TIMER
+            com.questloop.core.model.CompletionStyle.QUANTITATIVE -> VerificationMethod.CHECKLIST
+            else -> VerificationMethod.MANUAL
+        }
+        return completeQuest(quest, epochDay, scaled.result, scaled.fraction, verification)
     }
 
     private fun statsFrom(history: List<CompletionRecord>, totalXp: Long): ProgressStats {

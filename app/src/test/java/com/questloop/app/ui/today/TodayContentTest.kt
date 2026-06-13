@@ -1,0 +1,158 @@
+package com.questloop.app.ui.today
+
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import com.questloop.core.generation.QuestGenerator
+import com.questloop.core.model.CompletionStyle
+import com.questloop.core.model.Difficulty
+import com.questloop.core.model.Quest
+import com.questloop.core.model.QuestCategory
+import com.questloop.core.model.QuestFrequency
+import com.questloop.core.model.QuestInstance
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+/**
+ * Compose UI tests for the stateless [TodayContent]. Run on the JVM via
+ * Robolectric so they execute in CI without an emulator.
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class TodayContentTest {
+
+    @get:Rule
+    val composeRule = createComposeRule()
+
+    private fun quest(
+        id: String,
+        title: String,
+        style: CompletionStyle = CompletionStyle.BINARY,
+        target: Int? = null,
+        unit: String? = null,
+        category: QuestCategory = QuestCategory.WORK_STUDY,
+    ) = Quest(
+        id = id,
+        title = title,
+        category = category,
+        frequency = QuestFrequency.DAILY,
+        difficulty = Difficulty.MEDIUM,
+        completionStyle = style,
+        targetCount = target,
+        unit = unit,
+    )
+
+    private fun stateWith(vararg quests: Quest): TodayUiState {
+        val instances = quests.map { QuestInstance("${it.id}@1", it, 1) }
+        return TodayUiState(
+            loading = false,
+            plan = QuestGenerator.DailyPlan(
+                epochDay = 1,
+                quests = instances,
+                totalEstimatedMinutes = instances.sumOf { it.quest.estimatedMinutes },
+                deferred = emptyList(),
+                notes = emptyList(),
+            ),
+            totalXp = 120,
+            level = 2,
+            levelProgress = 0.3,
+        )
+    }
+
+    private fun noopActions(
+        onComplete: (Quest) -> Unit = {},
+        onSkip: (Quest) -> Unit = {},
+        onCompleteMeasured: (Quest, Int) -> Unit = { _, _ -> },
+        onCheckIn: (Int, Int) -> Unit = { _, _ -> },
+    ) = TodayActions(onComplete, onSkip, onCompleteMeasured, onCheckIn)
+
+    @Test
+    fun `binary quest shows title and complete fires callback`() {
+        var completed: Quest? = null
+        composeRule.setContent {
+            TodayContent(
+                state = stateWith(quest("q1", "Write the report")),
+                actions = noopActions(onComplete = { completed = it }),
+            )
+        }
+        composeRule.onNodeWithText("Write the report").assertIsDisplayed()
+        composeRule.onNodeWithText("Complete").performClick()
+        assertEquals("q1", completed?.id)
+    }
+
+    @Test
+    fun `reduction quest shows log honestly instead of skip`() {
+        composeRule.setContent {
+            TodayContent(
+                state = stateWith(
+                    quest("bad", "Stay under scroll limit", category = QuestCategory.BAD_HABIT_REDUCTION),
+                ),
+                actions = noopActions(),
+            )
+        }
+        composeRule.onNodeWithText("Log honestly").assertIsDisplayed()
+    }
+
+    @Test
+    fun `quantitative quest shows progress and logs measured value`() {
+        var measured: Pair<String, Int>? = null
+        composeRule.setContent {
+            TodayContent(
+                state = stateWith(
+                    quest("water", "Stay hydrated", CompletionStyle.QUANTITATIVE, target = 8, unit = "glasses"),
+                ),
+                actions = noopActions(onCompleteMeasured = { q, v -> measured = q.id to v }),
+            )
+        }
+        composeRule.onNodeWithText("0 / 8 glasses").assertIsDisplayed()
+        composeRule.onNodeWithText("+").performClick()
+        composeRule.onNodeWithText("1 / 8 glasses").assertIsDisplayed()
+        composeRule.onNodeWithText("Log progress").performClick()
+        assertEquals("water" to 1, measured)
+    }
+
+    @Test
+    fun `subjective quest shows rating buttons`() {
+        var measured: Int? = null
+        composeRule.setContent {
+            TodayContent(
+                state = stateWith(quest("create", "Creative work", CompletionStyle.SUBJECTIVE)),
+                actions = noopActions(onCompleteMeasured = { _, v -> measured = v }),
+            )
+        }
+        composeRule.onNodeWithText("How did it go?").assertIsDisplayed()
+        composeRule.onNodeWithText("4").performClick()
+        assertEquals(4, measured)
+    }
+
+    @Test
+    fun `empty plan shows all clear`() {
+        composeRule.setContent {
+            TodayContent(
+                state = TodayUiState(loading = false, plan = stateWith().plan!!.copy(quests = emptyList())),
+                actions = noopActions(),
+            )
+        }
+        composeRule.onNodeWithText("All clear").assertIsDisplayed()
+    }
+
+    @Test
+    fun `energy check-in fires callback`() {
+        var picked: Pair<Int, Int>? = null
+        composeRule.setContent {
+            TodayContent(
+                state = stateWith(quest("q1", "Anything")),
+                actions = noopActions(onCheckIn = { e, m -> picked = e to m }),
+            )
+        }
+        composeRule.onNodeWithText("Low").performClick()
+        assertTrue(picked != null)
+        assertEquals(2, picked?.first)
+    }
+}

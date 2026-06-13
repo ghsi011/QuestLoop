@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.questloop.app.ui.components.SectionHeader
 import com.questloop.app.ui.components.pretty
+import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.Difficulty
 import com.questloop.core.model.Priority
 import com.questloop.core.model.QuestCategory
@@ -40,6 +41,9 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
     var priority by remember { mutableStateOf(Priority.NORMAL) }
     var frequency by remember { mutableStateOf(QuestFrequency.ONE_OFF) }
     var minutes by remember { mutableIntStateOf(25) }
+    var completionStyle by remember { mutableStateOf(CompletionStyle.BINARY) }
+    var targetCount by remember { mutableIntStateOf(8) }
+    var unit by remember { mutableStateOf("") }
     var quickText by remember { mutableStateOf("") }
 
     Column(
@@ -69,17 +73,46 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
         Text("Frequency", fontWeight = FontWeight.SemiBold)
         ChipGroup(QuestFrequency.entries, frequency) { frequency = it }
 
+        Text("How is it completed?", fontWeight = FontWeight.SemiBold)
+        ChipGroup(CompletionStyle.entries, completionStyle) { completionStyle = it }
+
+        if (completionStyle == CompletionStyle.QUANTITATIVE) {
+            OutlinedTextField(
+                value = targetCount.toString(),
+                onValueChange = { v -> targetCount = v.toIntOrNull()?.coerceIn(1, 1000) ?: targetCount },
+                label = { Text("Target count") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = unit,
+                onValueChange = { unit = it },
+                label = { Text("Unit (e.g. glasses, pages)") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
         OutlinedTextField(
             value = minutes.toString(),
             onValueChange = { v -> minutes = v.toIntOrNull()?.coerceIn(1, 1440) ?: minutes },
-            label = { Text("Estimated minutes") },
+            label = { Text(if (completionStyle == CompletionStyle.DURATION) "Target minutes" else "Estimated minutes") },
             modifier = Modifier.fillMaxWidth(),
         )
 
         Button(
             onClick = {
                 if (title.isNotBlank()) {
-                    viewModel.addQuest(title, category, difficulty, priority, frequency, minutes, onDone)
+                    viewModel.addQuest(
+                        title = title,
+                        category = category,
+                        difficulty = difficulty,
+                        priority = priority,
+                        frequency = frequency,
+                        estimatedMinutes = minutes,
+                        completionStyle = completionStyle,
+                        targetCount = if (completionStyle == CompletionStyle.QUANTITATIVE) targetCount else null,
+                        unit = if (completionStyle == CompletionStyle.QUANTITATIVE) unit.ifBlank { null } else null,
+                        onDone = onDone,
+                    )
                 }
             },
             enabled = title.isNotBlank(),
