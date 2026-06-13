@@ -1,0 +1,76 @@
+name: Release
+
+# Publishes a downloadable APK to a GitHub Release.
+# Triggers:
+#   - pushing a tag like v0.1.0 / v0.1.0-experimental
+#   - manual run (Actions tab) with an optional tag input
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create (e.g. v0.1.0-experimental)"
+        required: true
+        default: "v0.1.0-experimental"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build APK and publish release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Resolve tag
+        id: tag
+        run: echo "value=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      # Run the core test gate before shipping anything.
+      - name: Core tests
+        run: ./gradlew :core:test --console=plain
+
+      # Debug-signed APK: installable for sideloading without release signing
+      # secrets. This is an EXPERIMENTAL build, clearly marked as such.
+      - name: Build debug APK
+        run: ./gradlew :app:assembleDebug --console=plain
+
+      - name: Stage APK
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk \
+             "dist/questloop-${{ steps.tag.outputs.value }}.apk"
+          ls -lh dist
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.value }}
+          name: QuestLoop ${{ steps.tag.outputs.value }} (experimental)
+          prerelease: true
+          generate_release_notes: false
+          body: |
+            ## QuestLoop — experimental build
+
+            A downloadable, **debug-signed** APK for sideloading and trying the app.
+            This is an early experimental build, not a production release.
+
+            ### Install
+            1. Download the `.apk` below to your Android device (Android 8.0 / API 26+).
+            2. Allow installing from unknown sources for your browser/files app.
+            3. Open the APK to install.
+
+            ### Notes
+            - Debug-signed (not Play-store signed); you may see an "unknown app" warning.
+            - All data is stored locally on your device.
+            - QuestLoop never holds, moves, or invests money — see the in-app
+              Rewards screen and the docs for details.
+          files: dist/*.apk
