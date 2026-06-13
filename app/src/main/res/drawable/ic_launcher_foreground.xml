@@ -1,0 +1,13 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Simple compass/quest marker glyph. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,30 a24,24 0 1,0 0.1,0 z M54,38 a16,16 0 1,1 -0.1,0 z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,42 L60,54 L54,66 L48,54 z" />
+</vector>

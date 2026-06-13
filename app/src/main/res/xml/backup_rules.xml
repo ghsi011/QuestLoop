@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- QuestLoop keeps sensitive habit/goal data; nothing is backed up by
+         default until the user opts in (SPEC section 9, privacy). -->
+</full-backup-content>
