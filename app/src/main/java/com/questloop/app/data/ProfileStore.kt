@@ -60,15 +60,19 @@ class ProfileStore(private val context: Context) : ProfilePreferences {
         )
     }
 
-    override suspend fun setBudgetCap(value: Double) =
+    override suspend fun setBudgetCap(value: Double) {
         context.dataStore.edit { it[Keys.BUDGET_CAP] = value.coerceAtLeast(0.0) }
+    }
 
-    override suspend fun setMaxDaily(value: Int) =
+    override suspend fun setMaxDaily(value: Int) {
         context.dataStore.edit { it[Keys.MAX_DAILY] = value.coerceIn(1, 20) }
+    }
 
-    override suspend fun setAvailableMinutes(value: Int) =
+    override suspend fun setAvailableMinutes(value: Int) {
         context.dataStore.edit { it[Keys.AVAILABLE_MIN] = value.coerceIn(5, 1440) }
+    }
 
-    override suspend fun setFocusCategories(cats: Set<QuestCategory>) =
+    override suspend fun setFocusCategories(cats: Set<QuestCategory>) {
         context.dataStore.edit { it[Keys.FOCUS] = cats.map { c -> c.name }.toSet() }
+    }
 }
