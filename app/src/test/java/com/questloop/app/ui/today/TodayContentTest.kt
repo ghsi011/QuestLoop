@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import com.questloop.core.generation.QuestGenerator
 import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.Difficulty
@@ -24,7 +25,9 @@ import org.robolectric.annotation.Config
  * Robolectric so they execute in CI without an emulator.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+// Tall screen so list content (e.g. a quest card's "Log progress" button) is
+// on-screen and clickable; otherwise off-screen taps are silently dropped.
+@Config(sdk = [34], qualifiers = "w411dp-h2400dp")
 class TodayContentTest {
 
     @get:Rule
@@ -127,7 +130,7 @@ class TodayContentTest {
                 actions = noopActions(onCompleteMeasured = { q, v -> measured = q.id to v }),
             )
         }
-        composeRule.onNodeWithText("Log progress").performClick()
+        composeRule.onNodeWithText("Log progress").performScrollTo().performClick()
         assertEquals("water", measured?.first)
     }
 
