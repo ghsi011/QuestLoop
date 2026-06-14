@@ -6,6 +6,7 @@ import com.questloop.app.data.QuestRepository
 import com.questloop.app.ui.AppClock
 import com.questloop.core.QuestLoopEngine
 import com.questloop.core.generation.QuestGenerator
+import com.questloop.core.model.CompletionRecord
 import com.questloop.core.model.CompletionResult
 import com.questloop.core.model.EnergyCheckIn
 import com.questloop.core.model.Quest
@@ -32,6 +33,7 @@ data class TodayUiState(
     val todayProgress: Map<String, Int> = emptyMap(),
     val lastEffect: QuestLoopEngine.CompletionEffect? = null,
     val toast: String? = null,
+    val pendingUndo: PendingUndo? = null,
 )
 
 class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
@@ -85,37 +87,41 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
     }
 
     fun complete(quest: Quest, result: CompletionResult) {
-        viewModelScope.launch {
-            val today = AppClock.todayEpochDay()
-            val outcome = repository.completeQuest(quest, today, result)
-            val effect = outcome.effect
-            val toast = buildString {
-                if (effect.leveledUp) append("Level up! You reached level ${effect.newLevel}. ")
-                append(effect.outcome.explanation)
-                outcome.newlyUnlocked.firstOrNull()?.let {
-                    append(" 🏆 Achievement unlocked: ${it.title}!")
-                }
-            }
-            _state.update { it.copy(lastEffect = effect, toast = toast) }
-            refresh()
-        }
+        viewModelScope.launch { applyOutcome(repository.completeQuest(quest, AppClock.todayEpochDay(), result)) }
     }
 
     /** Completes a non-binary quest from a measured value (count/minutes/rating). */
     fun completeMeasured(quest: Quest, value: Int) {
+        viewModelScope.launch { applyOutcome(repository.completeMeasured(quest, AppClock.todayEpochDay(), value)) }
+    }
+
+    private fun applyOutcome(outcome: QuestRepository.CompleteOutcome) {
+        val effect = outcome.effect
+        val toast = buildString {
+            if (effect.leveledUp) append("Level up! You reached level ${effect.newLevel}. ")
+            append(effect.outcome.explanation)
+            outcome.newlyUnlocked.firstOrNull()?.let { append(" 🏆 Achievement unlocked: ${it.title}!") }
+        }
+        _state.update {
+            it.copy(
+                lastEffect = effect,
+                toast = toast,
+                pendingUndo = PendingUndo(outcome.instanceId, outcome.previousRecord),
+            )
+        }
+        refresh()
+    }
+
+    fun undoLast() {
+        val undo = _state.value.pendingUndo ?: return
         viewModelScope.launch {
-            val today = AppClock.todayEpochDay()
-            val outcome = repository.completeMeasured(quest, today, value)
-            val effect = outcome.effect
-            val toast = buildString {
-                if (effect.leveledUp) append("Level up! You reached level ${effect.newLevel}. ")
-                append(effect.outcome.explanation)
-                outcome.newlyUnlocked.firstOrNull()?.let { append(" 🏆 Achievement unlocked: ${it.title}!") }
-            }
-            _state.update { it.copy(lastEffect = effect, toast = toast) }
+            repository.undoCompletion(undo.instanceId, undo.previous)
+            _state.update { it.copy(toast = null, pendingUndo = null) }
             refresh()
         }
     }
 
-    fun consumeToast() = _state.update { it.copy(toast = null) }
+    fun consumeToast() = _state.update { it.copy(toast = null, pendingUndo = null) }
+
+    data class PendingUndo(val instanceId: String, val previous: CompletionRecord?)
 }

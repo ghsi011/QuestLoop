@@ -20,6 +20,12 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
     private val _generating = MutableStateFlow(false)
     val generating: StateFlow<Boolean> = _generating.asStateFlow()
 
+    /** One-shot message describing the last quick-add result (AI vs fallback). */
+    private val _quickResult = MutableStateFlow<String?>(null)
+    val quickResult: StateFlow<String?> = _quickResult.asStateFlow()
+
+    fun consumeQuickResult() { _quickResult.value = null }
+
     fun addQuest(
         title: String,
         category: QuestCategory,
@@ -54,21 +60,28 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
     /**
      * Turns free-text todo lines into quests. Routes through the repository's AI
      * suggester when configured (guardrailed), and a deterministic safe fallback
-     * otherwise — so the button always produces something sensible.
+     * otherwise. Reports the outcome via [quickResult] (the screen stays open so
+     * the user can see what was added and add more).
      */
-    fun quickAddFromText(text: String, onDone: () -> Unit) {
+    fun quickAddFromText(text: String) {
         val lines = text.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
         if (lines.isEmpty()) return
         viewModelScope.launch {
             _generating.value = true
             try {
-                repository.suggestQuests(lines).forEach {
-                    repository.addQuest(it.copy(id = "user-${UUID.randomUUID()}"))
+                val suggestion = repository.suggestQuests(lines)
+                suggestion.quests.forEach { repository.addQuest(it.copy(id = "user-${UUID.randomUUID()}")) }
+                val n = suggestion.quests.size
+                _quickResult.value = when {
+                    n == 0 -> "Nothing to add — try rephrasing your list."
+                    suggestion.fromAi -> "Added $n AI suggestion${if (n == 1) "" else "s"} ✨ — review & edit anytime."
+                    else -> "Added $n quest${if (n == 1) "" else "s"} (safe defaults)."
                 }
+            } catch (e: Exception) {
+                _quickResult.value = "Couldn't reach AI. Check your key in Settings, or add quests manually."
             } finally {
                 _generating.value = false
             }
-            onDone()
         }
     }
 }

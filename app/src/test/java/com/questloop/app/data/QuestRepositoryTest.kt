@@ -210,9 +210,20 @@ class QuestRepositoryTest {
     @Test
     fun `quest suggestion falls back to deterministic when AI is disabled`() = runTest {
         // No AI configured -> deterministic, safe suggestions (no network).
-        val suggested = repo.suggestQuests(listOf("Email landlord"))
-        assertTrue(suggested.isNotEmpty())
-        assertEquals("Email landlord", suggested.first().title)
+        val suggestion = repo.suggestQuests(listOf("Email landlord"))
+        assertFalse(suggestion.fromAi)
+        assertEquals("Email landlord", suggestion.quests.first().title)
+    }
+
+    @Test
+    fun `undo of a completion restores prior xp`() = runTest {
+        repo.addQuest(quest("a"))
+        val outcome = repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)
+        assertTrue(repo.totalXp() > 0)
+        repo.undoCompletion(outcome.instanceId, outcome.previousRecord)
+        assertEquals(0L, repo.totalXp())
+        // The quest is available again after undo.
+        assertTrue(repo.todayPlan(epochDay = 1, dayPart = DayPart.MIDDAY).quests.any { it.quest.id == "a" })
     }
 
     @Test

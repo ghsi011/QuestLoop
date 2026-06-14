@@ -2,12 +2,14 @@ package com.questloop.app.ui
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -58,13 +60,34 @@ fun QuestLoopApp(repository: QuestRepository) {
 
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination
+    val routeName = currentRoute?.route
+    val isSubScreen = routeName == "add" || routeName == "habits"
+    val title = when (routeName) {
+        "add" -> "Add quest"
+        "habits" -> "Habits & goals"
+        else -> "QuestLoop"
+    }
+    val showFab = currentRoute?.hierarchy?.any { it.route == Dest.TODAY.route } == true
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("QuestLoop") }) },
+        topBar = {
+            TopAppBar(
+                title = { Text(title) },
+                navigationIcon = {
+                    if (isSubScreen) {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    }
+                },
+            )
+        },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
-            androidx.compose.material3.FloatingActionButton(onClick = { navController.navigate("add") }) {
-                Icon(Icons.Filled.Add, contentDescription = "Add quest")
+            if (showFab) {
+                androidx.compose.material3.FloatingActionButton(onClick = { navController.navigate("add") }) {
+                    Icon(Icons.Filled.Add, contentDescription = "Add quest")
+                }
             }
         },
         bottomBar = {

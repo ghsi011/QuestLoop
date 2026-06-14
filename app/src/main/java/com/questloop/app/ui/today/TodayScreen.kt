@@ -15,7 +15,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -52,10 +54,13 @@ fun TodayScreen(viewModel: TodayViewModel, snackbarHostState: SnackbarHostState)
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     LaunchedEffect(state.toast) {
-        state.toast?.let {
-            snackbarHostState.showSnackbar(it)
-            viewModel.consumeToast()
-        }
+        val message = state.toast ?: return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = message,
+            actionLabel = if (state.pendingUndo != null) "Undo" else null,
+            duration = SnackbarDuration.Short,
+        )
+        if (result == SnackbarResult.ActionPerformed) viewModel.undoLast() else viewModel.consumeToast()
     }
 
     TodayContent(

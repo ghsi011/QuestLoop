@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -26,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.questloop.app.ui.components.SectionHeader
@@ -84,6 +86,8 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
                 value = targetCount.toString(),
                 onValueChange = { v -> targetCount = v.toIntOrNull()?.coerceIn(1, 1000) ?: targetCount },
                 label = { Text("Target count") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
@@ -98,6 +102,8 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
             value = minutes.toString(),
             onValueChange = { v -> minutes = v.toIntOrNull()?.coerceIn(1, 1440) ?: minutes },
             label = { Text(if (completionStyle == CompletionStyle.DURATION) "Target minutes" else "Estimated minutes") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
 
@@ -137,8 +143,14 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
             minLines = 3,
         )
         val generating by viewModel.generating.collectAsStateWithLifecycle()
+        val quickResult by viewModel.quickResult.collectAsStateWithLifecycle()
         OutlinedButton(
-            onClick = { if (quickText.isNotBlank()) viewModel.quickAddFromText(quickText, onDone) },
+            onClick = {
+                if (quickText.isNotBlank()) {
+                    viewModel.quickAddFromText(quickText)
+                    quickText = ""
+                }
+            },
             enabled = quickText.isNotBlank() && !generating,
             modifier = Modifier.fillMaxWidth(),
         ) {
@@ -147,6 +159,9 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
             } else {
                 Text("Suggest quests ✨")
             }
+        }
+        quickResult?.let { msg ->
+            Text(msg, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
         }
         Text(
             "Uses your AI provider if configured in Settings, otherwise safe defaults.",

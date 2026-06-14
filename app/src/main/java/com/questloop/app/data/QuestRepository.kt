@@ -146,7 +146,19 @@ class QuestRepository(
     data class CompleteOutcome(
         val effect: QuestLoopEngine.CompletionEffect,
         val newlyUnlocked: List<Achievement>,
+        /** Identifiers to reverse this action (snackbar "Undo"). */
+        val instanceId: String,
+        val previousRecord: CompletionRecord?,
     )
+
+    /**
+     * Reverses a completion: restores the prior record if there was one (e.g. a
+     * partial log), otherwise removes it. XP follows automatically because it's
+     * derived from the ledger.
+     */
+    suspend fun undoCompletion(instanceId: String, previous: CompletionRecord?) {
+        if (previous != null) completionDao.upsert(previous.toEntity()) else completionDao.delete(instanceId)
+    }
 
     /**
      * Records a completion idempotently. The record is keyed by `instanceId`
@@ -197,7 +209,12 @@ class QuestRepository(
             newTotalXp = newTotal,
         )
         val after = progressStats(newTotal, completionDao.activeDays().toSet())
-        return CompleteOutcome(corrected, AchievementEngine.newlyUnlocked(before, after))
+        return CompleteOutcome(
+            effect = corrected,
+            newlyUnlocked = AchievementEngine.newlyUnlocked(before, after),
+            instanceId = instanceId,
+            previousRecord = existing?.toModel(),
+        )
     }
 
     /**
@@ -329,7 +346,7 @@ class QuestRepository(
      * feature always returns something safe. The returned quests are not yet
      * persisted — the caller decides which to keep.
      */
-    suspend fun suggestQuests(todos: List<String>): List<Quest> {
+    suspend fun suggestQuests(todos: List<String>): AiQuestService.Suggestion {
         val profile = profileStore.profile.first()
         val config = profileStore.getAiConfig()
         val input = AiQuestService.Input(
@@ -342,7 +359,10 @@ class QuestRepository(
             AiQuestService(OpenRouterClient(config.apiKey, config.model)).suggest(input)
         } else {
             // No AI configured: deterministic, always-safe suggestions.
-            com.questloop.core.ai.FallbackSuggester.suggest(todos, input.focusAreas.toSet())
+            AiQuestService.Suggestion(
+                quests = com.questloop.core.ai.FallbackSuggester.suggest(todos, input.focusAreas.toSet()),
+                fromAi = false,
+            )
         }
     }
 

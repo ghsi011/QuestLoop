@@ -42,7 +42,11 @@ class AiQuestService(
         val existing: List<Quest> = emptyList(),
     )
 
-    suspend fun suggest(input: Input): List<Quest> {
+    /** Result of a suggestion request. [fromAi] is false when the deterministic
+     *  fallback was used (model unavailable, junk output, or all rejected). */
+    data class Suggestion(val quests: List<Quest>, val fromAi: Boolean)
+
+    suspend fun suggest(input: Input): Suggestion {
         val userPrompt = PromptLibrary.questGenerationUserPayload(
             availableMinutes = input.availableMinutes,
             energy = input.energy,
@@ -57,7 +61,11 @@ class AiQuestService(
 
         val proposed = raw?.let(::parse)?.mapIndexedNotNull(::toQuest).orEmpty()
         val accepted = validator.validate(proposed, input.existing).accepted
-        return accepted.ifEmpty { FallbackSuggester.suggest(input.todos, input.focusAreas.toSet()) }
+        return if (accepted.isNotEmpty()) {
+            Suggestion(accepted, fromAi = true)
+        } else {
+            Suggestion(FallbackSuggester.suggest(input.todos, input.focusAreas.toSet()), fromAi = false)
+        }
     }
 
     /** Extracts the JSON array from a possibly-chatty/markdown-fenced response. */

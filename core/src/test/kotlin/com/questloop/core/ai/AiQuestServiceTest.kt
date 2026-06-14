@@ -5,6 +5,7 @@ import com.questloop.core.model.QuestOrigin
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class AiQuestServiceTest {
@@ -26,33 +27,36 @@ class AiQuestServiceTest {
               {"title":"30 min run","category":"HEALTH","difficulty":"MEDIUM"}
             ]""",
         )
-        val quests = svc.suggest(AiQuestService.Input(todos = listOf("bill", "run")))
-        assertEquals(2, quests.size)
-        assertEquals("Pay electricity bill", quests[0].title)
-        assertTrue(quests.all { it.origin == QuestOrigin.AI_SUGGESTED })
+        val result = svc.suggest(AiQuestService.Input(todos = listOf("bill", "run")))
+        assertTrue(result.fromAi)
+        assertEquals(2, result.quests.size)
+        assertEquals("Pay electricity bill", result.quests[0].title)
+        assertTrue(result.quests.all { it.origin == QuestOrigin.AI_SUGGESTED })
     }
 
     @Test
     fun `tolerates markdown fences and surrounding prose`() = runTest {
         val svc = service("Sure! Here are some quests:\n```json\n[{\"title\":\"Stretch\",\"category\":\"HEALTH\",\"difficulty\":\"TRIVIAL\"}]\n```")
-        val quests = svc.suggest(AiQuestService.Input(todos = listOf("stretch")))
-        assertEquals(1, quests.size)
-        assertEquals("Stretch", quests.single().title)
+        val result = svc.suggest(AiQuestService.Input(todos = listOf("stretch")))
+        assertTrue(result.fromAi)
+        assertEquals(1, result.quests.size)
+        assertEquals("Stretch", result.quests.single().title)
     }
 
     @Test
     fun `falls back to deterministic suggestions on garbage output`() = runTest {
         val svc = service("I cannot help with that.")
-        val quests = svc.suggest(AiQuestService.Input(todos = listOf("Email landlord")))
-        assertTrue(quests.isNotEmpty())
-        assertEquals("Email landlord", quests.first().title) // from FallbackSuggester
+        val result = svc.suggest(AiQuestService.Input(todos = listOf("Email landlord")))
+        assertFalse(result.fromAi)
+        assertEquals("Email landlord", result.quests.first().title) // from FallbackSuggester
     }
 
     @Test
     fun `falls back when the client throws`() = runTest {
         val svc = service(fail = true)
-        val quests = svc.suggest(AiQuestService.Input(todos = listOf("Call mom")))
-        assertTrue(quests.isNotEmpty())
+        val result = svc.suggest(AiQuestService.Input(todos = listOf("Call mom")))
+        assertFalse(result.fromAi)
+        assertTrue(result.quests.isNotEmpty())
     }
 
     @Test
@@ -63,16 +67,18 @@ class AiQuestServiceTest {
               {"title":"Tidy the kitchen","category":"CHORES","difficulty":"EASY"}
             ]""",
         )
-        val quests = svc.suggest(AiQuestService.Input(todos = listOf("tidy")))
-        assertTrue(quests.none { it.title.contains("crypto", ignoreCase = true) })
-        assertTrue(quests.any { it.title == "Tidy the kitchen" })
+        val result = svc.suggest(AiQuestService.Input(todos = listOf("tidy")))
+        assertTrue(result.fromAi)
+        assertTrue(result.quests.none { it.title.contains("crypto", ignoreCase = true) })
+        assertTrue(result.quests.any { it.title == "Tidy the kitchen" })
     }
 
     @Test
     fun `empty response with no todos still yields a safe fallback`() = runTest {
         val svc = service("[]")
-        val quests = svc.suggest(AiQuestService.Input(focusAreas = listOf(QuestCategory.HEALTH)))
-        assertEquals(1, quests.size)
-        assertEquals(QuestCategory.HEALTH, quests.single().category)
+        val result = svc.suggest(AiQuestService.Input(focusAreas = listOf(QuestCategory.HEALTH)))
+        assertFalse(result.fromAi)
+        assertEquals(1, result.quests.size)
+        assertEquals(QuestCategory.HEALTH, result.quests.single().category)
     }
 }
