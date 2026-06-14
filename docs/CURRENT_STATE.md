@@ -27,6 +27,11 @@ Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
   one-off cadence so a weekly quest doesn't reappear until it's due again.
 - **Settings** — Settings screen wires max-daily quests, default available
   minutes, and focus categories (previously had setters but no UI).
+- **Habit & bad-habit management** (§4, §7) — a Habits screen to add/remove
+  habits and habits-to-reduce (persisted as JSON); `HabitQuestFactory` turns
+  them into recurring quests that feed the daily plan.
+- **Delete all data** (§9) — Settings → "Delete all my data" wipes quests,
+  history, XP, and settings on-device (with confirmation).
 - **Weekly & monthly reviews** (§3) — aggregation + Review screen.
 - **Real-world reward planning** (§6) — suggested allowance (% of a self-set
   affordable budget, difficulty-weighted, capped) with mandatory disclaimers.
@@ -41,9 +46,9 @@ Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
 - **AI quest generation** (§5) — real scaffolding (versioned prompts, output
   guardrails, dedup, clamping) but backed by a **deterministic
   `FallbackSuggester`, not a live LLM**. No model wired in; no network calls.
-- **Habit entry** (§10) — quests can be created, but there is **no UI for the
-  `Habit` / `BadHabit` / `Goal` models** (they exist but are unused by the app).
-  Bad-habit tracking only happens via reduction-category quests.
+- **Goals** (§10) — habits and bad habits now have full management UI and feed
+  generation; the `Goal` model is persisted but still has **no dedicated UI** and
+  doesn't yet drive quest suggestions.
 - **Weekly/monthly quest *lists*** (§4) — recurrence cadence is now enforced
   (`QuestScheduler`), but the app still renders one **daily** plan; there are no
   dedicated weekly/monthly planning screens.
@@ -62,7 +67,7 @@ Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
   deeper analytics.
 - Titles, collections, unlockable themes/cosmetics (only XP/levels/streaks/
   achievements exist).
-- Cloud sync; in-app data export / delete-all.
+- Cloud sync; in-app data **export** (delete-all is implemented).
 
 ## Biggest gaps vs. spec
 Live AI (scaffolded but deterministic), habit/goal management UI, true

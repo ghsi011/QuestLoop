@@ -23,6 +23,9 @@ interface QuestDao {
 
     @Query("SELECT COUNT(*) FROM quests")
     suspend fun count(): Int
+
+    @Query("DELETE FROM quests")
+    suspend fun clear()
 }
 
 @Dao

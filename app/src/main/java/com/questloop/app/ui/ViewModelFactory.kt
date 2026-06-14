@@ -5,6 +5,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.ui.add.AddQuestViewModel
+import com.questloop.app.ui.habits.HabitsViewModel
 import com.questloop.app.ui.review.ReviewViewModel
 import com.questloop.app.ui.rewards.RewardsViewModel
 import com.questloop.app.ui.settings.SettingsViewModel
@@ -17,4 +18,5 @@ fun appViewModelFactory(repository: QuestRepository): ViewModelProvider.Factory 
     initializer { ReviewViewModel(repository) }
     initializer { RewardsViewModel(repository) }
     initializer { SettingsViewModel(repository) }
+    initializer { HabitsViewModel(repository) }
 }

@@ -5,9 +5,12 @@ import com.questloop.app.data.local.QuestDao
 import com.questloop.core.QuestLoopEngine
 import com.questloop.core.completion.CompletionPolicy
 import com.questloop.core.completion.CompletionScaling
+import com.questloop.core.generation.HabitQuestFactory
 import com.questloop.core.generation.QuestGenerator
 import com.questloop.core.generation.QuestScheduler
 import com.questloop.core.generation.RoutineQuestFactory
+import com.questloop.core.model.BadHabit
+import com.questloop.core.model.Habit
 import com.questloop.core.model.CompletionRecord
 import com.questloop.core.model.CompletionResult
 import com.questloop.core.model.CompletionStyle
@@ -82,7 +85,9 @@ class QuestRepository(
         // Only surface quests whose recurrence cadence makes them due today
         // (e.g. a weekly quest doesn't reappear every day after completion).
         val lastCompleted = completionDao.lastCompletedDays().associate { it.questId to it.lastDay }
-        val candidates = questDao.getActive().map { it.toModel() }
+        // User-created quests plus quests derived from their habits & bad habits.
+        val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits)
+        val candidates = (questDao.getActive().map { it.toModel() } + derived)
             .filter { QuestScheduler.isDue(it.frequency, epochDay, lastCompleted[it.id]) }
         // Recent history is only needed for avoidance scoring (skipped quests).
         val history = completionDao.since(epochDay - 14).map { it.toModel() }
@@ -267,4 +272,29 @@ class QuestRepository(
     suspend fun setAvailableMinutes(value: Int) = profileStore.setAvailableMinutes(value)
     suspend fun setFocusCategories(cats: Set<com.questloop.core.model.QuestCategory>) =
         profileStore.setFocusCategories(cats)
+
+    suspend fun addHabit(habit: Habit) {
+        val current = profileStore.profile.first().habits
+        profileStore.setHabits(current.filterNot { it.id == habit.id } + habit)
+    }
+
+    suspend fun removeHabit(id: String) {
+        profileStore.setHabits(profileStore.profile.first().habits.filterNot { it.id == id })
+    }
+
+    suspend fun addBadHabit(badHabit: BadHabit) {
+        val current = profileStore.profile.first().badHabits
+        profileStore.setBadHabits(current.filterNot { it.id == badHabit.id } + badHabit)
+    }
+
+    suspend fun removeBadHabit(id: String) {
+        profileStore.setBadHabits(profileStore.profile.first().badHabits.filterNot { it.id == id })
+    }
+
+    /** Erases all on-device data (SPEC §9: users can delete their data). */
+    suspend fun deleteAllData() {
+        completionDao.clear()
+        questDao.clear()
+        profileStore.clear()
+    }
 }

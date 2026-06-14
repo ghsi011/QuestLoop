@@ -31,6 +31,8 @@ import androidx.navigation.compose.rememberNavController
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.ui.add.AddQuestScreen
 import com.questloop.app.ui.add.AddQuestViewModel
+import com.questloop.app.ui.habits.HabitsScreen
+import com.questloop.app.ui.habits.HabitsViewModel
 import com.questloop.app.ui.review.ReviewScreen
 import com.questloop.app.ui.review.ReviewViewModel
 import com.questloop.app.ui.rewards.RewardsScreen
@@ -104,7 +106,11 @@ fun QuestLoopApp(repository: QuestRepository) {
             }
             composable(Dest.SETTINGS.route) {
                 val vm: SettingsViewModel = viewModel(factory = factory)
-                SettingsScreen(vm)
+                SettingsScreen(vm, onOpenHabits = { navController.navigate("habits") })
+            }
+            composable("habits") {
+                val vm: HabitsViewModel = viewModel(factory = factory)
+                HabitsScreen(vm)
             }
             composable("add") {
                 val vm: AddQuestViewModel = viewModel(factory = factory)

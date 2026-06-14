@@ -10,14 +10,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -29,9 +35,10 @@ import com.questloop.app.ui.components.pretty
 import com.questloop.core.model.QuestCategory
 
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel) {
+fun SettingsScreen(viewModel: SettingsViewModel, onOpenHabits: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val prefs = state.prefs
+    var confirmDelete by remember { mutableStateOf(false) }
 
     Column(
         Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
@@ -81,9 +88,30 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
         )
         FocusChips(selected = prefs.focusCategories, onToggle = viewModel::toggleFocus)
 
+        SectionHeader("Habits")
+        OutlinedButton(onClick = onOpenHabits, modifier = Modifier.fillMaxWidth()) {
+            Text("Manage habits to build & reduce")
+        }
+
+        SectionHeader("Privacy")
         InfoCard(
             title = "Your data stays on this device",
             body = "QuestLoop is local-first: nothing is uploaded, and backups are off by default.",
+        )
+        OutlinedButton(onClick = { confirmDelete = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("Delete all my data")
+        }
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Delete all data?") },
+            text = { Text("This permanently erases your quests, history, XP, and settings on this device. This can't be undone.") },
+            confirmButton = {
+                Button(onClick = { confirmDelete = false; viewModel.deleteAllData {} }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )
     }
 }

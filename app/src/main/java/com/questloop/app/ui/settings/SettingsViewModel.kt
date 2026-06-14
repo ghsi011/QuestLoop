@@ -42,6 +42,14 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
         update { repository.setFocusCategories(next) }
     }
 
+    fun deleteAllData(onDone: () -> Unit) {
+        viewModelScope.launch {
+            repository.deleteAllData()
+            load()
+            onDone()
+        }
+    }
+
     private fun update(action: suspend () -> Unit) {
         viewModelScope.launch {
             action()

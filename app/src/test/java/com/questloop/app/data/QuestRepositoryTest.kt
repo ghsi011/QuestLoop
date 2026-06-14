@@ -12,7 +12,7 @@ import com.questloop.core.model.QuestFrequency
 import com.questloop.core.model.UserPreferences
 import com.questloop.core.model.UserProfile
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -38,12 +38,24 @@ class QuestRepositoryTest {
     private lateinit var repo: QuestRepository
 
     private class FakePrefs(cap: Double = 0.0) : ProfilePreferences {
-        override val profile: Flow<UserProfile> =
-            flowOf(UserProfile(preferences = UserPreferences(monthlyRewardBudgetCap = cap)))
+        private val state = MutableStateFlow(UserProfile(preferences = UserPreferences(monthlyRewardBudgetCap = cap)))
+        override val profile: Flow<UserProfile> = state
         override suspend fun setBudgetCap(value: Double) {}
         override suspend fun setMaxDaily(value: Int) {}
         override suspend fun setAvailableMinutes(value: Int) {}
         override suspend fun setFocusCategories(cats: Set<QuestCategory>) {}
+        override suspend fun setHabits(habits: List<com.questloop.core.model.Habit>) {
+            state.value = state.value.copy(habits = habits)
+        }
+        override suspend fun setBadHabits(badHabits: List<com.questloop.core.model.BadHabit>) {
+            state.value = state.value.copy(badHabits = badHabits)
+        }
+        override suspend fun setGoals(goals: List<com.questloop.core.model.Goal>) {
+            state.value = state.value.copy(goals = goals)
+        }
+        override suspend fun clear() {
+            state.value = UserProfile()
+        }
     }
 
     @Before
@@ -151,5 +163,29 @@ class QuestRepositoryTest {
         repo.addQuest(quest("a"))
         val outcome = repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)
         assertTrue(outcome.newlyUnlocked.any { it.id == "first_steps" })
+    }
+
+    @Test
+    fun `a habit becomes a derived quest in the plan`() = runTest {
+        repo.addHabit(
+            com.questloop.core.model.Habit(
+                id = "h1",
+                title = "Stretch daily",
+                category = QuestCategory.HEALTH,
+                targetPerWeek = 7,
+            ),
+        )
+        val plan = repo.todayPlan(epochDay = 1, dayPart = DayPart.MIDDAY)
+        assertTrue(plan.quests.any { it.quest.id == "habit-h1" })
+    }
+
+    @Test
+    fun `delete all data resets xp and quests`() = runTest {
+        repo.addQuest(quest("a"))
+        repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)
+        assertTrue(repo.totalXp() > 0)
+        repo.deleteAllData()
+        assertEquals(0L, repo.totalXp())
+        assertTrue(repo.todayPlan(epochDay = 1, dayPart = DayPart.MIDDAY).quests.isEmpty())
     }
 }
