@@ -6,16 +6,19 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.questloop.core.model.BadHabit
+import com.questloop.core.model.EnergyCheckIn
 import com.questloop.core.model.Goal
 import com.questloop.core.model.Habit
 import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.UserPreferences
 import com.questloop.core.model.UserProfile
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -35,6 +38,8 @@ interface ProfilePreferences {
     suspend fun setHabits(habits: List<Habit>)
     suspend fun setBadHabits(badHabits: List<BadHabit>)
     suspend fun setGoals(goals: List<Goal>)
+    suspend fun setCheckIn(checkIn: EnergyCheckIn?)
+    suspend fun getCheckIn(): EnergyCheckIn?
     suspend fun clear()
 }
 
@@ -57,6 +62,9 @@ class ProfileStore(private val context: Context) : ProfilePreferences {
         val HABITS = stringPreferencesKey("habits_json")
         val BAD_HABITS = stringPreferencesKey("bad_habits_json")
         val GOALS = stringPreferencesKey("goals_json")
+        val CHECKIN_DAY = longPreferencesKey("checkin_day")
+        val CHECKIN_ENERGY = intPreferencesKey("checkin_energy")
+        val CHECKIN_MIN = intPreferencesKey("checkin_minutes")
     }
 
     // Total XP is derived from the completion ledger, not stored here.
@@ -110,6 +118,30 @@ class ProfileStore(private val context: Context) : ProfilePreferences {
 
     override suspend fun setGoals(goals: List<Goal>) {
         context.dataStore.edit { it[Keys.GOALS] = json.encodeToString(ListSerializer(Goal.serializer()), goals) }
+    }
+
+    override suspend fun setCheckIn(checkIn: EnergyCheckIn?) {
+        context.dataStore.edit { prefs ->
+            if (checkIn == null) {
+                prefs.remove(Keys.CHECKIN_DAY)
+                prefs.remove(Keys.CHECKIN_ENERGY)
+                prefs.remove(Keys.CHECKIN_MIN)
+            } else {
+                prefs[Keys.CHECKIN_DAY] = checkIn.epochDay
+                prefs[Keys.CHECKIN_ENERGY] = checkIn.energy
+                prefs[Keys.CHECKIN_MIN] = checkIn.availableMinutes
+            }
+        }
+    }
+
+    override suspend fun getCheckIn(): EnergyCheckIn? {
+        val prefs = context.dataStore.data.first()
+        val day = prefs[Keys.CHECKIN_DAY] ?: return null
+        return EnergyCheckIn(
+            epochDay = day,
+            energy = prefs[Keys.CHECKIN_ENERGY] ?: 3,
+            availableMinutes = prefs[Keys.CHECKIN_MIN] ?: 120,
+        )
     }
 
     override suspend fun clear() {

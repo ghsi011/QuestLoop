@@ -291,6 +291,12 @@ class QuestRepository(
         profileStore.setBadHabits(profileStore.profile.first().badHabits.filterNot { it.id == id })
     }
 
+    /** Today's persisted energy check-in, or null if none was made today. */
+    suspend fun todayCheckIn(epochDay: Long): EnergyCheckIn? =
+        profileStore.getCheckIn()?.takeIf { it.epochDay == epochDay }
+
+    suspend fun setCheckIn(checkIn: EnergyCheckIn) = profileStore.setCheckIn(checkIn)
+
     /** Erases all on-device data (SPEC §9: users can delete their data). */
     suspend fun deleteAllData() {
         completionDao.clear()

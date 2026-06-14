@@ -50,15 +50,9 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
         viewModelScope.launch {
             _state.update { it.copy(loading = true) }
             val today = AppClock.todayEpochDay()
-            val checkIn = _state.value.let { s ->
-                if (s.energy != null || s.availableMinutes != null) {
-                    EnergyCheckIn(
-                        epochDay = today,
-                        energy = s.energy ?: 3,
-                        availableMinutes = s.availableMinutes ?: 120,
-                    )
-                } else null
-            }
+            // Restore today's persisted check-in so the plan and chips survive
+            // navigation and process death.
+            val checkIn = repository.todayCheckIn(today)
             val plan = repository.todayPlan(today, AppClock.currentDayPart(), checkIn)
             val signals = repository.safetySignals(today)
             val achievements = repository.unlockedAchievements()
@@ -76,14 +70,18 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
                     signals = signals,
                     achievements = achievements,
                     todayProgress = todayProgress,
+                    energy = checkIn?.energy,
+                    availableMinutes = checkIn?.availableMinutes,
                 )
             }
         }
     }
 
     fun setCheckIn(energy: Int, availableMinutes: Int) {
-        _state.update { it.copy(energy = energy, availableMinutes = availableMinutes) }
-        refresh()
+        viewModelScope.launch {
+            repository.setCheckIn(EnergyCheckIn(AppClock.todayEpochDay(), energy, availableMinutes))
+            refresh()
+        }
     }
 
     fun complete(quest: Quest, result: CompletionResult) {

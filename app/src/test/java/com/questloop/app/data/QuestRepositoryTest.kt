@@ -53,8 +53,14 @@ class QuestRepositoryTest {
         override suspend fun setGoals(goals: List<com.questloop.core.model.Goal>) {
             state.value = state.value.copy(goals = goals)
         }
+        private var checkIn: com.questloop.core.model.EnergyCheckIn? = null
+        override suspend fun setCheckIn(checkIn: com.questloop.core.model.EnergyCheckIn?) {
+            this.checkIn = checkIn
+        }
+        override suspend fun getCheckIn(): com.questloop.core.model.EnergyCheckIn? = checkIn
         override suspend fun clear() {
             state.value = UserProfile()
+            checkIn = null
         }
     }
 
@@ -177,6 +183,15 @@ class QuestRepositoryTest {
         )
         val plan = repo.todayPlan(epochDay = 1, dayPart = DayPart.MIDDAY)
         assertTrue(plan.quests.any { it.quest.id == "habit-h1" })
+    }
+
+    @Test
+    fun `energy check-in persists for the day only`() = runTest {
+        repo.setCheckIn(com.questloop.core.model.EnergyCheckIn(epochDay = 5, energy = 2, availableMinutes = 60))
+        val same = repo.todayCheckIn(5)
+        assertEquals(2, same?.energy)
+        assertEquals(60, same?.availableMinutes)
+        assertEquals(null, repo.todayCheckIn(6))
     }
 
     @Test

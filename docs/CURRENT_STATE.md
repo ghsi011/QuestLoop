@@ -54,8 +54,9 @@ Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
   dedicated weekly/monthly planning screens.
 - **Admin quests for reward funds** (§6) — one seed quest + static guidance on
   the Rewards screen, not a dynamic flow.
-- **Energy/mood check-in** (§7) — energy check-in exists and shapes the plan but
-  is **transient (not persisted)**; no mood check-in.
+- **Energy/mood check-in** (§7) — energy check-in shapes the plan and is now
+  **persisted per day** (survives restarts); a dedicated mood check-in isn't
+  added yet.
 
 ## ✗ Not implemented (spec future / §10 deferred)
 
