@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Required for AI quest suggestions (OpenRouter). Only used when the user
+         enables AI and provides a key; all other features work offline. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:name=".QuestLoopApplication"
         android:allowBackup="true"
