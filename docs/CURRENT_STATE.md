@@ -33,6 +33,8 @@ Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
   subjective check-in).
 - **Delete all data** (§9) — Settings → "Delete all my data" wipes quests,
   history, XP, and settings on-device (with confirmation).
+- **Export data** (§9) — Settings → "Export my data" serialises everything to
+  JSON and shares it via the system share sheet.
 - **Weekly & monthly reviews** (§3) — aggregation + Review screen.
 - **Real-world reward planning** (§6) — suggested allowance (% of a self-set
   affordable budget, difficulty-weighted, capped) with mandatory disclaimers.
@@ -66,7 +68,7 @@ Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
   deeper analytics.
 - Titles, collections, unlockable themes/cosmetics (only XP/levels/streaks/
   achievements exist).
-- Cloud sync; in-app data **export** (delete-all is implemented).
+- Cloud sync (data export and delete-all are implemented).
 
 ## Biggest gaps vs. spec
 Live AI (scaffolded but deterministic), habit/goal management UI, true

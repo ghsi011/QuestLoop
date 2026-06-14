@@ -204,6 +204,16 @@ class QuestRepositoryTest {
     }
 
     @Test
+    fun `export produces json containing quests and completions`() = runTest {
+        repo.addQuest(quest("a"))
+        repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)
+        val json = repo.exportJson()
+        assertTrue(json.contains("\"quests\""))
+        assertTrue(json.contains("Quest a"))
+        assertTrue(json.contains("\"completions\""))
+    }
+
+    @Test
     fun `delete all data resets xp and quests`() = runTest {
         repo.addQuest(quest("a"))
         repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)

@@ -15,6 +15,8 @@ import kotlinx.coroutines.launch
 data class SettingsUiState(
     val loading: Boolean = true,
     val prefs: UserPreferences = UserPreferences(),
+    /** Set when an export is ready to be shared; consumed by the UI. */
+    val exportJson: String? = null,
 )
 
 class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
@@ -41,6 +43,15 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
         val next = if (category in current) current - category else current + category
         update { repository.setFocusCategories(next) }
     }
+
+    fun requestExport() {
+        viewModelScope.launch {
+            val json = repository.exportJson()
+            _state.update { it.copy(exportJson = json) }
+        }
+    }
+
+    fun consumeExport() = _state.update { it.copy(exportJson = null) }
 
     fun deleteAllData(onDone: () -> Unit) {
         viewModelScope.launch {

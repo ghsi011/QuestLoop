@@ -36,6 +36,10 @@ interface CompletionDao {
     @Query("SELECT * FROM completions WHERE epochDay BETWEEN :start AND :end")
     suspend fun between(start: Long, end: Long): List<CompletionEntity>
 
+    /** Full history, used only for data export. */
+    @Query("SELECT * FROM completions ORDER BY epochDay")
+    suspend fun all(): List<CompletionEntity>
+
     /** Recent records, for reward context / safety / streak (avoids loading all rows). */
     @Query("SELECT * FROM completions WHERE epochDay >= :sinceEpochDay")
     suspend fun since(sinceEpochDay: Long): List<CompletionEntity>

@@ -19,13 +19,16 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import android.content.Intent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -39,6 +42,20 @@ fun SettingsScreen(viewModel: SettingsViewModel, onOpenHabits: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val prefs = state.prefs
     var confirmDelete by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    // When an export is ready, hand it to the system share sheet.
+    LaunchedEffect(state.exportJson) {
+        state.exportJson?.let { json ->
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/json"
+                putExtra(Intent.EXTRA_TITLE, "questloop-export.json")
+                putExtra(Intent.EXTRA_TEXT, json)
+            }
+            context.startActivity(Intent.createChooser(intent, "Export QuestLoop data"))
+            viewModel.consumeExport()
+        }
+    }
 
     Column(
         Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
@@ -98,6 +115,9 @@ fun SettingsScreen(viewModel: SettingsViewModel, onOpenHabits: () -> Unit) {
             title = "Your data stays on this device",
             body = "QuestLoop is local-first: nothing is uploaded, and backups are off by default.",
         )
+        OutlinedButton(onClick = viewModel::requestExport, modifier = Modifier.fillMaxWidth()) {
+            Text("Export my data (JSON)")
+        }
         OutlinedButton(onClick = { confirmDelete = true }, modifier = Modifier.fillMaxWidth()) {
             Text("Delete all my data")
         }

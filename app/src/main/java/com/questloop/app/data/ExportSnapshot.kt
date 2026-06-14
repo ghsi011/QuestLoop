@@ -1,0 +1,19 @@
+package com.questloop.app.data
+
+import com.questloop.core.model.CompletionRecord
+import com.questloop.core.model.Quest
+import com.questloop.core.model.UserProfile
+import kotlinx.serialization.Serializable
+
+/**
+ * A complete, portable snapshot of the user's on-device data (SPEC §9: data
+ * portability). Serialised to JSON for export; all members are core @Serializable
+ * models so the format is stable and human-readable.
+ */
+@Serializable
+data class ExportSnapshot(
+    val version: Int = 1,
+    val quests: List<Quest>,
+    val completions: List<CompletionRecord>,
+    val profile: UserProfile,
+)

@@ -47,6 +47,8 @@ class QuestRepository(
     private val generator: QuestGenerator = QuestGenerator(),
     private val safetyGuard: SafetyGuard = SafetyGuard(),
 ) {
+    private val exportJson = kotlinx.serialization.json.Json { prettyPrint = true; ignoreUnknownKeys = true }
+
     /** Days of history loaded for same-day reward context (cheap, bounded). */
     private val contextWindowDays = 2L
 
@@ -298,6 +300,16 @@ class QuestRepository(
 
     suspend fun removeGoal(id: String) {
         profileStore.setGoals(profileStore.profile.first().goals.filterNot { it.id == id })
+    }
+
+    /** Serialises all on-device data to JSON for export (SPEC §9 portability). */
+    suspend fun exportJson(): String {
+        val snapshot = ExportSnapshot(
+            quests = questDao.getActive().map { it.toModel() },
+            completions = completionDao.all().map { it.toModel() },
+            profile = profileStore.profile.first(),
+        )
+        return exportJson.encodeToString(ExportSnapshot.serializer(), snapshot)
     }
 
     /** Today's persisted energy check-in, or null if none was made today. */
