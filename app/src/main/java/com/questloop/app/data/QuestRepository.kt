@@ -85,8 +85,8 @@ class QuestRepository(
         // Only surface quests whose recurrence cadence makes them due today
         // (e.g. a weekly quest doesn't reappear every day after completion).
         val lastCompleted = completionDao.lastCompletedDays().associate { it.questId to it.lastDay }
-        // User-created quests plus quests derived from their habits & bad habits.
-        val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits)
+        // User-created quests plus quests derived from habits, bad habits & goals.
+        val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals)
         val candidates = (questDao.getActive().map { it.toModel() } + derived)
             .filter { QuestScheduler.isDue(it.frequency, epochDay, lastCompleted[it.id]) }
         // Recent history is only needed for avoidance scoring (skipped quests).
@@ -289,6 +289,15 @@ class QuestRepository(
 
     suspend fun removeBadHabit(id: String) {
         profileStore.setBadHabits(profileStore.profile.first().badHabits.filterNot { it.id == id })
+    }
+
+    suspend fun addGoal(goal: com.questloop.core.model.Goal) {
+        val current = profileStore.profile.first().goals
+        profileStore.setGoals(current.filterNot { it.id == goal.id } + goal)
+    }
+
+    suspend fun removeGoal(id: String) {
+        profileStore.setGoals(profileStore.profile.first().goals.filterNot { it.id == id })
     }
 
     /** Today's persisted energy check-in, or null if none was made today. */

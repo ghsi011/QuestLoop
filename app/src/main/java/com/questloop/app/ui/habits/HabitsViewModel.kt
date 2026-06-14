@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.questloop.app.data.QuestRepository
 import com.questloop.core.model.BadHabit
 import com.questloop.core.model.Difficulty
+import com.questloop.core.model.Goal
 import com.questloop.core.model.Habit
 import com.questloop.core.model.QuestCategory
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,6 +20,7 @@ data class HabitsUiState(
     val loading: Boolean = true,
     val habits: List<Habit> = emptyList(),
     val badHabits: List<BadHabit> = emptyList(),
+    val goals: List<Goal> = emptyList(),
 )
 
 class HabitsViewModel(private val repository: QuestRepository) : ViewModel() {
@@ -32,7 +34,14 @@ class HabitsViewModel(private val repository: QuestRepository) : ViewModel() {
         viewModelScope.launch {
             _state.update { it.copy(loading = true) }
             val profile = repository.profile.first()
-            _state.update { it.copy(loading = false, habits = profile.habits, badHabits = profile.badHabits) }
+            _state.update {
+                it.copy(
+                    loading = false,
+                    habits = profile.habits,
+                    badHabits = profile.badHabits,
+                    goals = profile.goals,
+                )
+            }
         }
     }
 
@@ -63,6 +72,17 @@ class HabitsViewModel(private val repository: QuestRepository) : ViewModel() {
     }
 
     fun removeBadHabit(id: String) = mutate { repository.removeBadHabit(id) }
+
+    fun addGoal(title: String, category: QuestCategory) {
+        if (title.isBlank()) return
+        mutate {
+            repository.addGoal(
+                Goal(id = UUID.randomUUID().toString(), title = title.trim(), category = category),
+            )
+        }
+    }
+
+    fun removeGoal(id: String) = mutate { repository.removeGoal(id) }
 
     private fun mutate(action: suspend () -> Unit) {
         viewModelScope.launch {

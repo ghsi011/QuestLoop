@@ -61,6 +61,16 @@ fun HabitsScreen(viewModel: HabitsViewModel) {
             )
         }
         AddBadHabitForm(onAdd = viewModel::addBadHabit)
+
+        SectionHeader("Goals")
+        state.goals.forEach { goal ->
+            RowItem(
+                title = goal.title,
+                subtitle = "${goal.category.pretty()} · weekly progress",
+                onRemove = { viewModel.removeGoal(goal.id) },
+            )
+        }
+        AddGoalForm(onAdd = viewModel::addGoal)
     }
 }
 
@@ -106,6 +116,33 @@ private fun AddHabitForm(onAdd: (String, QuestCategory, Int) -> Unit) {
                 enabled = title.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Add habit") }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AddGoalForm(onAdd: (String, QuestCategory) -> Unit) {
+    var title by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf(QuestCategory.PERSONAL_GROWTH) }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                label = { Text("New goal") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                QuestCategory.entries.filterNot { it.isMeta || it == QuestCategory.BAD_HABIT_REDUCTION }.forEach { c ->
+                    FilterChip(selected = c == category, onClick = { category = c }, label = { Text(c.pretty()) })
+                }
+            }
+            Button(
+                onClick = { onAdd(title, category); title = "" },
+                enabled = title.isNotBlank(),
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Add goal") }
         }
     }
 }

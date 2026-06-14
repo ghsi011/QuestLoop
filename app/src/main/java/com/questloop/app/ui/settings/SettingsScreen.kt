@@ -90,7 +90,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onOpenHabits: () -> Unit) {
 
         SectionHeader("Habits")
         OutlinedButton(onClick = onOpenHabits, modifier = Modifier.fillMaxWidth()) {
-            Text("Manage habits to build & reduce")
+            Text("Manage habits & goals")
         }
 
         SectionHeader("Privacy")

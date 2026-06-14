@@ -27,9 +27,10 @@ Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
   one-off cadence so a weekly quest doesn't reappear until it's due again.
 - **Settings** — Settings screen wires max-daily quests, default available
   minutes, and focus categories (previously had setters but no UI).
-- **Habit & bad-habit management** (§4, §7) — a Habits screen to add/remove
-  habits and habits-to-reduce (persisted as JSON); `HabitQuestFactory` turns
-  them into recurring quests that feed the daily plan.
+- **Habit, bad-habit & goal management** (§4, §7) — a screen to add/remove
+  habits, habits-to-reduce, and goals (persisted as JSON); `HabitQuestFactory`
+  turns them into recurring quests that feed the daily plan (goals → a weekly
+  subjective check-in).
 - **Delete all data** (§9) — Settings → "Delete all my data" wipes quests,
   history, XP, and settings on-device (with confirmation).
 - **Weekly & monthly reviews** (§3) — aggregation + Review screen.
@@ -46,9 +47,6 @@ Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
 - **AI quest generation** (§5) — real scaffolding (versioned prompts, output
   guardrails, dedup, clamping) but backed by a **deterministic
   `FallbackSuggester`, not a live LLM**. No model wired in; no network calls.
-- **Goals** (§10) — habits and bad habits now have full management UI and feed
-  generation; the `Goal` model is persisted but still has **no dedicated UI** and
-  doesn't yet drive quest suggestions.
 - **Weekly/monthly quest *lists*** (§4) — recurrence cadence is now enforced
   (`QuestScheduler`), but the app still renders one **daily** plan; there are no
   dedicated weekly/monthly planning screens.

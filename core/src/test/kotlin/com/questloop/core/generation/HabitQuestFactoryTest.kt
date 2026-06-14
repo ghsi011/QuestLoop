@@ -39,12 +39,23 @@ class HabitQuestFactoryTest {
     }
 
     @Test
-    fun `derive all combines habits and bad habits`() {
+    fun `goal becomes a weekly subjective quest`() {
+        val q = HabitQuestFactory.fromGoal(
+            com.questloop.core.model.Goal(id = "g1", title = "Run a 10k", category = QuestCategory.HEALTH),
+        )
+        assertEquals("goal-g1", q.id)
+        assertEquals(QuestFrequency.WEEKLY, q.frequency)
+        assertEquals(com.questloop.core.model.CompletionStyle.SUBJECTIVE, q.completionStyle)
+    }
+
+    @Test
+    fun `derive all combines habits, bad habits, and goals`() {
         val derived = HabitQuestFactory.deriveAll(
             habits = listOf(Habit(id = "h", title = "Read", category = QuestCategory.PERSONAL_GROWTH, difficulty = Difficulty.EASY)),
             badHabits = listOf(BadHabit(id = "b", title = "Snacking")),
+            goals = listOf(com.questloop.core.model.Goal(id = "g", title = "Learn guitar", category = QuestCategory.PERSONAL_GROWTH)),
         )
-        assertEquals(2, derived.size)
-        assertEquals(setOf("habit-h", "badhabit-b"), derived.map { it.id }.toSet())
+        assertEquals(3, derived.size)
+        assertEquals(setOf("habit-h", "badhabit-b", "goal-g"), derived.map { it.id }.toSet())
     }
 }

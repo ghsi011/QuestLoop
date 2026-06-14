@@ -3,6 +3,7 @@ package com.questloop.core.generation
 import com.questloop.core.model.BadHabit
 import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.Difficulty
+import com.questloop.core.model.Goal
 import com.questloop.core.model.Habit
 import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestCategory
@@ -18,6 +19,7 @@ object HabitQuestFactory {
 
     const val HABIT_PREFIX = "habit-"
     const val BAD_HABIT_PREFIX = "badhabit-"
+    const val GOAL_PREFIX = "goal-"
 
     fun fromHabit(habit: Habit): Quest = Quest(
         id = "$HABIT_PREFIX${habit.id}",
@@ -45,7 +47,26 @@ object HabitQuestFactory {
             ?: "Track honestly today — recovery beats perfection.",
     )
 
-    /** All quests derived from a user's habits + bad habits. */
-    fun deriveAll(habits: List<Habit>, badHabits: List<BadHabit>): List<Quest> =
-        habits.map(::fromHabit) + badHabits.map(::fromBadHabit)
+    /**
+     * A goal becomes a gentle weekly check-in quest: progress on a long-term goal
+     * is fuzzy, so it's SUBJECTIVE (rate how it went) rather than pass/fail.
+     */
+    fun fromGoal(goal: Goal): Quest = Quest(
+        id = "$GOAL_PREFIX${goal.id}",
+        title = "Make progress: ${goal.title}",
+        category = goal.category,
+        frequency = QuestFrequency.WEEKLY,
+        difficulty = Difficulty.MEDIUM,
+        origin = QuestOrigin.SYSTEM_RECURRING,
+        completionStyle = CompletionStyle.SUBJECTIVE,
+        rationale = "A step toward your goal — rate how it went; showing up counts.",
+    )
+
+    /** All quests derived from a user's habits, bad habits, and goals. */
+    fun deriveAll(
+        habits: List<Habit>,
+        badHabits: List<BadHabit>,
+        goals: List<Goal> = emptyList(),
+    ): List<Quest> =
+        habits.map(::fromHabit) + badHabits.map(::fromBadHabit) + goals.map(::fromGoal)
 }

@@ -195,6 +195,15 @@ class QuestRepositoryTest {
     }
 
     @Test
+    fun `a goal becomes a weekly derived quest`() = runTest {
+        repo.addGoal(
+            com.questloop.core.model.Goal(id = "g1", title = "Learn guitar", category = QuestCategory.PERSONAL_GROWTH),
+        )
+        val plan = repo.todayPlan(epochDay = 1, dayPart = DayPart.MIDDAY)
+        assertTrue(plan.quests.any { it.quest.id == "goal-g1" })
+    }
+
+    @Test
     fun `delete all data resets xp and quests`() = runTest {
         repo.addQuest(quest("a"))
         repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)
