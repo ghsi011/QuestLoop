@@ -16,7 +16,9 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import android.content.Intent
@@ -30,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.questloop.app.ui.components.InfoCard
@@ -105,6 +108,14 @@ fun SettingsScreen(viewModel: SettingsViewModel, onOpenHabits: () -> Unit) {
         )
         FocusChips(selected = prefs.focusCategories, onToggle = viewModel::toggleFocus)
 
+        SectionHeader("AI suggestions")
+        AiSection(
+            config = state.ai,
+            onEnabledChange = viewModel::setAiEnabled,
+            onSaveKey = viewModel::setAiKey,
+            onSaveModel = viewModel::setAiModel,
+        )
+
         SectionHeader("Habits")
         OutlinedButton(onClick = onOpenHabits, modifier = Modifier.fillMaxWidth()) {
             Text("Manage habits & goals")
@@ -133,6 +144,63 @@ fun SettingsScreen(viewModel: SettingsViewModel, onOpenHabits: () -> Unit) {
             },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AiSection(
+    config: com.questloop.app.data.AiConfig,
+    onEnabledChange: (Boolean) -> Unit,
+    onSaveKey: (String) -> Unit,
+    onSaveModel: (String) -> Unit,
+) {
+    var key by remember(config.apiKey) { mutableStateOf(config.apiKey) }
+    var model by remember(config.model) { mutableStateOf(config.model) }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Use AI to suggest quests", fontWeight = FontWeight.SemiBold)
+                Switch(checked = config.enabled, onCheckedChange = onEnabledChange)
+            }
+            Text(
+                "Powered by OpenRouter. Get a free key at openrouter.ai. Your key is stored only " +
+                    "on this device and is never included in data export.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            OutlinedTextField(
+                value = key,
+                onValueChange = { key = it },
+                label = { Text("OpenRouter API key") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = model,
+                onValueChange = { model = it },
+                label = { Text("Model") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                com.questloop.app.data.AiConfig.FREE_MODEL_PRESETS.forEach { preset ->
+                    FilterChip(
+                        selected = model == preset,
+                        onClick = { model = preset },
+                        label = { Text(preset.substringBefore('/').ifEmpty { preset }) },
+                    )
+                }
+            }
+            OutlinedButton(
+                onClick = { onSaveKey(key); onSaveModel(model) },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Save AI settings") }
+        }
     }
 }
 

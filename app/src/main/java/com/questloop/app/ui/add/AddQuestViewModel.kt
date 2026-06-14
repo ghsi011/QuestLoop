@@ -3,19 +3,22 @@ package com.questloop.app.ui.add
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.questloop.app.data.QuestRepository
-import com.questloop.core.ai.AiQuestValidator
-import com.questloop.core.ai.FallbackSuggester
 import com.questloop.core.model.Difficulty
 import com.questloop.core.model.Priority
 import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.QuestFrequency
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.UUID
 
 class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
 
-    private val validator = AiQuestValidator()
+    /** True while an AI suggestion request is in flight. */
+    private val _generating = MutableStateFlow(false)
+    val generating: StateFlow<Boolean> = _generating.asStateFlow()
 
     fun addQuest(
         title: String,
@@ -49,18 +52,21 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
     }
 
     /**
-     * Turns free-text todo lines into safe quests. In the MVP this uses the
-     * deterministic [FallbackSuggester] passed through the same [AiQuestValidator]
-     * guardrails an LLM response would face, so the path is identical when a
-     * model is wired in later.
+     * Turns free-text todo lines into quests. Routes through the repository's AI
+     * suggester when configured (guardrailed), and a deterministic safe fallback
+     * otherwise — so the button always produces something sensible.
      */
     fun quickAddFromText(text: String, onDone: () -> Unit) {
         val lines = text.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
-        val suggested = FallbackSuggester.suggest(lines, emptySet(), max = lines.size.coerceAtLeast(1))
-        val validated = validator.validate(suggested)
+        if (lines.isEmpty()) return
         viewModelScope.launch {
-            validated.accepted.forEach {
-                repository.addQuest(it.copy(id = "user-${UUID.randomUUID()}"))
+            _generating.value = true
+            try {
+                repository.suggestQuests(lines).forEach {
+                    repository.addQuest(it.copy(id = "user-${UUID.randomUUID()}"))
+                }
+            } finally {
+                _generating.value = false
             }
             onDone()
         }

@@ -40,6 +40,9 @@ interface ProfilePreferences {
     suspend fun setGoals(goals: List<Goal>)
     suspend fun setCheckIn(checkIn: EnergyCheckIn?)
     suspend fun getCheckIn(): EnergyCheckIn?
+    /** AI config is kept out of [profile]/export so the API key is never exported. */
+    suspend fun getAiConfig(): AiConfig
+    suspend fun setAiConfig(config: AiConfig)
     suspend fun clear()
 }
 
@@ -65,6 +68,9 @@ class ProfileStore(private val context: Context) : ProfilePreferences {
         val CHECKIN_DAY = longPreferencesKey("checkin_day")
         val CHECKIN_ENERGY = intPreferencesKey("checkin_energy")
         val CHECKIN_MIN = intPreferencesKey("checkin_minutes")
+        val AI_ENABLED = intPreferencesKey("ai_enabled")
+        val AI_KEY = stringPreferencesKey("ai_api_key")
+        val AI_MODEL = stringPreferencesKey("ai_model")
     }
 
     // Total XP is derived from the completion ledger, not stored here.
@@ -142,6 +148,23 @@ class ProfileStore(private val context: Context) : ProfilePreferences {
             energy = prefs[Keys.CHECKIN_ENERGY] ?: 3,
             availableMinutes = prefs[Keys.CHECKIN_MIN] ?: 120,
         )
+    }
+
+    override suspend fun getAiConfig(): AiConfig {
+        val prefs = context.dataStore.data.first()
+        return AiConfig(
+            enabled = (prefs[Keys.AI_ENABLED] ?: 0) == 1,
+            apiKey = prefs[Keys.AI_KEY].orEmpty(),
+            model = prefs[Keys.AI_MODEL] ?: AiConfig.DEFAULT_MODEL,
+        )
+    }
+
+    override suspend fun setAiConfig(config: AiConfig) {
+        context.dataStore.edit {
+            it[Keys.AI_ENABLED] = if (config.enabled) 1 else 0
+            it[Keys.AI_KEY] = config.apiKey
+            it[Keys.AI_MODEL] = config.model
+        }
     }
 
     override suspend fun clear() {

@@ -3,6 +3,7 @@ package com.questloop.app.data
 import com.questloop.app.data.local.CompletionDao
 import com.questloop.app.data.local.QuestDao
 import com.questloop.core.QuestLoopEngine
+import com.questloop.core.ai.AiQuestService
 import com.questloop.core.completion.CompletionPolicy
 import com.questloop.core.completion.CompletionScaling
 import com.questloop.core.generation.HabitQuestFactory
@@ -317,6 +318,33 @@ class QuestRepository(
         profileStore.getCheckIn()?.takeIf { it.epochDay == epochDay }
 
     suspend fun setCheckIn(checkIn: EnergyCheckIn) = profileStore.setCheckIn(checkIn)
+
+    suspend fun aiConfig(): AiConfig = profileStore.getAiConfig()
+    suspend fun setAiConfig(config: AiConfig) = profileStore.setAiConfig(config)
+
+    /**
+     * Suggests quests from free-text todos using the configured AI provider,
+     * routed through [AiQuestService] (guardrails + deterministic fallback). If
+     * AI isn't configured, falls back to the deterministic suggester so the
+     * feature always returns something safe. The returned quests are not yet
+     * persisted — the caller decides which to keep.
+     */
+    suspend fun suggestQuests(todos: List<String>): List<Quest> {
+        val profile = profileStore.profile.first()
+        val config = profileStore.getAiConfig()
+        val input = AiQuestService.Input(
+            todos = todos,
+            goals = profile.goals.map { it.title },
+            focusAreas = profile.preferences.focusCategories.toList(),
+            availableMinutes = profile.preferences.defaultAvailableMinutes,
+        )
+        return if (config.usable) {
+            AiQuestService(OpenRouterClient(config.apiKey, config.model)).suggest(input)
+        } else {
+            // No AI configured: deterministic, always-safe suggestions.
+            com.questloop.core.ai.FallbackSuggester.suggest(todos, input.focusAreas.toSet())
+        }
+    }
 
     /** Erases all on-device data (SPEC §9: users can delete their data). */
     suspend fun deleteAllData() {

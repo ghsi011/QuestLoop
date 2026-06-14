@@ -46,9 +46,14 @@ Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
 
 ## ◑ Partial
 
-- **AI quest generation** (§5) — real scaffolding (versioned prompts, output
-  guardrails, dedup, clamping) but backed by a **deterministic
-  `FallbackSuggester`, not a live LLM**. No model wired in; no network calls.
+- **AI quest generation** (§5) — **live LLM via OpenRouter** (user provides a
+  key + model in Settings) behind the `AiQuestService`: versioned prompts,
+  JSON parsing tolerant of chatty/markdown output, the `AiQuestValidator`
+  guardrails, and a deterministic `FallbackSuggester` whenever AI is off,
+  unavailable, or returns unusable output. The "Suggest quests ✨" action on the
+  Add screen uses it. *(The live network call can't be exercised in the CI
+  sandbox — OpenRouter is firewalled there — so it's covered by fake-client unit
+  tests and verified on-device.)*
 - **Weekly/monthly quest *lists*** (§4) — recurrence cadence is now enforced
   (`QuestScheduler`), but the app still renders one **daily** plan; there are no
   dedicated weekly/monthly planning screens.

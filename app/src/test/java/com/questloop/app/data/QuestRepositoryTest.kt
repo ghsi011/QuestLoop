@@ -58,9 +58,13 @@ class QuestRepositoryTest {
             this.checkIn = checkIn
         }
         override suspend fun getCheckIn(): com.questloop.core.model.EnergyCheckIn? = checkIn
+        private var ai = AiConfig()
+        override suspend fun getAiConfig(): AiConfig = ai
+        override suspend fun setAiConfig(config: AiConfig) { ai = config }
         override suspend fun clear() {
             state.value = UserProfile()
             checkIn = null
+            ai = AiConfig()
         }
     }
 
@@ -201,6 +205,14 @@ class QuestRepositoryTest {
         )
         val plan = repo.todayPlan(epochDay = 1, dayPart = DayPart.MIDDAY)
         assertTrue(plan.quests.any { it.quest.id == "goal-g1" })
+    }
+
+    @Test
+    fun `quest suggestion falls back to deterministic when AI is disabled`() = runTest {
+        // No AI configured -> deterministic, safe suggestions (no network).
+        val suggested = repo.suggestQuests(listOf("Email landlord"))
+        assertTrue(suggested.isNotEmpty())
+        assertEquals("Email landlord", suggested.first().title)
     }
 
     @Test

@@ -7,9 +7,11 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -25,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.questloop.app.ui.components.SectionHeader
 import com.questloop.app.ui.components.pretty
 import com.questloop.core.model.CompletionStyle
@@ -133,11 +136,22 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
             modifier = Modifier.fillMaxWidth(),
             minLines = 3,
         )
+        val generating by viewModel.generating.collectAsStateWithLifecycle()
         OutlinedButton(
             onClick = { if (quickText.isNotBlank()) viewModel.quickAddFromText(quickText, onDone) },
-            enabled = quickText.isNotBlank(),
+            enabled = quickText.isNotBlank() && !generating,
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Quick add") }
+        ) {
+            if (generating) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+            } else {
+                Text("Suggest quests ✨")
+            }
+        }
+        Text(
+            "Uses your AI provider if configured in Settings, otherwise safe defaults.",
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 

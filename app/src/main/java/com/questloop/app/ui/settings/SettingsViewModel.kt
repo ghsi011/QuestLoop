@@ -2,6 +2,7 @@ package com.questloop.app.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.questloop.app.data.AiConfig
 import com.questloop.app.data.QuestRepository
 import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.UserPreferences
@@ -15,6 +16,7 @@ import kotlinx.coroutines.launch
 data class SettingsUiState(
     val loading: Boolean = true,
     val prefs: UserPreferences = UserPreferences(),
+    val ai: AiConfig = AiConfig(),
     /** Set when an export is ready to be shared; consumed by the UI. */
     val exportJson: String? = null,
 )
@@ -30,9 +32,14 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
         viewModelScope.launch {
             _state.update { it.copy(loading = true) }
             val prefs = repository.profile.first().preferences
-            _state.update { it.copy(loading = false, prefs = prefs) }
+            val ai = repository.aiConfig()
+            _state.update { it.copy(loading = false, prefs = prefs, ai = ai) }
         }
     }
+
+    fun setAiEnabled(enabled: Boolean) = update { repository.setAiConfig(_state.value.ai.copy(enabled = enabled)) }
+    fun setAiKey(key: String) = update { repository.setAiConfig(_state.value.ai.copy(apiKey = key.trim())) }
+    fun setAiModel(model: String) = update { repository.setAiConfig(_state.value.ai.copy(model = model.trim())) }
 
     fun setMaxDaily(value: Int) = update { repository.setMaxDaily(value) }
 
