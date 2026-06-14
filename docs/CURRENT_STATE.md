@@ -23,6 +23,10 @@ Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
   subjective); partial progress credited, never penalised.
 - **Minimal daily loop** — morning micro-quest + evening wrap-up via day-part
   routines.
+- **Recurrence scheduling** (§4) — `QuestScheduler` gates daily/weekly/monthly/
+  one-off cadence so a weekly quest doesn't reappear until it's due again.
+- **Settings** — Settings screen wires max-daily quests, default available
+  minutes, and focus categories (previously had setters but no UI).
 - **Weekly & monthly reviews** (§3) — aggregation + Review screen.
 - **Real-world reward planning** (§6) — suggested allowance (% of a self-set
   affordable budget, difficulty-weighted, capped) with mandatory disclaimers.
@@ -40,16 +44,13 @@ Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
 - **Habit entry** (§10) — quests can be created, but there is **no UI for the
   `Habit` / `BadHabit` / `Goal` models** (they exist but are unused by the app).
   Bad-habit tracking only happens via reduction-category quests.
-- **Daily/weekly/monthly quests** (§4) — frequencies are modelled and reviews
-  are weekly/monthly, but only a **daily plan is generated**; recurrence cadence
-  beyond same-day dedup is not enforced.
+- **Weekly/monthly quest *lists*** (§4) — recurrence cadence is now enforced
+  (`QuestScheduler`), but the app still renders one **daily** plan; there are no
+  dedicated weekly/monthly planning screens.
 - **Admin quests for reward funds** (§6) — one seed quest + static guidance on
   the Rewards screen, not a dynamic flow.
 - **Energy/mood check-in** (§7) — energy check-in exists and shapes the plan but
   is **transient (not persisted)**; no mood check-in.
-- **User preferences** — `maxDailyQuests`, `availableMinutes`, `focusCategories`
-  have store/repository setters but **no UI**; only the monthly budget cap is
-  user-settable.
 
 ## ✗ Not implemented (spec future / §10 deferred)
 

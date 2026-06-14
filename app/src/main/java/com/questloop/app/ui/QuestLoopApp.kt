@@ -6,6 +6,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -34,6 +35,8 @@ import com.questloop.app.ui.review.ReviewScreen
 import com.questloop.app.ui.review.ReviewViewModel
 import com.questloop.app.ui.rewards.RewardsScreen
 import com.questloop.app.ui.rewards.RewardsViewModel
+import com.questloop.app.ui.settings.SettingsScreen
+import com.questloop.app.ui.settings.SettingsViewModel
 import com.questloop.app.ui.today.TodayScreen
 import com.questloop.app.ui.today.TodayViewModel
 
@@ -41,6 +44,7 @@ private enum class Dest(val route: String, val label: String, val icon: ImageVec
     TODAY("today", "Today", Icons.Filled.Home),
     REVIEWS("reviews", "Reviews", Icons.Filled.BarChart),
     REWARDS("rewards", "Rewards", Icons.Filled.CardGiftcard),
+    SETTINGS("settings", "Settings", Icons.Filled.Settings),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -97,6 +101,10 @@ fun QuestLoopApp(repository: QuestRepository) {
             composable(Dest.REWARDS.route) {
                 val vm: RewardsViewModel = viewModel(factory = factory)
                 RewardsScreen(vm)
+            }
+            composable(Dest.SETTINGS.route) {
+                val vm: SettingsViewModel = viewModel(factory = factory)
+                SettingsScreen(vm)
             }
             composable("add") {
                 val vm: AddQuestViewModel = viewModel(factory = factory)

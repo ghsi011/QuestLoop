@@ -265,4 +265,6 @@ class QuestRepository(
     suspend fun setBudgetCap(value: Double) = profileStore.setBudgetCap(value)
     suspend fun setMaxDaily(value: Int) = profileStore.setMaxDaily(value)
     suspend fun setAvailableMinutes(value: Int) = profileStore.setAvailableMinutes(value)
+    suspend fun setFocusCategories(cats: Set<com.questloop.core.model.QuestCategory>) =
+        profileStore.setFocusCategories(cats)
 }
