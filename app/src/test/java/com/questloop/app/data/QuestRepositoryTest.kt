@@ -134,6 +134,19 @@ class QuestRepositoryTest {
     }
 
     @Test
+    fun `a weekly quest does not reappear the day after completion`() = runTest {
+        val weekly = quest("review", category = QuestCategory.META_MAINTENANCE)
+            .copy(frequency = QuestFrequency.WEEKLY)
+        repo.addQuest(weekly)
+        repo.completeQuest(weekly, epochDay = 1, result = CompletionResult.COMPLETED)
+
+        // Next day: not due yet.
+        assertFalse(repo.todayPlan(epochDay = 2, dayPart = DayPart.MIDDAY).quests.any { it.quest.id == "review" })
+        // A week later: due again.
+        assertTrue(repo.todayPlan(epochDay = 8, dayPart = DayPart.MIDDAY).quests.any { it.quest.id == "review" })
+    }
+
+    @Test
     fun `first completion unlocks the first-steps achievement`() = runTest {
         repo.addQuest(quest("a"))
         val outcome = repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)

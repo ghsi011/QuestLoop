@@ -69,6 +69,10 @@ interface CompletionDao {
     @Query("SELECT DISTINCT epochDay FROM completions WHERE result IN ('COMPLETED', 'PARTIAL')")
     suspend fun activeDays(): List<Long>
 
+    /** Most recent fully-completed day per quest, for recurrence scheduling. */
+    @Query("SELECT questId, MAX(epochDay) AS lastDay FROM completions WHERE result = 'COMPLETED' GROUP BY questId")
+    suspend fun lastCompletedDays(): List<LastCompletion>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(completion: CompletionEntity)
 

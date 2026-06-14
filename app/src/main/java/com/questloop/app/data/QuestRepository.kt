@@ -6,6 +6,7 @@ import com.questloop.core.QuestLoopEngine
 import com.questloop.core.completion.CompletionPolicy
 import com.questloop.core.completion.CompletionScaling
 import com.questloop.core.generation.QuestGenerator
+import com.questloop.core.generation.QuestScheduler
 import com.questloop.core.generation.RoutineQuestFactory
 import com.questloop.core.model.CompletionRecord
 import com.questloop.core.model.CompletionResult
@@ -78,7 +79,11 @@ class QuestRepository(
         checkIn: EnergyCheckIn? = null,
     ): QuestGenerator.DailyPlan {
         val profile = profileStore.profile.first()
+        // Only surface quests whose recurrence cadence makes them due today
+        // (e.g. a weekly quest doesn't reappear every day after completion).
+        val lastCompleted = completionDao.lastCompletedDays().associate { it.questId to it.lastDay }
         val candidates = questDao.getActive().map { it.toModel() }
+            .filter { QuestScheduler.isDue(it.frequency, epochDay, lastCompleted[it.id]) }
         // Recent history is only needed for avoidance scoring (skipped quests).
         val history = completionDao.since(epochDay - 14).map { it.toModel() }
         return generator.generateDaily(

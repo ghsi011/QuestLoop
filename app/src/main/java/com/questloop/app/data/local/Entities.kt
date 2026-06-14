@@ -27,6 +27,12 @@ data class QuestEntity(
     val archived: Boolean = false,
 )
 
+/** Projection: the last fully-completed day for a quest (recurrence scheduling). */
+data class LastCompletion(
+    val questId: String,
+    val lastDay: Long,
+)
+
 @Entity(tableName = "completions")
 data class CompletionEntity(
     @PrimaryKey val instanceId: String,
