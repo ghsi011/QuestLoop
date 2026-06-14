@@ -78,6 +78,7 @@ the `android-build` job on a standard GitHub-hosted runner.
 
 - [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) — honest map of what's implemented vs. spec
 - [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md) — review findings and suggested order of work
+- [`docs/UX_REVIEW.md`](docs/UX_REVIEW.md) — UX heuristics review and prioritised fixes
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — module layout, data flow, persistence
 - [`docs/REWARD_ECONOMY.md`](docs/REWARD_ECONOMY.md) — how XP, anti-farming, caps and allowances work
 - [`docs/SAFETY_AND_PRIVACY.md`](docs/SAFETY_AND_PRIVACY.md) — safety signals, anti-abuse, privacy posture
