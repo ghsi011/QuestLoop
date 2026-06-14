@@ -122,6 +122,7 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
     }
 
     fun consumeToast() = _state.update { it.copy(toast = null, pendingUndo = null) }
-
-    data class PendingUndo(val instanceId: String, val previous: CompletionRecord?)
 }
+
+/** Data needed to reverse the last completion via the snackbar "Undo" action. */
+data class PendingUndo(val instanceId: String, val previous: CompletionRecord?)
