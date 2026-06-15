@@ -31,6 +31,10 @@ Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
   habits, habits-to-reduce, and goals (persisted as JSON); `HabitQuestFactory`
   turns them into recurring quests that feed the daily plan (goals → a weekly
   subjective check-in).
+- **Daily reminders** (§3; UX H1) — opt-in morning & evening local notifications
+  at user-set hours, scheduled via AlarmManager (inexact). *Re-arm on app open;
+  boot-persistence is deferred. Delivery is device-only — not CI-verifiable — so
+  it's covered by a pure schedule-math unit test and needs on-device testing.*
 - **First-run onboarding** — a one-time intro covering the quest/XP model, the
   money/rewards disclaimer, and the local-first privacy stance before anything
   sensitive is touched.

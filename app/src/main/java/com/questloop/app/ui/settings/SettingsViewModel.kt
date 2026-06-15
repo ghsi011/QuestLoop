@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.questloop.app.data.AiConfig
 import com.questloop.app.data.QuestRepository
+import com.questloop.app.data.ReminderConfig
 import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.UserPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,6 +18,7 @@ data class SettingsUiState(
     val loading: Boolean = true,
     val prefs: UserPreferences = UserPreferences(),
     val ai: AiConfig = AiConfig(),
+    val reminders: ReminderConfig = ReminderConfig(),
     /** Set when an export is ready to be shared; consumed by the UI. */
     val exportJson: String? = null,
 )
@@ -33,9 +35,12 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
             _state.update { it.copy(loading = true) }
             val prefs = repository.profile.first().preferences
             val ai = repository.aiConfig()
-            _state.update { it.copy(loading = false, prefs = prefs, ai = ai) }
+            val reminders = repository.reminderConfig()
+            _state.update { it.copy(loading = false, prefs = prefs, ai = ai, reminders = reminders) }
         }
     }
+
+    fun setReminders(config: ReminderConfig) = update { repository.setReminderConfig(config) }
 
     fun setAiEnabled(enabled: Boolean) = update { repository.setAiConfig(_state.value.ai.copy(enabled = enabled)) }
     fun setAiKey(key: String) = update { repository.setAiConfig(_state.value.ai.copy(apiKey = key.trim())) }

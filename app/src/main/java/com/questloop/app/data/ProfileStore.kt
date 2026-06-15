@@ -45,6 +45,8 @@ interface ProfilePreferences {
     suspend fun setAiConfig(config: AiConfig)
     suspend fun isOnboardingComplete(): Boolean
     suspend fun setOnboardingComplete()
+    suspend fun getReminderConfig(): ReminderConfig
+    suspend fun setReminderConfig(config: ReminderConfig)
     suspend fun clear()
 }
 
@@ -74,6 +76,11 @@ class ProfileStore(private val context: Context) : ProfilePreferences {
         val AI_KEY = stringPreferencesKey("ai_api_key")
         val AI_MODEL = stringPreferencesKey("ai_model")
         val ONBOARDED = intPreferencesKey("onboarding_complete")
+        val REMIND_ENABLED = intPreferencesKey("remind_enabled")
+        val REMIND_MORNING_H = intPreferencesKey("remind_morning_h")
+        val REMIND_MORNING_M = intPreferencesKey("remind_morning_m")
+        val REMIND_EVENING_H = intPreferencesKey("remind_evening_h")
+        val REMIND_EVENING_M = intPreferencesKey("remind_evening_m")
     }
 
     // Total XP is derived from the completion ledger, not stored here.
@@ -175,6 +182,27 @@ class ProfileStore(private val context: Context) : ProfilePreferences {
 
     override suspend fun setOnboardingComplete() {
         context.dataStore.edit { it[Keys.ONBOARDED] = 1 }
+    }
+
+    override suspend fun getReminderConfig(): ReminderConfig {
+        val prefs = context.dataStore.data.first()
+        return ReminderConfig(
+            enabled = (prefs[Keys.REMIND_ENABLED] ?: 0) == 1,
+            morningHour = prefs[Keys.REMIND_MORNING_H] ?: 8,
+            morningMinute = prefs[Keys.REMIND_MORNING_M] ?: 0,
+            eveningHour = prefs[Keys.REMIND_EVENING_H] ?: 20,
+            eveningMinute = prefs[Keys.REMIND_EVENING_M] ?: 0,
+        )
+    }
+
+    override suspend fun setReminderConfig(config: ReminderConfig) {
+        context.dataStore.edit {
+            it[Keys.REMIND_ENABLED] = if (config.enabled) 1 else 0
+            it[Keys.REMIND_MORNING_H] = config.morningHour
+            it[Keys.REMIND_MORNING_M] = config.morningMinute
+            it[Keys.REMIND_EVENING_H] = config.eveningHour
+            it[Keys.REMIND_EVENING_M] = config.eveningMinute
+        }
     }
 
     override suspend fun clear() {

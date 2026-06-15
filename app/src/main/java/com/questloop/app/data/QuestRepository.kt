@@ -342,6 +342,9 @@ class QuestRepository(
     suspend fun isOnboardingComplete(): Boolean = profileStore.isOnboardingComplete()
     suspend fun completeOnboarding() = profileStore.setOnboardingComplete()
 
+    suspend fun reminderConfig(): ReminderConfig = profileStore.getReminderConfig()
+    suspend fun setReminderConfig(config: ReminderConfig) = profileStore.setReminderConfig(config)
+
     /**
      * Suggests quests from free-text todos using the configured AI provider,
      * routed through [AiQuestService] (guardrails + deterministic fallback). If

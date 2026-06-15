@@ -21,7 +21,11 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import android.Manifest
 import android.content.Intent
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.questloop.app.reminders.ReminderScheduler
 import com.questloop.app.ui.components.InfoCard
 import com.questloop.app.ui.components.SectionHeader
 import com.questloop.app.ui.components.pretty
@@ -46,6 +51,15 @@ fun SettingsScreen(viewModel: SettingsViewModel, onOpenHabits: () -> Unit) {
     val prefs = state.prefs
     var confirmDelete by remember { mutableStateOf(false) }
     val context = LocalContext.current
+
+    // (Re)schedule reminder alarms whenever the config changes.
+    LaunchedEffect(state.reminders) {
+        ReminderScheduler(context).apply(state.reminders)
+    }
+
+    val notifPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { /* result ignored: notifications simply won't show if denied */ }
 
     // When an export is ready, hand it to the system share sheet.
     LaunchedEffect(state.exportJson) {
@@ -101,6 +115,17 @@ fun SettingsScreen(viewModel: SettingsViewModel, onOpenHabits: () -> Unit) {
             }
         }
 
+        SectionHeader("Daily reminders")
+        RemindersSection(
+            config = state.reminders,
+            onChange = { updated ->
+                if (updated.enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+                viewModel.setReminders(updated)
+            },
+        )
+
         SectionHeader("Focus areas")
         Text(
             "Quests in these categories get a gentle boost in your daily plan.",
@@ -144,6 +169,56 @@ fun SettingsScreen(viewModel: SettingsViewModel, onOpenHabits: () -> Unit) {
             },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )
+    }
+}
+
+@Composable
+private fun RemindersSection(
+    config: com.questloop.app.data.ReminderConfig,
+    onChange: (com.questloop.app.data.ReminderConfig) -> Unit,
+) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Morning & evening nudges", fontWeight = FontWeight.SemiBold)
+                Switch(checked = config.enabled, onCheckedChange = { onChange(config.copy(enabled = it)) })
+            }
+            if (config.enabled) {
+                HourRow(
+                    label = "Morning",
+                    hour = config.morningHour,
+                    onHour = { onChange(config.copy(morningHour = it)) },
+                )
+                HourRow(
+                    label = "Evening",
+                    hour = config.eveningHour,
+                    onHour = { onChange(config.copy(eveningHour = it)) },
+                )
+            }
+            Text(
+                "Gentle local reminders to check in. They re-arm when you open the app " +
+                    "(not after a reboot yet).",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HourRow(label: String, hour: Int, onHour: (Int) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, modifier = Modifier.weight(1f))
+        OutlinedButton(onClick = { onHour((hour - 1).coerceAtLeast(0)) }) { Text("−") }
+        Text("%02d:00".format(hour), style = MaterialTheme.typography.bodyMedium)
+        OutlinedButton(onClick = { onHour((hour + 1).coerceAtMost(23)) }) { Text("+") }
     }
 }
 

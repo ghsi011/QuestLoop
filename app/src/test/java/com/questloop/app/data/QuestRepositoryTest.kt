@@ -64,11 +64,15 @@ class QuestRepositoryTest {
         private var onboarded = false
         override suspend fun isOnboardingComplete(): Boolean = onboarded
         override suspend fun setOnboardingComplete() { onboarded = true }
+        private var reminders = ReminderConfig()
+        override suspend fun getReminderConfig(): ReminderConfig = reminders
+        override suspend fun setReminderConfig(config: ReminderConfig) { reminders = config }
         override suspend fun clear() {
             state.value = UserProfile()
             checkIn = null
             ai = AiConfig()
             onboarded = false
+            reminders = ReminderConfig()
         }
     }
 
@@ -217,6 +221,16 @@ class QuestRepositoryTest {
         val suggestion = repo.suggestQuests(listOf("Email landlord"))
         assertFalse(suggestion.fromAi)
         assertEquals("Email landlord", suggestion.quests.first().title)
+    }
+
+    @Test
+    fun `reminder config round-trips`() = runTest {
+        assertFalse(repo.reminderConfig().enabled)
+        repo.setReminderConfig(ReminderConfig(enabled = true, morningHour = 7, eveningHour = 21))
+        val cfg = repo.reminderConfig()
+        assertTrue(cfg.enabled)
+        assertEquals(7, cfg.morningHour)
+        assertEquals(21, cfg.eveningHour)
     }
 
     @Test

@@ -4,6 +4,8 @@
     <!-- Required for AI quest suggestions (OpenRouter). Only used when the user
          enables AI and provides a key; all other features work offline. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Daily reminder notifications (opt-in, Android 13+). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".QuestLoopApplication"
@@ -26,6 +28,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <receiver
+            android:name=".reminders.ReminderReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

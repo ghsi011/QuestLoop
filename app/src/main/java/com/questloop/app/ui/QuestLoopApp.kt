@@ -27,7 +27,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.questloop.app.reminders.ReminderScheduler
 import com.questloop.app.ui.onboarding.OnboardingScreen
 import kotlinx.coroutines.launch
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -79,6 +81,12 @@ private fun QuestLoopMain(repository: QuestRepository) {
     val navController = rememberNavController()
     val factory = remember(repository) { appViewModelFactory(repository) }
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Re-arm reminder alarms on launch (they don't survive reboot in this MVP).
+    val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        runCatching { ReminderScheduler(context).apply(repository.reminderConfig()) }
+    }
 
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination
