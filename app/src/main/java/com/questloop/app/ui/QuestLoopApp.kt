@@ -19,11 +19,17 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.questloop.app.ui.onboarding.OnboardingScreen
+import kotlinx.coroutines.launch
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -51,9 +57,25 @@ private enum class Dest(val route: String, val label: String, val icon: ImageVec
     SETTINGS("settings", "Settings", Icons.Filled.Settings),
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QuestLoopApp(repository: QuestRepository) {
+    // First-run gate: show onboarding until the user taps "Get started".
+    var onboarded by remember { mutableStateOf<Boolean?>(null) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { onboarded = repository.isOnboardingComplete() }
+
+    when (onboarded) {
+        null -> Unit // brief: flag not loaded yet
+        false -> OnboardingScreen(
+            onGetStarted = { scope.launch { repository.completeOnboarding(); onboarded = true } },
+        )
+        true -> QuestLoopMain(repository)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QuestLoopMain(repository: QuestRepository) {
     val navController = rememberNavController()
     val factory = remember(repository) { appViewModelFactory(repository) }
     val snackbarHostState = remember { SnackbarHostState() }

@@ -43,6 +43,8 @@ interface ProfilePreferences {
     /** AI config is kept out of [profile]/export so the API key is never exported. */
     suspend fun getAiConfig(): AiConfig
     suspend fun setAiConfig(config: AiConfig)
+    suspend fun isOnboardingComplete(): Boolean
+    suspend fun setOnboardingComplete()
     suspend fun clear()
 }
 
@@ -71,6 +73,7 @@ class ProfileStore(private val context: Context) : ProfilePreferences {
         val AI_ENABLED = intPreferencesKey("ai_enabled")
         val AI_KEY = stringPreferencesKey("ai_api_key")
         val AI_MODEL = stringPreferencesKey("ai_model")
+        val ONBOARDED = intPreferencesKey("onboarding_complete")
     }
 
     // Total XP is derived from the completion ledger, not stored here.
@@ -165,6 +168,13 @@ class ProfileStore(private val context: Context) : ProfilePreferences {
             it[Keys.AI_KEY] = config.apiKey
             it[Keys.AI_MODEL] = config.model
         }
+    }
+
+    override suspend fun isOnboardingComplete(): Boolean =
+        (context.dataStore.data.first()[Keys.ONBOARDED] ?: 0) == 1
+
+    override suspend fun setOnboardingComplete() {
+        context.dataStore.edit { it[Keys.ONBOARDED] = 1 }
     }
 
     override suspend fun clear() {

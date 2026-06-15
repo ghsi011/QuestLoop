@@ -31,6 +31,9 @@ Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
   habits, habits-to-reduce, and goals (persisted as JSON); `HabitQuestFactory`
   turns them into recurring quests that feed the daily plan (goals → a weekly
   subjective check-in).
+- **First-run onboarding** — a one-time intro covering the quest/XP model, the
+  money/rewards disclaimer, and the local-first privacy stance before anything
+  sensitive is touched.
 - **Delete all data** (§9) — Settings → "Delete all my data" wipes quests,
   history, XP, and settings on-device (with confirmation).
 - **Export data** (§9) — Settings → "Export my data" serialises everything to

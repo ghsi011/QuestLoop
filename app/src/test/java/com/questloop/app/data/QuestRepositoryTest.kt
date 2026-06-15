@@ -61,10 +61,14 @@ class QuestRepositoryTest {
         private var ai = AiConfig()
         override suspend fun getAiConfig(): AiConfig = ai
         override suspend fun setAiConfig(config: AiConfig) { ai = config }
+        private var onboarded = false
+        override suspend fun isOnboardingComplete(): Boolean = onboarded
+        override suspend fun setOnboardingComplete() { onboarded = true }
         override suspend fun clear() {
             state.value = UserProfile()
             checkIn = null
             ai = AiConfig()
+            onboarded = false
         }
     }
 
@@ -213,6 +217,13 @@ class QuestRepositoryTest {
         val suggestion = repo.suggestQuests(listOf("Email landlord"))
         assertFalse(suggestion.fromAi)
         assertEquals("Email landlord", suggestion.quests.first().title)
+    }
+
+    @Test
+    fun `onboarding flag flips once completed`() = runTest {
+        assertFalse(repo.isOnboardingComplete())
+        repo.completeOnboarding()
+        assertTrue(repo.isOnboardingComplete())
     }
 
     @Test
