@@ -156,7 +156,7 @@ class TodayContentTest {
                 actions = noopActions(),
             )
         }
-        composeRule.onNodeWithText("All clear").assertIsDisplayed()
+        composeRule.onNodeWithText("All clear ✓").assertIsDisplayed()
     }
 
     @Test
@@ -168,7 +168,7 @@ class TodayContentTest {
                 actions = noopActions(onCheckIn = { e, m -> picked = e to m }),
             )
         }
-        composeRule.onNodeWithText("Low").performClick()
+        composeRule.onNodeWithText("🔋 Low").performClick()
         assertTrue(picked != null)
         assertEquals(2, picked?.first)
     }
