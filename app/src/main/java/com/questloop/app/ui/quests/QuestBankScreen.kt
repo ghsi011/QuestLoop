@@ -32,7 +32,7 @@ import com.questloop.core.model.Quest
 fun QuestBankScreen(viewModel: QuestBankViewModel, snackbarHostState: SnackbarHostState) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    LaunchedEffect(state.toast) {
+    LaunchedEffect(state.toastId) {
         val message = state.toast ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
         viewModel.consumeToast()

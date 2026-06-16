@@ -188,7 +188,9 @@ private fun QuestLoopMain(repository: QuestRepository) {
                     vm,
                     snackbarHostState,
                     onOpenAchievements = { navController.openOnce("achievements") },
-                    onOpenQuestBank = { navController.openOnce("quest-bank") },
+                    // Enter the Quests tab first so the Bank lives under that tab
+                    // (correct tab highlight + re-tap returns to the Quests list).
+                    onOpenQuestBank = { navController.switchTab(Dest.QUESTS.route); navController.openOnce("quest-bank") },
                     onOpenAddQuest = { navController.openOnce("add") },
                 )
             }

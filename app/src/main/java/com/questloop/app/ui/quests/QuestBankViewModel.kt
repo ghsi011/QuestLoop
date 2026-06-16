@@ -18,6 +18,8 @@ data class QuestBankUiState(
     /** Ids of catalog quests already on the user's active list. */
     val addedIds: Set<String> = emptySet(),
     val toast: String? = null,
+    /** Bumped on every toast so identical consecutive messages still re-fire. */
+    val toastId: Long = 0,
 )
 
 data class BankGroup(val title: String, val items: List<Quest>)
@@ -41,7 +43,7 @@ class QuestBankViewModel(private val repository: QuestRepository) : ViewModel() 
     fun add(quest: Quest) {
         viewModelScope.launch {
             repository.addFromBank(quest)
-            _state.update { it.copy(toast = "Added \"${quest.title}\".") }
+            _state.update { it.copy(toast = "Added \"${quest.title}\".", toastId = it.toastId + 1) }
         }
     }
 

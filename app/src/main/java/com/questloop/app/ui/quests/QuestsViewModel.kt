@@ -20,6 +20,8 @@ data class QuestsUiState(
     val groups: List<QuestGroup> = emptyList(),
     val total: Int = 0,
     val toast: String? = null,
+    /** Bumped on every toast so identical consecutive messages still re-fire. */
+    val toastId: Long = 0,
     /** Data to reverse the last completion via the snackbar "Undo". */
     val pendingUndo: PendingUndo? = null,
 )
@@ -73,7 +75,11 @@ class QuestsViewModel(private val repository: QuestRepository) : ViewModel() {
         viewModelScope.launch {
             val outcome = block()
             _state.update {
-                it.copy(toast = toast, pendingUndo = PendingUndo(outcome.instanceId, outcome.previousRecord))
+                it.copy(
+                    toast = toast,
+                    toastId = it.toastId + 1,
+                    pendingUndo = PendingUndo(outcome.instanceId, outcome.previousRecord),
+                )
             }
             recompute()
         }
@@ -91,7 +97,7 @@ class QuestsViewModel(private val repository: QuestRepository) : ViewModel() {
     fun delete(quest: Quest) {
         viewModelScope.launch {
             repository.archiveQuest(quest.id)
-            _state.update { it.copy(toast = "Deleted \"${quest.title}\".", pendingUndo = null) }
+            _state.update { it.copy(toast = "Deleted \"${quest.title}\".", toastId = it.toastId + 1, pendingUndo = null) }
             recompute()
         }
     }

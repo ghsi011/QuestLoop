@@ -74,7 +74,7 @@ fun TodayScreen(
     // tabs (e.g. completing a quest from the Quests backlog).
     LaunchedEffect(Unit) { viewModel.refresh() }
 
-    LaunchedEffect(state.toast) {
+    LaunchedEffect(state.toastId) {
         val message = state.toast ?: return@LaunchedEffect
         val result = snackbarHostState.showSnackbar(
             message = message,

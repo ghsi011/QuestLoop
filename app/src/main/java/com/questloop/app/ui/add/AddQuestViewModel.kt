@@ -121,7 +121,7 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
                     } else {
                         st.suggestions
                     },
-                    message = result.error,
+                    message = result.error ?: if (revised != null) "Updated that quest. ✨" else st.message,
                 )
             }
         }
@@ -145,10 +145,10 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
         }
     }
 
-    /** Persists all reviewed suggestions. Guards against double-tap duplicates. */
+    /** Persists all reviewed suggestions with a non-blank title. Guards double-tap. */
     fun acceptAll() {
         if (_state.value.saving) return
-        val all = _state.value.suggestions
+        val all = _state.value.suggestions.filter { it.title.isBlank().not() }
         if (all.isEmpty()) return
         _state.update { it.copy(saving = true) }
         viewModelScope.launch {

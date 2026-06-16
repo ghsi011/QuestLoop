@@ -52,7 +52,7 @@ fun QuestsScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var pendingDelete by remember { mutableStateOf<Quest?>(null) }
 
-    LaunchedEffect(state.toast) {
+    LaunchedEffect(state.toastId) {
         val message = state.toast ?: return@LaunchedEffect
         val result = snackbarHostState.showSnackbar(
             message = message,

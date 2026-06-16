@@ -34,6 +34,8 @@ data class TodayUiState(
     val todayProgress: Map<String, Int> = emptyMap(),
     val lastEffect: QuestLoopEngine.CompletionEffect? = null,
     val toast: String? = null,
+    /** Bumped on every toast so identical consecutive messages still re-fire. */
+    val toastId: Long = 0,
     val pendingUndo: PendingUndo? = null,
 )
 
@@ -109,6 +111,7 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
             it.copy(
                 lastEffect = effect,
                 toast = toast,
+                toastId = it.toastId + 1,
                 pendingUndo = PendingUndo(outcome.instanceId, outcome.previousRecord),
             )
         }
