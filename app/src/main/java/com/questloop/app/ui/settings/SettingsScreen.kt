@@ -259,7 +259,9 @@ private fun AiSection(
             )
             OutlinedTextField(
                 value = key,
-                onValueChange = { key = it },
+                // Entering a key implies you want AI on, so flip the switch for you
+                // (you can still turn it back off above).
+                onValueChange = { key = it; if (it.isNotBlank()) enabled = true },
                 label = { Text("OpenRouter API key") },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),

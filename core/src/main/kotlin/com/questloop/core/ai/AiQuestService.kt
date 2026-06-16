@@ -42,9 +42,13 @@ class AiQuestService(
         val existing: List<Quest> = emptyList(),
     )
 
-    /** Result of a suggestion request. [fromAi] is false when the deterministic
-     *  fallback was used (model unavailable, junk output, or all rejected). */
-    data class Suggestion(val quests: List<Quest>, val fromAi: Boolean)
+    /**
+     * Result of a suggestion request. [fromAi] is false when the deterministic
+     * fallback was used. [error] is non-null only when AI was actually attempted
+     * and failed (transport error, unparseable output, or everything filtered),
+     * so the caller can tell the user instead of silently echoing their text.
+     */
+    data class Suggestion(val quests: List<Quest>, val fromAi: Boolean, val error: String? = null)
 
     suspend fun suggest(input: Input): Suggestion {
         val userPrompt = PromptLibrary.questGenerationUserPayload(
@@ -55,18 +59,28 @@ class AiQuestService(
             focusAreas = input.focusAreas.map { it.name },
         ) + "\n\n" + SCHEMA_INSTRUCTION
 
-        val raw = runCatching {
+        val attempt = runCatching {
             client.complete(PromptLibrary.QUEST_GENERATION_SYSTEM, userPrompt)
-        }.getOrNull()
+        }
+        if (attempt.isFailure) {
+            val reason = attempt.exceptionOrNull()?.message?.takeIf { it.isNotBlank() } ?: "couldn't reach the model"
+            return fallback(input, "AI request failed: $reason")
+        }
 
-        val proposed = raw?.let(::parse)?.mapIndexedNotNull(::toQuest).orEmpty()
+        val proposed = attempt.getOrNull()?.let(::parse)?.mapIndexedNotNull(::toQuest).orEmpty()
         val accepted = validator.validate(proposed, input.existing).accepted
-        return if (accepted.isNotEmpty()) {
-            Suggestion(accepted, fromAi = true)
-        } else {
-            Suggestion(FallbackSuggester.suggest(input.todos, input.focusAreas.toSet()), fromAi = false)
+        return when {
+            accepted.isNotEmpty() -> Suggestion(accepted, fromAi = true)
+            proposed.isEmpty() -> fallback(input, "AI returned an unexpected response.")
+            else -> fallback(input, "AI suggestions didn't pass the safety checks.")
         }
     }
+
+    private fun fallback(input: Input, error: String?) = Suggestion(
+        quests = FallbackSuggester.suggest(input.todos, input.focusAreas.toSet()),
+        fromAi = false,
+        error = error,
+    )
 
     /** Extracts the JSON array from a possibly-chatty/markdown-fenced response. */
     internal fun parse(raw: String): List<AiQuestDto> {

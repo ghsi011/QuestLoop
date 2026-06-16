@@ -70,15 +70,24 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
             _generating.value = true
             try {
                 val suggestion = repository.suggestQuests(lines)
-                suggestion.quests.forEach { repository.addQuest(it.copy(id = "user-${UUID.randomUUID()}")) }
-                val n = suggestion.quests.size
-                _quickResult.value = when {
-                    n == 0 -> "Nothing to add — try rephrasing."
-                    suggestion.fromAi -> "Added $n quest${if (n == 1) "" else "s"} ✨"
-                    else -> "Added $n quest${if (n == 1) "" else "s"}."
+                if (suggestion.error != null) {
+                    // AI was configured but the call failed — don't silently turn the
+                    // user's text into quests; tell them so they can fix and retry.
+                    _quickResult.value =
+                        "${suggestion.error} Nothing added — check your key, model, and connection in Settings."
+                } else {
+                    suggestion.quests.forEach { repository.addQuest(it.copy(id = "user-${UUID.randomUUID()}")) }
+                    val n = suggestion.quests.size
+                    val plural = if (n == 1) "" else "s"
+                    _quickResult.value = when {
+                        n == 0 -> "Nothing to add — try rephrasing."
+                        suggestion.fromAi -> "Added $n quest$plural ✨"
+                        // No error but not from AI means AI is off — nudge, don't pretend.
+                        else -> "Added $n quest$plural. Turn on AI in Settings for smarter suggestions."
+                    }
                 }
             } catch (e: Exception) {
-                _quickResult.value = "AI didn't respond. Check your key in Settings."
+                _quickResult.value = "Something went wrong. Your data is safe — please try again."
             } finally {
                 _generating.value = false
             }

@@ -63,10 +63,14 @@ class QuestRepository(
 
     val profile = profileStore.profile
 
-    /** Total XP, derived from the ledger (the single source of truth). */
-    val totalXp: Flow<Long> = completionDao.observeTotalXp()
+    /**
+     * Total XP, derived from the ledger (the single source of truth). Floored at
+     * zero for display — a gentle miss penalty can momentarily dip the raw ledger
+     * below zero, but the user-facing total never shows negative.
+     */
+    val totalXp: Flow<Long> = completionDao.observeTotalXp().map { it.coerceAtLeast(0) }
 
-    suspend fun totalXp(): Long = completionDao.totalXp()
+    suspend fun totalXp(): Long = completionDao.totalXp().coerceAtLeast(0)
 
     suspend fun addQuest(quest: Quest) = questDao.upsert(quest.toEntity())
 

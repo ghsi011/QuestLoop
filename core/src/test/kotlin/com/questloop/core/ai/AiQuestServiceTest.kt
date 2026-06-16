@@ -6,6 +6,8 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class AiQuestServiceTest {
@@ -57,6 +59,29 @@ class AiQuestServiceTest {
         val result = svc.suggest(AiQuestService.Input(todos = listOf("Call mom")))
         assertFalse(result.fromAi)
         assertTrue(result.quests.isNotEmpty())
+    }
+
+    @Test
+    fun `a transport failure is surfaced as an error`() = runTest {
+        val svc = service(fail = true)
+        val result = svc.suggest(AiQuestService.Input(todos = listOf("Call mom")))
+        assertNotNull(result.error)
+        assertTrue(result.error!!.contains("network down"))
+    }
+
+    @Test
+    fun `unparseable output is surfaced as an error`() = runTest {
+        val svc = service("I cannot help with that.")
+        val result = svc.suggest(AiQuestService.Input(todos = listOf("Email landlord")))
+        assertNotNull(result.error)
+    }
+
+    @Test
+    fun `a successful suggestion has no error`() = runTest {
+        val svc = service("""[{"title":"Stretch","category":"HEALTH","difficulty":"TRIVIAL"}]""")
+        val result = svc.suggest(AiQuestService.Input(todos = listOf("stretch")))
+        assertTrue(result.fromAi)
+        assertNull(result.error)
     }
 
     @Test

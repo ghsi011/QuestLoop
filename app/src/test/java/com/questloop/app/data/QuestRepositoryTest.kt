@@ -156,6 +156,17 @@ class QuestRepositoryTest {
     }
 
     @Test
+    fun `skipping a quest before earning any xp never goes negative`() = runTest {
+        // Regression: skip applied a gentle penalty, the ledger went below zero, and
+        // LevelSystem.levelForXp(<0) threw -> the Today screen crashed.
+        repo.addQuest(quest("a"))
+        repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.SKIPPED)
+        assertEquals(0L, repo.totalXp())
+        // The level lookup that the UI performs must not throw on the raw ledger.
+        com.questloop.core.reward.LevelSystem.progress(repo.totalXp())
+    }
+
+    @Test
     fun `failing a reduction quest never reduces xp`() = runTest {
         val smoke = quest("smoke", category = QuestCategory.BAD_HABIT_REDUCTION)
         repo.addQuest(smoke)

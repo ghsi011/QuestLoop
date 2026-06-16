@@ -25,17 +25,21 @@ object LevelSystem {
         return floor(BASE_STEP * l * (l + 1) / 2.0).toLong()
     }
 
-    /** Current level for a given cumulative XP total. */
+    /**
+     * Current level for a given cumulative XP total. A gentle miss penalty can
+     * briefly push the ledger below zero (e.g. a skip before any XP is earned);
+     * such totals simply map to level 1 rather than being rejected.
+     */
     fun levelForXp(totalXp: Long): Int {
-        require(totalXp >= 0) { "xp must be >= 0" }
+        val xp = totalXp.coerceAtLeast(0)
         // Invert xpForLevel: solve BASE/2 * (L-1)L <= xp.
         // (L-1)L <= 2*xp/BASE  ->  L ~= (1 + sqrt(1 + 8*xp/BASE)) / 2
-        val n = 2.0 * totalXp / BASE_STEP
+        val n = 2.0 * xp / BASE_STEP
         var l = floor((1.0 + sqrt(1.0 + 4.0 * n)) / 2.0).toInt().coerceAtLeast(1)
         // Correct any floating-point drift against the exact integer thresholds
-        // so the result is always the largest L with xpForLevel(L) <= totalXp.
-        while (xpForLevel(l + 1) <= totalXp) l++
-        while (l > 1 && xpForLevel(l) > totalXp) l--
+        // so the result is always the largest L with xpForLevel(L) <= xp.
+        while (xpForLevel(l + 1) <= xp) l++
+        while (l > 1 && xpForLevel(l) > xp) l--
         return l
     }
 
@@ -48,11 +52,12 @@ object LevelSystem {
     )
 
     fun progress(totalXp: Long): LevelProgress {
-        val level = levelForXp(totalXp)
+        val xp = totalXp.coerceAtLeast(0)
+        val level = levelForXp(xp)
         val floorXp = xpForLevel(level)
         val ceilXp = xpForLevel(level + 1)
         val span = (ceilXp - floorXp).coerceAtLeast(1)
-        val into = totalXp - floorXp
+        val into = xp - floorXp
         return LevelProgress(
             level = level,
             xpIntoLevel = into,

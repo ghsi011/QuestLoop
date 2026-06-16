@@ -45,6 +45,16 @@ class LevelSystemTest {
     }
 
     @Test
+    fun `negative xp maps to level 1 instead of crashing`() {
+        // A gentle miss penalty can dip the ledger below zero before any XP is
+        // earned; this must never throw (regression: skip crash).
+        assertEquals(1, LevelSystem.levelForXp(-3))
+        val p = LevelSystem.progress(-10)
+        assertEquals(1, p.level)
+        assertEquals(0.0, p.fractionToNext, 0.0001)
+    }
+
+    @Test
     fun `monotonic non-decreasing levels as xp increases`() {
         var last = 1
         var xp = 0L
