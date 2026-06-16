@@ -295,8 +295,7 @@ private fun AiSection(
                     FilterChip(
                         selected = model == preset,
                         onClick = { model = preset },
-                        // Show the model name (e.g. "llama-3.3-70b-instruct"), not the provider.
-                        label = { Text(preset.substringAfter('/').substringBefore(':').ifEmpty { preset }) },
+                        label = { Text(modelLabel(preset)) },
                     )
                 }
             }
@@ -307,6 +306,12 @@ private fun AiSection(
             ) { Text("Save") }
         }
     }
+}
+
+/** Short, readable label for a model preset chip. */
+private fun modelLabel(model: String): String = when (model) {
+    "openrouter/free" -> "Auto-pick (free)"
+    else -> model.substringAfter('/').substringBefore(':').ifEmpty { model }
 }
 
 @OptIn(ExperimentalLayoutApi::class)

@@ -74,7 +74,7 @@ class OpenRouterClientTest {
     fun `AiQuestService turns a mock success into ai quests end to end`() = runTest {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
-                """{"choices":[{"message":{"content":"[{\"title\":\"Pay rent\",\"category\":\"LIFE_ADMIN\",\"difficulty\":\"EASY\"}]"}}]}""",
+                """{"choices":[{"message":{"role":"assistant","content":"[{\"title\":\"Pay rent\",\"category\":\"LIFE_ADMIN\",\"difficulty\":\"EASY\"}]"}}]}""",
             ),
         )
 

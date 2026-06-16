@@ -78,8 +78,9 @@ class OpenRouterClient(
         val temperature: Double = 0.4,
     )
 
+    // role defaults so response parsing tolerates messages that omit it.
     @Serializable
-    private data class ChatMessage(val role: String, val content: String)
+    private data class ChatMessage(val role: String = "", val content: String = "")
 
     @Serializable
     private data class ChatResponse(val choices: List<Choice> = emptyList())

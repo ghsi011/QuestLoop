@@ -15,17 +15,25 @@ data class AiConfig(
     val usable: Boolean get() = enabled && apiKey.isNotBlank()
 
     companion object {
-        const val DEFAULT_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
+        /**
+         * OpenRouter's Free Models Router auto-selects a working free model (and
+         * filters for ones that support structured output), so it can't go stale
+         * the way a single pinned model can. That makes it the safest default.
+         */
+        const val DEFAULT_MODEL = "openrouter/free"
 
         /**
-         * A few free OpenRouter models offered as quick presets. OpenRouter's free
-         * line-up changes over time; if one returns "model not found", pick another
-         * or paste any id from openrouter.ai/models.
+         * Quick-pick free models (current as of June 2026). The first auto-selects;
+         * the rest are strong specific models. OpenRouter's free line-up changes
+         * over time, so if one returns "model not found", pick another or paste any
+         * id from openrouter.ai/models.
          */
         val FREE_MODEL_PRESETS = listOf(
+            "openrouter/free",
             "meta-llama/llama-3.3-70b-instruct:free",
-            "mistralai/mistral-7b-instruct:free",
-            "qwen/qwen-2.5-7b-instruct:free",
+            "deepseek/deepseek-chat-v3-0324:free",
+            "meta-llama/llama-4-maverick:free",
+            "deepseek/deepseek-r1:free",
         )
     }
 }
