@@ -110,11 +110,12 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
         viewModelScope.launch {
             _state.update { it.copy(refiningId = id, message = null) }
             val result = repository.refineQuest(target, instruction)
+            val revised = result.quest // local val so it smart-casts inside the lambda
             _state.update { st ->
                 st.copy(
                     refiningId = null,
-                    suggestions = if (result.quest != null) {
-                        st.suggestions.map { if (it.id == id) result.quest else it }
+                    suggestions = if (revised != null) {
+                        st.suggestions.map { if (it.id == id) revised else it }
                     } else {
                         st.suggestions
                     },
