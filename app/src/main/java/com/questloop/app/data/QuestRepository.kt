@@ -91,8 +91,10 @@ class QuestRepository(
         val inTodaysPlan: Boolean,
         /** Eligible to be done today by its recurrence cadence. */
         val dueToday: Boolean,
-        /** Already completed today. */
-        val completedToday: Boolean,
+        /** Finished for today (binary completed, or a counting/timed target reached). */
+        val done: Boolean,
+        /** Today's logged count/minutes, for resuming a partial log. */
+        val progress: Int,
     )
 
     /**
@@ -106,17 +108,17 @@ class QuestRepository(
         val plan = todayPlan(epochDay, dayPart, checkIn)
         val inPlan = plan.quests.map { it.quest.id }.toSet()
         val lastCompleted = completionDao.lastCompletedDays().associate { it.questId to it.lastDay }
-        val completedTodayIds = completionDao.between(epochDay, epochDay)
-            .map { it.toModel() }
-            .filter { it.result == CompletionResult.COMPLETED }
-            .map { it.questId }
-            .toSet()
+        // "Done" uses the same style-aware dismissal as the plan: a partially logged
+        // counting/timed quest is NOT done, so it stays visible to keep logging.
+        val dismissed = dismissedQuestIdsToday(epochDay)
+        val progress = todayProgress(epochDay)
         return questDao.getActive().map { it.toModel() }.map { quest ->
             QuestStatus(
                 quest = quest,
                 inTodaysPlan = quest.id in inPlan,
                 dueToday = QuestScheduler.isDue(quest.frequency, epochDay, lastCompleted[quest.id]),
-                completedToday = quest.id in completedTodayIds,
+                done = quest.id in dismissed,
+                progress = progress[quest.id] ?: 0,
             )
         }
     }

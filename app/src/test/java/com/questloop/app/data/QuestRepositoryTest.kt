@@ -237,12 +237,26 @@ class QuestRepositoryTest {
         assertEquals(2, overview.size)
         val daily = overview.first { it.quest.id == "daily1" }
         val weekly = overview.first { it.quest.id == "weekly1" }
-        // Completed today -> shown as done and no longer in the curated plan.
-        assertTrue(daily.completedToday)
+        // Completed today -> marked done and no longer in the curated plan.
+        assertTrue(daily.done)
         assertFalse(daily.inTodaysPlan)
         // A never-completed weekly quest is due today and visible in the backlog.
-        assertFalse(weekly.completedToday)
+        assertFalse(weekly.done)
         assertTrue(weekly.dueToday)
+    }
+
+    @Test
+    fun `overview keeps a partially logged counting quest visible with its progress`() = runTest {
+        val water = quest("water", style = CompletionStyle.QUANTITATIVE, target = 8, category = QuestCategory.HEALTH)
+        repo.addQuest(water)
+        repo.completeMeasured(water, epochDay = 1, value = 3) // 3/8 -> partial, not done
+        val status = repo.questOverview(epochDay = 1, dayPart = DayPart.MIDDAY).first { it.quest.id == "water" }
+        assertFalse(status.done)
+        assertEquals(3, status.progress)
+
+        repo.completeMeasured(water, epochDay = 1, value = 8) // reaches target -> done
+        val done = repo.questOverview(epochDay = 1, dayPart = DayPart.MIDDAY).first { it.quest.id == "water" }
+        assertTrue(done.done)
     }
 
     @Test

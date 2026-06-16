@@ -27,7 +27,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -44,7 +43,6 @@ import com.questloop.app.ui.components.DifficultyPips
 import com.questloop.app.ui.components.InfoCard
 import com.questloop.app.ui.components.LevelRing
 import com.questloop.core.model.CompletionResult
-import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestInstance
 import com.questloop.core.safety.SafetyGuard
@@ -70,6 +68,10 @@ fun TodayScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val haptics = LocalHapticFeedback.current
+
+    // Refresh when re-entering Today so XP/level/plan reflect changes made on other
+    // tabs (e.g. completing a quest from the Quests backlog).
+    LaunchedEffect(Unit) { viewModel.refresh() }
 
     LaunchedEffect(state.toast) {
         val message = state.toast ?: return@LaunchedEffect
@@ -281,12 +283,13 @@ private fun QuestRow(instance: QuestInstance, actions: TodayActions, progress: I
                     OnboardingActions("Browse quest bank", actions.onOpenQuestBank) { actions.onSkip(quest) }
                 com.questloop.app.data.SampleData.ONBOARDING_CREATE ->
                     OnboardingActions("Create a quest", actions.onOpenAddQuest) { actions.onSkip(quest) }
-                else -> when (quest.completionStyle) {
-                    CompletionStyle.BINARY -> BinaryActions(quest, actions)
-                    CompletionStyle.QUANTITATIVE -> QuantitativeControl(quest, actions, progress)
-                    CompletionStyle.DURATION -> DurationControl(quest, actions, progress)
-                    CompletionStyle.SUBJECTIVE -> SubjectiveControl(quest, actions)
-                }
+                else -> com.questloop.app.ui.components.QuestCompletionControls(
+                    quest = quest,
+                    progress = progress,
+                    onComplete = { actions.onComplete(quest) },
+                    onSkip = { actions.onSkip(quest) },
+                    onMeasured = { actions.onCompleteMeasured(quest, it) },
+                )
             }
         }
     }
@@ -301,62 +304,5 @@ private fun OnboardingActions(ctaLabel: String, onCta: () -> Unit, onDismiss: ()
     ) {
         Button(onClick = onCta) { Text(ctaLabel) }
         OutlinedButton(onClick = onDismiss) { Text("Dismiss") }
-    }
-}
-
-@Composable
-private fun BinaryActions(quest: Quest, actions: TodayActions) {
-    Row(
-        Modifier.fillMaxWidth().padding(top = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Button(onClick = { actions.onComplete(quest) }) { Text("Complete") }
-        OutlinedButton(onClick = { actions.onSkip(quest) }) {
-            Text(if (quest.isReductionQuest) "Log honestly" else "Skip")
-        }
-    }
-}
-
-@Composable
-private fun QuantitativeControl(quest: Quest, actions: TodayActions, progress: Int) {
-    val target = (quest.targetCount ?: 1).coerceAtLeast(1)
-    var count by remember(quest.id, progress) { mutableIntStateOf(progress.coerceIn(0, target)) }
-    Column(Modifier.padding(top = 8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { if (count > 0) count-- }) { Text("−") }
-            Text("$count / $target ${quest.unit.orEmpty()}".trim(), style = MaterialTheme.typography.bodyMedium)
-            OutlinedButton(onClick = { if (count < target) count++ }) { Text("+") }
-        }
-        Button(onClick = { actions.onCompleteMeasured(quest, count) }, modifier = Modifier.padding(top = 8.dp)) {
-            Text("Log progress")
-        }
-    }
-}
-
-@Composable
-private fun DurationControl(quest: Quest, actions: TodayActions, progress: Int) {
-    val target = quest.estimatedMinutes.coerceAtLeast(1)
-    var minutes by remember(quest.id, progress) { mutableIntStateOf(if (progress > 0) progress else target) }
-    Column(Modifier.padding(top = 8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { if (minutes >= 5) minutes -= 5 }) { Text("−5") }
-            Text("$minutes / $target min", style = MaterialTheme.typography.bodyMedium)
-            OutlinedButton(onClick = { minutes += 5 }) { Text("+5") }
-        }
-        Button(onClick = { actions.onCompleteMeasured(quest, minutes) }, modifier = Modifier.padding(top = 8.dp)) {
-            Text("Log time")
-        }
-    }
-}
-
-@Composable
-private fun SubjectiveControl(quest: Quest, actions: TodayActions) {
-    Column(Modifier.padding(top = 8.dp)) {
-        Text("How did it go?", style = MaterialTheme.typography.bodySmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
-            (1..5).forEach { rating ->
-                OutlinedButton(onClick = { actions.onCompleteMeasured(quest, rating) }) { Text("$rating") }
-            }
-        }
     }
 }

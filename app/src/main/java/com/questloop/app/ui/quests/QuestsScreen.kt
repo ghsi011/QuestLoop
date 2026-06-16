@@ -12,7 +12,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -33,13 +32,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.ui.components.CategoryDot
 import com.questloop.app.ui.components.DifficultyPips
 import com.questloop.app.ui.components.InfoCard
+import com.questloop.app.ui.components.QuestCompletionControls
 import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestFrequency
 
@@ -86,6 +85,14 @@ fun QuestsScreen(
                     modifier = Modifier.padding(top = 16.dp),
                 )
             }
+        } else if (state.groups.isEmpty()) {
+            item {
+                InfoCard(
+                    title = "All done for today ✓",
+                    body = "Your recurring quests will be back tomorrow.",
+                    modifier = Modifier.padding(top = 16.dp),
+                )
+            }
         }
 
         state.groups.forEach { group ->
@@ -101,6 +108,8 @@ fun QuestsScreen(
                 QuestBacklogRow(
                     status = status,
                     onComplete = { viewModel.complete(status.quest) },
+                    onSkip = { viewModel.skip(status.quest) },
+                    onMeasured = { viewModel.completeMeasured(status.quest, it) },
                     onDelete = { pendingDelete = status.quest },
                 )
             }
@@ -126,43 +135,41 @@ fun QuestsScreen(
 private fun QuestBacklogRow(
     status: QuestRepository.QuestStatus,
     onComplete: () -> Unit,
+    onSkip: () -> Unit,
+    onMeasured: (Int) -> Unit,
     onDelete: () -> Unit,
 ) {
     val quest = status.quest
     Card(Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            CategoryDot(quest.category)
-            Column(Modifier.weight(1f)) {
-                Text(
-                    quest.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    textDecoration = if (status.completedToday) TextDecoration.LineThrough else null,
-                )
-                Row(
-                    Modifier.padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    DifficultyPips(quest.difficulty)
-                    Text(
-                        "${frequencyLabel(quest.frequency)} · ${quest.estimatedMinutes}m",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CategoryDot(quest.category)
+                Column(Modifier.weight(1f)) {
+                    Text(quest.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Row(
+                        Modifier.padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        DifficultyPips(quest.difficulty)
+                        Text(
+                            "${frequencyLabel(quest.frequency)} · ${quest.estimatedMinutes}m",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Outlined.Delete, contentDescription = "Delete ${quest.title}")
                 }
             }
-            if (status.completedToday) {
-                AssistChip(onClick = {}, enabled = false, label = { Text("Done") })
-            } else {
-                Button(onClick = onComplete) { Text("Done") }
-            }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Outlined.Delete, contentDescription = "Delete ${quest.title}")
-            }
+            // Real completion control per quest style (counting, timed, rating, binary).
+            QuestCompletionControls(
+                quest = quest,
+                progress = status.progress,
+                onComplete = onComplete,
+                onSkip = onSkip,
+                onMeasured = onMeasured,
+            )
         }
     }
 }
