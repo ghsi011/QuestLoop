@@ -34,31 +34,25 @@ fun OnboardingScreen(onGetStarted: () -> Unit) {
             modifier = Modifier.padding(top = 24.dp),
         )
         Text(
-            "Turn your real-life todos, habits, and goals into quests. Complete them to earn " +
-                "XP, levels, and streaks — designed to feel fair and forgiving, never punishing.",
+            "Turn todos, habits, and goals into quests. Earn XP and streaks — fair and forgiving.",
             style = MaterialTheme.typography.bodyLarge,
         )
 
         InfoCard(
             title = "🎯 A gentle daily loop",
-            body = "A quick morning glance and a short evening wrap-up are all it takes. Tough days " +
-                "are okay — recovery and consistency matter more than perfection.",
+            body = "A quick morning glance, a short evening wrap-up. Rough days are okay.",
         )
         InfoCard(
             title = "💸 Your rewards stay yours",
-            body = "QuestLoop never holds, moves, or invests your money, and gives no financial " +
-                "advice. It only helps you track a reward budget you set and manage yourself, " +
-                "outside the app. Only set aside what you can comfortably afford.",
+            body = "Not financial advice. QuestLoop never touches your money — you set and manage a budget yourself.",
         )
         InfoCard(
             title = "🔒 Private by default",
-            body = "Everything stays on this device — nothing is uploaded, and backups are off " +
-                "unless you turn them on. You can export or delete all your data anytime in Settings.",
+            body = "Everything stays on-device. Export or delete anytime in Settings.",
         )
         InfoCard(
             title = "✨ Optional AI",
-            body = "If you want, add your own AI key in Settings to turn messy todo lists into " +
-                "quests. It's entirely optional — everything works without it.",
+            body = "Add your own key in Settings to turn lists into quests — optional.",
         )
 
         Button(

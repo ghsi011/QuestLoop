@@ -1,5 +1,6 @@
 package com.questloop.app.ui.today
 
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -12,6 +13,7 @@ import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.QuestFrequency
 import com.questloop.core.model.QuestInstance
+import com.questloop.core.safety.SafetyGuard
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -40,6 +42,7 @@ class TodayContentTest {
         target: Int? = null,
         unit: String? = null,
         category: QuestCategory = QuestCategory.WORK_STUDY,
+        rationale: String? = null,
     ) = Quest(
         id = id,
         title = title,
@@ -49,6 +52,7 @@ class TodayContentTest {
         completionStyle = style,
         targetCount = target,
         unit = unit,
+        rationale = rationale,
     )
 
     private fun stateWith(vararg quests: Quest): TodayUiState {
@@ -87,6 +91,30 @@ class TodayContentTest {
         composeRule.onNodeWithText("Write the report").assertIsDisplayed()
         composeRule.onNodeWithText("Complete").performClick()
         assertEquals("q1", completed?.id)
+    }
+
+    @Test
+    fun `rationale is hidden until Why is tapped`() {
+        composeRule.setContent {
+            TodayContent(
+                state = stateWith(quest("q1", "Write the report", rationale = "It's due Friday")),
+                actions = noopActions(),
+            )
+        }
+        composeRule.onNodeWithText("It's due Friday").assertDoesNotExist()
+        composeRule.onNodeWithText("Why?").performClick()
+        composeRule.onNodeWithText("It's due Friday").assertIsDisplayed()
+    }
+
+    @Test
+    fun `safety signal renders as a single banner`() {
+        val state = stateWith(quest("q1", "Anything")).copy(
+            signals = listOf(
+                SafetyGuard.Signal("REST", SafetyGuard.Severity.SUGGESTION, "Consider a rest day"),
+            ),
+        )
+        composeRule.setContent { TodayContent(state = state, actions = noopActions()) }
+        composeRule.onNodeWithText("Consider a rest day", substring = true).assertIsDisplayed()
     }
 
     @Test

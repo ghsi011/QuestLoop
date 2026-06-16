@@ -89,29 +89,23 @@ fun SettingsScreen(viewModel: SettingsViewModel, onOpenHabits: () -> Unit) {
                     valueRange = 1f..12f,
                     steps = 10,
                 )
-                Text(
-                    "How many quests a daily plan can hold.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
             }
         }
 
         Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Text("Default time available: ${prefs.defaultAvailableMinutes} min", fontWeight = FontWeight.SemiBold)
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = {
-                        viewModel.setAvailableMinutes((prefs.defaultAvailableMinutes - 15).coerceAtLeast(15))
-                    }) { Text("−15") }
-                    Text("${prefs.defaultAvailableMinutes} min", style = MaterialTheme.typography.bodyMedium)
-                    OutlinedButton(onClick = {
-                        viewModel.setAvailableMinutes((prefs.defaultAvailableMinutes + 15).coerceAtMost(480))
-                    }) { Text("+15") }
-                }
-                Text(
-                    "Used to size your plan when you haven't done an energy check-in.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
+            Row(
+                Modifier.fillMaxWidth().padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("Time/day", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                OutlinedButton(onClick = {
+                    viewModel.setAvailableMinutes((prefs.defaultAvailableMinutes - 15).coerceAtLeast(15))
+                }) { Text("−15") }
+                Text("${prefs.defaultAvailableMinutes}m", style = MaterialTheme.typography.bodyMedium)
+                OutlinedButton(onClick = {
+                    viewModel.setAvailableMinutes((prefs.defaultAvailableMinutes + 15).coerceAtMost(480))
+                }) { Text("+15") }
             }
         }
 
