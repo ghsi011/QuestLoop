@@ -76,6 +76,35 @@ class AiQuestValidatorTest {
     }
 
     @Test
+    fun `caps difficulty inflation for implausibly short tasks`() {
+        // A 2-minute "EPIC" is the model inflating XP — clamp it to what the time
+        // budget can justify rather than trusting the prompt.
+        val inflated = Quest(
+            id = "1",
+            title = "Quick win",
+            category = QuestCategory.LIFE_ADMIN,
+            frequency = QuestFrequency.ONE_OFF,
+            difficulty = Difficulty.EPIC,
+            estimatedMinutes = 2,
+        )
+        assertEquals(Difficulty.TRIVIAL, validator.validate(listOf(inflated)).accepted.single().difficulty)
+    }
+
+    @Test
+    fun `keeps an honest difficulty within its time budget`() {
+        // A genuinely long task keeps its high difficulty.
+        val honest = Quest(
+            id = "1",
+            title = "Deep work block",
+            category = QuestCategory.WORK_STUDY,
+            frequency = QuestFrequency.ONE_OFF,
+            difficulty = Difficulty.EPIC,
+            estimatedMinutes = 90,
+        )
+        assertEquals(Difficulty.EPIC, validator.validate(listOf(honest)).accepted.single().difficulty)
+    }
+
+    @Test
     fun `drops duplicates of existing quests`() {
         val existing = listOf(q("e", "Walk the dog"))
         val result = validator.validate(listOf(q("1", "  walk the   dog ")), existing)

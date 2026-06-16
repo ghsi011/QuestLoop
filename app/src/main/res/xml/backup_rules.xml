@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Backup is disabled (android:allowBackup="false"); this is a backstop so that
+     if it is ever re-enabled, the user's on-device data is still excluded.
+     An empty <full-backup-content> would back up EVERYTHING, so the sensitive
+     stores are listed explicitly (SPEC §9, privacy). -->
 <full-backup-content>
-    <!-- QuestLoop keeps sensitive habit/goal data; nothing is backed up by
-         default until the user opts in (SPEC section 9, privacy). -->
+    <exclude domain="database" path="questloop.db" />
+    <exclude domain="file" path="datastore/questloop_profile.preferences_pb" />
+    <exclude domain="sharedpref" path="questloop_secure.xml" />
 </full-backup-content>

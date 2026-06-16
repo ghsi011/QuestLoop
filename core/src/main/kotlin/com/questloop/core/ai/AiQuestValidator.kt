@@ -72,11 +72,16 @@ class AiQuestValidator(private val config: Config = Config()) {
 
             // Clamp unrealistic estimates rather than discarding useful quests.
             val safeMinutes = raw.estimatedMinutes.coerceIn(1, config.maxMinutes)
+            // Guardrails shouldn't trust the prompt: a model that returns everything
+            // as EPIC/CRITICAL would mint inflated XP. Cap difficulty to what the
+            // time estimate can plausibly justify (SPEC 11 AI anti-abuse).
+            val safeDifficulty = clampDifficulty(raw.difficulty, safeMinutes)
             // Reductions must be tagged correctly so the reward engine treats
             // relapse with honesty, not punishment.
             val safeReduction = raw.category == QuestCategory.BAD_HABIT_REDUCTION
             val sanitized = raw.copy(
                 title = title,
+                difficulty = safeDifficulty,
                 estimatedMinutes = safeMinutes,
                 isReductionQuest = safeReduction,
                 rationale = raw.rationale?.trim()?.ifBlank { null },
@@ -88,6 +93,23 @@ class AiQuestValidator(private val config: Config = Config()) {
     }
 
     private fun String.normalized() = trim().lowercase().replace(Regex("\\s+"), " ")
+
+    /**
+     * The hardest difficulty a quest taking [minutes] can plausibly claim. Caps
+     * obvious inflation (e.g. a 2-minute "EPIC") without downgrading quests sized
+     * at their natural effort. Thresholds sit at/below each tier's default minutes
+     * so honestly-rated quests are never reduced.
+     */
+    private fun clampDifficulty(difficulty: Difficulty, minutes: Int): Difficulty {
+        val ceiling = when {
+            minutes >= 60 -> Difficulty.EPIC
+            minutes >= 30 -> Difficulty.HARD
+            minutes >= 12 -> Difficulty.MEDIUM
+            minutes >= 4 -> Difficulty.EASY
+            else -> Difficulty.TRIVIAL
+        }
+        return if (difficulty.ordinal > ceiling.ordinal) ceiling else difficulty
+    }
 }
 
 /**

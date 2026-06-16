@@ -11,9 +11,13 @@
     <!-- Brief CPU wake lock so an in-flight AI request survives the screen turning off. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Privacy posture (SPEC §9): the user's habit/goal/quest data and the AI key
+         stay on this device. Backup is disabled so nothing is copied to cloud/adb
+         backup or device-transfer; the rule files below are an explicit backstop
+         in case backup is ever re-enabled. -->
     <application
         android:name=".QuestLoopApplication"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"

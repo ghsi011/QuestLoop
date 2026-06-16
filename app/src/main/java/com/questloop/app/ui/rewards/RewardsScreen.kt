@@ -40,7 +40,9 @@ fun RewardsScreen(viewModel: RewardsViewModel, snackbarHostState: SnackbarHostSt
 
     // Refresh on re-entry so the allowance reflects quests completed elsewhere.
     LaunchedEffect(Unit) { viewModel.load() }
-    LaunchedEffect(state.savedMessage) {
+    // Key on the monotonic messageId, not the string, so an identical confirmation
+    // shown twice (e.g. saving the same budget again) isn't swallowed.
+    LaunchedEffect(state.messageId) {
         val msg = state.savedMessage ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Short)
         viewModel.consumeSavedMessage()

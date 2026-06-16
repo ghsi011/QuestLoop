@@ -23,9 +23,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -45,15 +45,17 @@ import com.questloop.core.model.QuestFrequency
 
 @Composable
 fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
-    // Text fields are saveable so a half-typed quest survives rotation / process death.
+    // Everything is saveable so a half-built quest (text AND the chosen category /
+    // difficulty / frequency / style / counts) survives rotation and process death.
+    // Enums need a stateSaver storing their stable name; Ints save fine as values.
     var title by rememberSaveable { mutableStateOf("") }
-    var category by remember { mutableStateOf(QuestCategory.LIFE_ADMIN) }
-    var difficulty by remember { mutableStateOf(Difficulty.MEDIUM) }
-    var priority by remember { mutableStateOf(Priority.NORMAL) }
-    var frequency by remember { mutableStateOf(QuestFrequency.ONE_OFF) }
-    var minutes by remember { mutableIntStateOf(25) }
-    var completionStyle by remember { mutableStateOf(CompletionStyle.BINARY) }
-    var targetCount by remember { mutableIntStateOf(8) }
+    var category by rememberSaveable(stateSaver = enumSaver<QuestCategory>()) { mutableStateOf(QuestCategory.LIFE_ADMIN) }
+    var difficulty by rememberSaveable(stateSaver = enumSaver<Difficulty>()) { mutableStateOf(Difficulty.MEDIUM) }
+    var priority by rememberSaveable(stateSaver = enumSaver<Priority>()) { mutableStateOf(Priority.NORMAL) }
+    var frequency by rememberSaveable(stateSaver = enumSaver<QuestFrequency>()) { mutableStateOf(QuestFrequency.ONE_OFF) }
+    var minutes by rememberSaveable { mutableStateOf(25) }
+    var completionStyle by rememberSaveable(stateSaver = enumSaver<CompletionStyle>()) { mutableStateOf(CompletionStyle.BINARY) }
+    var targetCount by rememberSaveable { mutableStateOf(8) }
     var unit by rememberSaveable { mutableStateOf("") }
     var quickText by rememberSaveable { mutableStateOf("") }
 
@@ -303,6 +305,10 @@ private fun <T> ChipGroup(options: List<T>, selected: T, label: (T) -> String = 
         }
     }
 }
+
+/** Saves an enum by its stable name so picks survive process death (AGENTS.md gotcha). */
+private inline fun <reified T : Enum<T>> enumSaver(): Saver<T, String> =
+    Saver(save = { it.name }, restore = { enumValueOf<T>(it) })
 
 private fun <T> prettyOf(value: T): String = when (value) {
     is QuestCategory -> value.pretty()

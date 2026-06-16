@@ -4,9 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationManagerCompat
-import com.questloop.app.data.ProfileStore
-import com.questloop.app.data.QuestRepository
-import com.questloop.app.data.local.QuestLoopDatabase
+import com.questloop.app.QuestLoopApplication
 import com.questloop.core.generation.RoutineQuestFactory
 import com.questloop.core.model.CompletionResult
 import com.questloop.core.model.DayPart
@@ -34,8 +32,9 @@ class ReminderActionReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 runCatching {
-                    val db = QuestLoopDatabase.get(context)
-                    val repo = QuestRepository(db.questDao(), db.completionDao(), ProfileStore(context.applicationContext))
+                    // Reuse the app's single wired repository (EncryptedKeyStore etc.)
+                    // instead of hand-wiring a divergent one.
+                    val repo = (context.applicationContext as QuestLoopApplication).container.repository
                     val dayPart = if (slot == ReminderSlot.MORNING) DayPart.MORNING else DayPart.EVENING
                     val quest = RoutineQuestFactory.routinesFor(dayPart).firstOrNull()
                     if (quest != null) {

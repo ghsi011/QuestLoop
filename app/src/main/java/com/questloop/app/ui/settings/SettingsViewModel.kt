@@ -25,6 +25,12 @@ data class SettingsUiState(
     val diagnostics: String? = null,
     /** One-shot confirmation shown after a setting is saved; consumed by the UI. */
     val savedMessage: String? = null,
+    /**
+     * Monotonic id bumped on every [savedMessage] emit. The snackbar effect keys on
+     * this, not the message string, so two identical confirmations (e.g. tapping the
+     * same focus chip twice) both show instead of the second being swallowed.
+     */
+    val messageId: Long = 0,
 )
 
 class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
@@ -51,9 +57,19 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
     fun setReminders(config: ReminderConfig) =
         update(if (config.enabled) "Reminders on" else "Reminders off") { repository.setReminderConfig(config) }
 
-    /** Persists the whole AI config in one write (avoids racing partial copies). */
-    fun saveAi(enabled: Boolean, apiKey: String, model: String) = update("AI settings saved") {
-        repository.setAiConfig(AiConfig(enabled = enabled, apiKey = apiKey.trim(), model = model.trim()))
+    /**
+     * Persists the whole AI config in one write (avoids racing partial copies) and
+     * verifies the (encrypted) key actually persisted, so a silent Keystore write
+     * failure surfaces to the user instead of falsely reporting success.
+     */
+    fun saveAi(enabled: Boolean, apiKey: String, model: String) {
+        viewModelScope.launch {
+            val trimmedKey = apiKey.trim()
+            repository.setAiConfig(AiConfig(enabled = enabled, apiKey = trimmedKey, model = model.trim()))
+            reload()
+            val persisted = _state.value.ai.apiKey == trimmedKey
+            emitMessage(if (persisted) "AI settings saved" else "Couldn't save your key — please try again.")
+        }
     }
 
     fun setMaxDaily(value: Int) = update("Saved · up to $value quests a day") { repository.setMaxDaily(value) }
@@ -82,7 +98,7 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
         viewModelScope.launch {
             val dump = repository.aiDiagnosticsDump()
             if (dump.isBlank()) {
-                _state.update { it.copy(savedMessage = "No AI errors logged yet.") }
+                emitMessage("No AI errors logged yet.")
             } else {
                 _state.update { it.copy(diagnostics = dump) }
             }
@@ -103,7 +119,11 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
         viewModelScope.launch {
             action()
             reload()
-            _state.update { it.copy(savedMessage = message) }
+            emitMessage(message)
         }
     }
+
+    /** Sets a one-shot confirmation and bumps [SettingsUiState.messageId] so the UI shows it. */
+    private fun emitMessage(message: String) =
+        _state.update { it.copy(savedMessage = message, messageId = it.messageId + 1) }
 }

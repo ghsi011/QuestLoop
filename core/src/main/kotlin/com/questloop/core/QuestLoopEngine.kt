@@ -2,6 +2,7 @@ package com.questloop.core
 
 import com.questloop.core.model.CompletionRecord
 import com.questloop.core.model.CompletionResult
+import com.questloop.core.model.QuestCategory
 import com.questloop.core.reward.LevelSystem
 import com.questloop.core.reward.RewardConfig
 import com.questloop.core.reward.RewardContext
@@ -79,12 +80,20 @@ class QuestLoopEngine(
         activeEpochDays: Set<Long>,
     ): RewardContext {
         val others = sameDayRecords.filter { it.instanceId != record.instanceId }
-        val priorSame = others.count {
-            it.questId == record.questId &&
-                (it.result == CompletionResult.COMPLETED || it.result == CompletionResult.PARTIAL)
-        }
+        val priorSame = others.count { it.questId == record.questId && it.countsAsActivity }
         val metaToday = others.filter { it.isMeta }.sumOf { it.xpAwarded.coerceAtLeast(0) }
         val penaltyToday = others.sumOf { if (it.xpAwarded < 0) -it.xpAwarded else 0L }
+        // Honesty XP already granted today (positive grants on bad-habit relapses).
+        val honestyToday = others
+            .filter {
+                it.category == QuestCategory.BAD_HABIT_REDUCTION &&
+                    (it.result == CompletionResult.SKIPPED || it.result == CompletionResult.FAILED)
+            }
+            .sumOf { it.xpAwarded.coerceAtLeast(0) }
+        // XP from low-effort (trivial/easy) quests already granted today.
+        val lowEffortToday = others
+            .filter { it.countsAsActivity && it.difficulty.isLowEffort }
+            .sumOf { it.xpAwarded.coerceAtLeast(0) }
         // The streak is the run of active days *leading up to* today; excluding
         // today keeps it stable whether this is the first log or a re-log, so
         // re-logging the same instance can't change its reward (idempotency).
@@ -97,6 +106,8 @@ class QuestLoopEngine(
             priorSameQuestCompletions = priorSame,
             metaXpEarnedToday = metaToday,
             penaltyXpAppliedToday = penaltyToday,
+            honestyXpEarnedToday = honestyToday,
+            lowEffortXpEarnedToday = lowEffortToday,
             currentStreakDays = streak,
         )
     }
@@ -104,7 +115,7 @@ class QuestLoopEngine(
     internal fun deriveContext(record: CompletionRecord, history: List<CompletionRecord>): RewardContext {
         val sameDay = history.filter { it.epochDay == record.epochDay }
         val activeDays = history
-            .filter { it.result == CompletionResult.COMPLETED || it.result == CompletionResult.PARTIAL }
+            .filter { it.countsAsActivity }
             .map { it.epochDay }
             .toSet()
         return contextFrom(record, sameDay, activeDays)

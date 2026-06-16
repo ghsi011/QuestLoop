@@ -54,10 +54,15 @@ interface CompletionDao {
     @Query("SELECT COALESCE(SUM(xpAwarded), 0) FROM completions")
     fun observeTotalXp(): Flow<Long>
 
-    @Query("SELECT COUNT(*) FROM completions WHERE result IN ('COMPLETED', 'PARTIAL')")
+    // A zero-progress partial (e.g. "0 of 8 glasses") carries no penalty but is
+    // not real activity, so it must not count toward completions/streaks/wins.
+    @Query("SELECT COUNT(*) FROM completions WHERE result = 'COMPLETED' OR (result = 'PARTIAL' AND fraction > 0)")
     suspend fun countCompleted(): Int
 
-    @Query("SELECT COUNT(DISTINCT category) FROM completions WHERE result IN ('COMPLETED', 'PARTIAL')")
+    @Query(
+        "SELECT COUNT(DISTINCT category) FROM completions " +
+            "WHERE result = 'COMPLETED' OR (result = 'PARTIAL' AND fraction > 0)",
+    )
     suspend fun countDistinctCompletedCategories(): Int
 
     @Query(
@@ -68,12 +73,15 @@ interface CompletionDao {
 
     @Query(
         "SELECT COUNT(*) FROM completions WHERE category = 'BAD_HABIT_REDUCTION' " +
-            "AND result IN ('COMPLETED', 'PARTIAL')",
+            "AND (result = 'COMPLETED' OR (result = 'PARTIAL' AND fraction > 0))",
     )
     suspend fun countReductionWins(): Int
 
-    /** Distinct days with at least one completed/partial quest (for streaks). */
-    @Query("SELECT DISTINCT epochDay FROM completions WHERE result IN ('COMPLETED', 'PARTIAL')")
+    /** Distinct days with at least one real completion/partial (for streaks). */
+    @Query(
+        "SELECT DISTINCT epochDay FROM completions " +
+            "WHERE result = 'COMPLETED' OR (result = 'PARTIAL' AND fraction > 0)",
+    )
     suspend fun activeDays(): List<Long>
 
     /** Most recent fully-completed day per quest, for recurrence scheduling. */

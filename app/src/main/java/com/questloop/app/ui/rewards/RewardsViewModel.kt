@@ -18,6 +18,12 @@ data class RewardsUiState(
     val allowance: RewardAllowanceCalculator.AllowanceResult? = null,
     /** One-shot confirmation shown after the budget is saved; consumed by the UI. */
     val savedMessage: String? = null,
+    /**
+     * Monotonic id bumped on every [savedMessage] emit. The snackbar effect keys on
+     * this, not the message string, so two identical confirmations (e.g. saving the
+     * same budget twice) both show instead of the second being swallowed.
+     */
+    val messageId: Long = 0,
 )
 
 class RewardsViewModel(private val repository: QuestRepository) : ViewModel() {
@@ -42,7 +48,7 @@ class RewardsViewModel(private val repository: QuestRepository) : ViewModel() {
             repository.setBudgetCap(value)
             load()
             val msg = if (value > 0) "Budget saved: ${"%.2f".format(value)}." else "Budget cleared."
-            _state.update { it.copy(savedMessage = msg) }
+            _state.update { it.copy(savedMessage = msg, messageId = it.messageId + 1) }
         }
     }
 

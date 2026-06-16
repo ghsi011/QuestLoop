@@ -48,6 +48,13 @@ enum class Difficulty(val baseXp: Int, val weight: Double) {
     MEDIUM(20, 2.0),
     HARD(35, 3.5),
     EPIC(60, 6.0);
+
+    /**
+     * Low-effort tiers (trivial/easy) are the farmable ones: many quick quests in
+     * a day can otherwise out-earn real progress. The reward engine caps their
+     * combined daily XP (SPEC 6 & 8 anti-farming).
+     */
+    val isLowEffort: Boolean get() = this == TRIVIAL || this == EASY
 }
 
 /** User-facing importance, independent of difficulty (an easy task can be critical). */
@@ -188,7 +195,17 @@ data class CompletionRecord(
     val isMeta: Boolean = category.isMeta,
     /** XP this record was granted (signed). Used to derive totals and per-day caps. */
     val xpAwarded: Long = 0,
-)
+) {
+    /**
+     * Whether this record counts as a day's "activity" for streaks, consistency
+     * and achievements. A genuinely zero-progress partial (e.g. "0 of 8 glasses")
+     * is recorded as PARTIAL so it carries no penalty, but it must NOT prop up a
+     * streak — only real progress does (SPEC 8: never punish, never game).
+     */
+    val countsAsActivity: Boolean
+        get() = result == CompletionResult.COMPLETED ||
+            (result == CompletionResult.PARTIAL && fraction > 0.0)
+}
 
 /** A good habit the user wants to build. */
 @Serializable

@@ -1,8 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Backup is disabled (android:allowBackup="false"); this is a backstop so that
+     if it is ever re-enabled, the user's on-device data is excluded from both
+     cloud backup and device-to-device transfer (SPEC §9, privacy). -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- Sensitive personal data is excluded from cloud transfer by default. -->
+        <exclude domain="database" path="questloop.db" />
+        <exclude domain="file" path="datastore/questloop_profile.preferences_pb" />
+        <exclude domain="sharedpref" path="questloop_secure.xml" />
     </cloud-backup>
     <device-transfer>
+        <exclude domain="database" path="questloop.db" />
+        <exclude domain="file" path="datastore/questloop_profile.preferences_pb" />
+        <exclude domain="sharedpref" path="questloop_secure.xml" />
     </device-transfer>
 </data-extraction-rules>

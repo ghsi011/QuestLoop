@@ -80,6 +80,80 @@ class QuestLoopEngineTest {
     }
 
     @Test
+    fun `honesty xp is capped per day`() {
+        // Logging many bad-habit relapses honestly is rewarded, but bounded so it
+        // can't be farmed into unlimited XP (H1).
+        var total = 0L
+        val history = mutableListOf<CompletionRecord>()
+        repeat(5) { i ->
+            val r = rec(
+                "bad$i",
+                100,
+                result = CompletionResult.FAILED,
+                category = QuestCategory.BAD_HABIT_REDUCTION,
+                difficulty = Difficulty.EASY,
+            )
+            val effect = engine.recordCompletion(total, r, history)
+            total = effect.newTotalXp
+            history += r.copy(xpAwarded = effect.outcome.xp)
+        }
+        assertEquals(9L, total, "honesty XP should be capped at 9/day")
+    }
+
+    @Test
+    fun `many distinct easy quests are capped per day`() {
+        // Same-quest farming is handled by anti-farm decay; this covers the
+        // many-distinct-trivial-quests lane (H2). Each EASY quest is 10 XP.
+        var total = 0L
+        val history = mutableListOf<CompletionRecord>()
+        var capHit = false
+        repeat(12) { i ->
+            val r = rec("easy$i", 100, difficulty = Difficulty.EASY)
+            val effect = engine.recordCompletion(total, r, history)
+            total = effect.newTotalXp
+            history += r.copy(xpAwarded = effect.outcome.xp)
+            if (effect.outcome.capReason != null) capHit = true
+        }
+        assertEquals(40L, total, "low-effort XP should be capped at 40/day")
+        assertTrue(capHit, "cap reason should have been surfaced")
+    }
+
+    @Test
+    fun `harder quests are unaffected by the low-effort cap`() {
+        // A productive day of real (MEDIUM+) work is never capped by the
+        // easy-quest ceiling.
+        var total = 0L
+        val history = mutableListOf<CompletionRecord>()
+        repeat(6) { i ->
+            val r = rec("real$i", 100, difficulty = Difficulty.MEDIUM)
+            val effect = engine.recordCompletion(total, r, history)
+            total = effect.newTotalXp
+            history += r.copy(xpAwarded = effect.outcome.xp)
+        }
+        assertEquals(120L, total, "6 medium quests at 20 XP each, uncapped")
+    }
+
+    @Test
+    fun `zero-progress partial does not sustain a streak`() {
+        // Active on 98 & 99, then only an empty (0-fraction) partial on day 100.
+        // That empty partial must not count as activity (M1), so with grace=1 the
+        // gap on day 100 ends the run rather than masking it.
+        val history = listOf(
+            rec("q", 98),
+            rec("q", 99),
+            rec("q", 100, result = CompletionResult.PARTIAL),
+        )
+        val ctx = engine.deriveContext(rec("q", 101), history)
+        assertEquals(0, ctx.currentStreakDays, "an empty partial can't prop up a streak")
+
+        // A genuine partial (fraction > 0) on day 100 keeps the run alive.
+        val realProgress = history.dropLast(1) +
+            rec("q", 100, result = CompletionResult.PARTIAL).copy(fraction = 0.5)
+        val ctx2 = engine.deriveContext(rec("q", 101), realProgress)
+        assertTrue(ctx2.currentStreakDays >= 3, "real progress sustains the streak")
+    }
+
+    @Test
     fun `meta cap enforced via derived context`() {
         // Three meta completions same day; total should be capped at 30.
         var total = 0L

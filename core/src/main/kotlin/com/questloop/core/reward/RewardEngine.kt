@@ -30,6 +30,19 @@ data class RewardConfig(
     val penaltyDailyCap: Long = 10,
     /** Small honesty reward for truthfully logging a bad-habit relapse. */
     val honestyXp: Long = 3,
+    /**
+     * Per-day ceiling on *total* honesty XP, so logging many relapses can't be
+     * farmed into unlimited XP (SPEC 8 anti-farming). Honesty is still encouraged
+     * — it's just bounded.
+     */
+    val honestyXpDailyCap: Long = 9,
+    /**
+     * Per-day ceiling on combined XP from low-effort (trivial/easy) quests, so
+     * completing many quick distinct quests can't out-earn real progress. The
+     * same-quest [antiFarmDecay] handles repeats of one quest; this handles the
+     * many-distinct-trivial-quests case (SPEC 6 & 8).
+     */
+    val lowEffortXpDailyCap: Long = 40,
 )
 
 /**
@@ -44,6 +57,10 @@ data class RewardContext(
     val metaXpEarnedToday: Long = 0,
     /** Absolute penalty XP already applied today (used to enforce the penalty cap). */
     val penaltyXpAppliedToday: Long = 0,
+    /** Honesty XP already granted today (used to enforce the daily honesty cap). */
+    val honestyXpEarnedToday: Long = 0,
+    /** XP from low-effort quests already granted today (used to enforce the low-effort cap). */
+    val lowEffortXpEarnedToday: Long = 0,
     /** Current streak length in days (drives the consistency bonus). */
     val currentStreakDays: Int = 0,
 )
@@ -109,26 +126,56 @@ class RewardEngine(private val config: RewardConfig = RewardConfig()) {
             )
         }
 
-        val granted = xp.roundToLong()
+        var granted = xp.roundToLong()
+        // Low-effort (trivial/easy) quests share a daily XP ceiling so a pile of
+        // quick distinct quests can't dominate progression (SPEC 6 & 8). Repeats of
+        // a single quest are already damped by antiFarmMultiplier above.
+        if (record.difficulty.isLowEffort) {
+            val remaining = max(0L, config.lowEffortXpDailyCap - context.lowEffortXpEarnedToday)
+            val capped = granted.coerceAtMost(remaining)
+            if (capped < granted) {
+                capReason = "Daily easy-quest XP cap reached (${config.lowEffortXpDailyCap})."
+            }
+            granted = capped
+        }
         return RewardOutcome(
             xp = granted,
             baseXp = base.roundToLong(),
             multipliers = multipliers,
             capReason = capReason,
-            explanation = buildExplanation(record, granted, multipliers, null),
+            explanation = buildExplanation(record, granted, multipliers, capReason),
         )
     }
 
     private fun scoreMissOrRelapse(record: CompletionRecord, context: RewardContext): RewardOutcome {
         // Bad-habit relapse logged honestly is never punished — honesty is
-        // rewarded instead (SPEC 6 & 8: reward honesty, don't shame failure).
+        // rewarded instead (SPEC 6 & 8: reward honesty, don't shame failure). The
+        // grant is capped per day so it can't be farmed into unlimited XP.
         if (record.category == QuestCategory.BAD_HABIT_REDUCTION) {
+            val remaining = max(0L, config.honestyXpDailyCap - context.honestyXpEarnedToday)
+            val grant = config.honestyXp.coerceAtMost(remaining)
+            if (grant == 0L) {
+                return RewardOutcome(
+                    xp = 0,
+                    baseXp = 0,
+                    multipliers = emptyMap(),
+                    capReason = "Daily honesty XP cap reached (${config.honestyXpDailyCap}).",
+                    explanation = "Logged honestly — thank you. We've already credited honesty today; " +
+                        "tracking truthfully still matters more than points.",
+                )
+            }
+            val capReason = if (grant < config.honestyXp) {
+                "Daily honesty XP cap reached (${config.honestyXpDailyCap})."
+            } else {
+                null
+            }
             return RewardOutcome(
-                xp = config.honestyXp,
+                xp = grant,
                 baseXp = 0,
                 multipliers = emptyMap(),
+                capReason = capReason,
                 explanation = "Logged honestly. Recovery and consistency matter more than perfection — " +
-                    "+${config.honestyXp} XP for tracking truthfully.",
+                    "+$grant XP for tracking truthfully.",
             )
         }
 

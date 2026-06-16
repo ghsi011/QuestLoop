@@ -58,4 +58,32 @@ class HabitQuestFactoryTest {
         assertEquals(3, derived.size)
         assertEquals(setOf("habit-h", "badhabit-b", "goal-g"), derived.map { it.id }.toSet())
     }
+
+    @Test
+    fun `derived ids are namespaced and disjoint from stored quest ids`() {
+        // Completion records are keyed by "questId@day"; derived quests are NOT in
+        // the quests table, so their ids must never collide with stored ids (which
+        // are namespaced "user-"/"bank-") or the ledger would cross-credit XP.
+        // Even a habit, bad habit and goal that share the same raw id stay distinct.
+        val derived = HabitQuestFactory.deriveAll(
+            habits = listOf(Habit(id = "x", title = "Read", category = QuestCategory.PERSONAL_GROWTH)),
+            badHabits = listOf(BadHabit(id = "x", title = "Snacking")),
+            goals = listOf(com.questloop.core.model.Goal(id = "x", title = "Learn guitar", category = QuestCategory.PERSONAL_GROWTH)),
+        )
+        val ids = derived.map { it.id }
+        assertEquals(ids.size, ids.toSet().size, "derived ids must be unique")
+        val reserved = listOf("user-", "bank-")
+        assertTrue(
+            ids.all { id -> reserved.none { id.startsWith(it) } },
+            "derived ids must not collide with the user-/bank- namespaces",
+        )
+        assertTrue(
+            ids.all {
+                it.startsWith(HabitQuestFactory.HABIT_PREFIX) ||
+                    it.startsWith(HabitQuestFactory.BAD_HABIT_PREFIX) ||
+                    it.startsWith(HabitQuestFactory.GOAL_PREFIX)
+            },
+            "every derived id must carry its origin prefix",
+        )
+    }
 }

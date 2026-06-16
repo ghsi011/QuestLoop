@@ -41,6 +41,19 @@ class StreakTrackerTest {
     }
 
     @Test
+    fun `streak counts back from today ignoring later active days`() {
+        // If today precedes the most recent logged day (clock skew / back-dated
+        // log), the streak is still measured backwards from today.
+        val active = setOf(98L, 99L, 100L, 101L)
+        assertEquals(3, StreakTracker.currentStreak(active, today = 100, graceDays = 1))
+    }
+
+    @Test
+    fun `no streak when all active days are in the future`() {
+        assertEquals(0, StreakTracker.currentStreak(setOf(105L, 106L), today = 100, graceDays = 1))
+    }
+
+    @Test
     fun `longest streak finds the biggest consecutive run`() {
         val days = setOf(1L, 2L, 3L, 5L, 6L, 10L, 11L, 12L, 13L)
         assertEquals(4, StreakTracker.longestStreak(days))

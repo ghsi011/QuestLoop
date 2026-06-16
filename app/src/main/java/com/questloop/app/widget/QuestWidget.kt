@@ -18,9 +18,7 @@ import androidx.glance.layout.padding
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import com.questloop.app.MainActivity
-import com.questloop.app.data.ProfileStore
-import com.questloop.app.data.QuestRepository
-import com.questloop.app.data.local.QuestLoopDatabase
+import com.questloop.app.QuestLoopApplication
 import com.questloop.core.model.DayPart
 import java.time.LocalDate
 import java.time.LocalTime
@@ -33,8 +31,8 @@ import java.time.LocalTime
 class QuestWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val titles = runCatching {
-            val db = QuestLoopDatabase.get(context)
-            val repo = QuestRepository(db.questDao(), db.completionDao(), ProfileStore(context.applicationContext))
+            // Reuse the app's single wired repository rather than hand-wiring one.
+            val repo = (context.applicationContext as QuestLoopApplication).container.repository
             val plan = repo.todayPlan(
                 LocalDate.now().toEpochDay(),
                 DayPart.fromHour(LocalTime.now().hour),

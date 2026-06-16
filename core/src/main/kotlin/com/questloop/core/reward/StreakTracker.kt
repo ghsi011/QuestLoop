@@ -19,32 +19,24 @@ object StreakTracker {
         graceDays: Int = 1,
     ): Int {
         require(graceDays >= 0)
-        if (activeEpochDays.isEmpty()) return 0
+        // No active days at all (or all in the future): no streak as of today.
+        val earliest = activeEpochDays.minOrNull() ?: return 0
 
-        // If today isn't active yet, the streak is still alive as long as the
-        // most recent active day is within the grace window.
+        // Walk backwards from today. An active day extends the streak and resets
+        // the miss counter; a gap consumes grace. More than [graceDays] consecutive
+        // misses ends the run. Leading misses (today not done yet) behave the same:
+        // streak is still 0 while we walk to the most recent active day, so they
+        // can't break a streak that exists just behind them.
         var streak = 0
-        var cursor = today
         var missesInARow = 0
-        // Allow the streak to "start" from the most recent active day within grace.
-        // Walk backwards day by day.
-        var startedCounting = false
-
-        while (cursor >= (activeEpochDays.minOrNull() ?: cursor)) {
+        var cursor = today
+        while (cursor >= earliest) {
             if (activeEpochDays.contains(cursor)) {
                 streak++
                 missesInARow = 0
-                startedCounting = true
             } else {
-                if (!startedCounting) {
-                    // Leading missed days (e.g. today not done yet) consume grace
-                    // but don't break a streak that exists just behind them.
-                    missesInARow++
-                    if (missesInARow > graceDays) break
-                } else {
-                    missesInARow++
-                    if (missesInARow > graceDays) break
-                }
+                missesInARow++
+                if (missesInARow > graceDays) break
             }
             cursor--
         }

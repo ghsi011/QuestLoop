@@ -61,13 +61,16 @@ fun SettingsScreen(
     var confirmDelete by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
-    // (Re)schedule reminder alarms whenever the config changes.
+    // (Re)schedule reminder alarms whenever the config changes. Guarded because
+    // arming exact alarms can throw if the permission was revoked (Android 12+).
     LaunchedEffect(state.reminders) {
-        ReminderScheduler(context).apply(state.reminders)
+        runCatching { ReminderScheduler(context).apply(state.reminders) }
     }
 
-    // Confirm saves so the user knows a setting took effect.
-    LaunchedEffect(state.savedMessage) {
+    // Confirm saves so the user knows a setting took effect. Key on the monotonic
+    // messageId, not the string, so an identical confirmation shown twice (e.g.
+    // re-tapping a focus chip) isn't swallowed.
+    LaunchedEffect(state.messageId) {
         val message = state.savedMessage ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
         viewModel.consumeSavedMessage()

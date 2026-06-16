@@ -29,9 +29,9 @@ data class ProgressStats(
 ) {
     companion object {
         fun from(records: List<CompletionRecord>, totalXp: Long, longestStreak: Int): ProgressStats {
-            val completed = records.filter {
-                it.result == CompletionResult.COMPLETED || it.result == CompletionResult.PARTIAL
-            }
+            // A zero-progress partial carries no penalty but isn't a "completion"
+            // for achievement purposes — only real progress counts (SPEC 8).
+            val completed = records.filter { it.countsAsActivity }
             return ProgressStats(
                 totalCompleted = completed.size,
                 level = LevelSystem.levelForXp(totalXp),
