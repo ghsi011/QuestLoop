@@ -73,12 +73,12 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
                 suggestion.quests.forEach { repository.addQuest(it.copy(id = "user-${UUID.randomUUID()}")) }
                 val n = suggestion.quests.size
                 _quickResult.value = when {
-                    n == 0 -> "Nothing to add — try rephrasing your list."
-                    suggestion.fromAi -> "Added $n AI suggestion${if (n == 1) "" else "s"} ✨ — review & edit anytime."
-                    else -> "Added $n quest${if (n == 1) "" else "s"} (safe defaults)."
+                    n == 0 -> "Nothing to add — try rephrasing."
+                    suggestion.fromAi -> "Added $n quest${if (n == 1) "" else "s"} ✨"
+                    else -> "Added $n quest${if (n == 1) "" else "s"}."
                 }
             } catch (e: Exception) {
-                _quickResult.value = "Couldn't reach AI. Check your key in Settings, or add quests manually."
+                _quickResult.value = "AI didn't respond. Check your key in Settings."
             } finally {
                 _generating.value = false
             }

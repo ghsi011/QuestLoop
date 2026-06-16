@@ -45,20 +45,20 @@ object RoutineQuestFactory {
         origin = QuestOrigin.SYSTEM_RECURRING,
         estimatedMinutes = 1,
         completionStyle = CompletionStyle.BINARY,
-        rationale = "A 30-second glance to start the day. Mark it done right away.",
+        rationale = "A quick look at today.",
     )
 
     /** Evening admin 1: review and mark off what you completed today. */
     private fun eveningReview() = Quest(
         id = EVENING_REVIEW,
-        title = "Mark off what you completed today",
+        title = "Check off what you finished",
         category = QuestCategory.META_MAINTENANCE,
         frequency = QuestFrequency.DAILY,
         difficulty = Difficulty.TRIVIAL,
         origin = QuestOrigin.SYSTEM_RECURRING,
         estimatedMinutes = 1,
         completionStyle = CompletionStyle.BINARY,
-        rationale = "Close the loop on today's wins.",
+        rationale = "See what you got done today.",
     )
 
     /**
@@ -67,13 +67,13 @@ object RoutineQuestFactory {
      */
     private fun eveningIntake() = Quest(
         id = EVENING_INTAKE,
-        title = "Add new todos + quick check-in",
+        title = "Plan tomorrow",
         category = QuestCategory.META_MAINTENANCE,
         frequency = QuestFrequency.DAILY,
         difficulty = Difficulty.EASY,
         origin = QuestOrigin.SYSTEM_RECURRING,
         estimatedMinutes = 2,
         completionStyle = CompletionStyle.SUBJECTIVE,
-        rationale = "Brain-dump tomorrow's todos and jot a line on how habits/health felt.",
+        rationale = "Add what's on your mind and note how today felt.",
     )
 }

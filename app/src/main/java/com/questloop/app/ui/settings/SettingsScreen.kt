@@ -128,12 +128,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onOpenHabits: () -> Unit) {
         FocusChips(selected = prefs.focusCategories, onToggle = viewModel::toggleFocus)
 
         SectionHeader("AI suggestions")
-        AiSection(
-            config = state.ai,
-            onEnabledChange = viewModel::setAiEnabled,
-            onSaveKey = viewModel::setAiKey,
-            onSaveModel = viewModel::setAiModel,
-        )
+        AiSection(config = state.ai, onSave = viewModel::saveAi)
 
         SectionHeader("Habits")
         OutlinedButton(onClick = onOpenHabits, modifier = Modifier.fillMaxWidth()) {
@@ -143,10 +138,10 @@ fun SettingsScreen(viewModel: SettingsViewModel, onOpenHabits: () -> Unit) {
         SectionHeader("Privacy")
         InfoCard(
             title = "Your data stays on this device",
-            body = "QuestLoop is local-first: nothing is uploaded, and backups are off by default.",
+            body = "Nothing is uploaded.",
         )
         OutlinedButton(onClick = viewModel::requestExport, modifier = Modifier.fillMaxWidth()) {
-            Text("Export my data (JSON)")
+            Text("Export my data")
         }
         OutlinedButton(onClick = { confirmDelete = true }, modifier = Modifier.fillMaxWidth()) {
             Text("Delete all my data")
@@ -194,8 +189,7 @@ private fun RemindersSection(
                 )
             }
             Text(
-                "Gentle local reminders to check in. They re-arm when you open the app " +
-                    "(not after a reboot yet).",
+                "A friendly nudge each morning and evening.",
                 style = MaterialTheme.typography.bodySmall,
             )
         }
@@ -220,10 +214,9 @@ private fun HourRow(label: String, hour: Int, onHour: (Int) -> Unit) {
 @Composable
 private fun AiSection(
     config: com.questloop.app.data.AiConfig,
-    onEnabledChange: (Boolean) -> Unit,
-    onSaveKey: (String) -> Unit,
-    onSaveModel: (String) -> Unit,
+    onSave: (enabled: Boolean, apiKey: String, model: String) -> Unit,
 ) {
+    var enabled by remember(config.enabled) { mutableStateOf(config.enabled) }
     var key by remember(config.apiKey) { mutableStateOf(config.apiKey) }
     var model by remember(config.model) { mutableStateOf(config.model) }
     Card(Modifier.fillMaxWidth()) {
@@ -233,12 +226,11 @@ private fun AiSection(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Use AI to suggest quests", fontWeight = FontWeight.SemiBold)
-                Switch(checked = config.enabled, onCheckedChange = onEnabledChange)
+                Text("Turn messy lists into quests", fontWeight = FontWeight.SemiBold)
+                Switch(checked = enabled, onCheckedChange = { enabled = it })
             }
             Text(
-                "Powered by OpenRouter. Get a free key at openrouter.ai. Your key is stored only " +
-                    "on this device and is never included in data export.",
+                "Bring your own key from openrouter.ai. It stays on your device.",
                 style = MaterialTheme.typography.bodySmall,
             )
             OutlinedTextField(
@@ -265,10 +257,11 @@ private fun AiSection(
                     )
                 }
             }
-            OutlinedButton(
-                onClick = { onSaveKey(key); onSaveModel(model) },
+            Button(
+                onClick = { onSave(enabled, key, model) },
+                enabled = !enabled || key.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Save AI settings") }
+            ) { Text("Save") }
         }
     }
 }

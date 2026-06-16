@@ -14,8 +14,8 @@ import com.questloop.app.R
 
 /** The two reminder occurrences and their copy. */
 enum class ReminderSlot(val requestCode: Int, val notificationId: Int, val title: String, val text: String) {
-    MORNING(1001, 2001, "Good morning ☀️", "A 30-second check-in: review today's quests."),
-    EVENING(1002, 2002, "Evening wrap-up 🌙", "Mark off what you did and jot tomorrow's todos."),
+    MORNING(1001, 2001, "Good morning ☀️", "Take a quick look at today."),
+    EVENING(1002, 2002, "Evening check-in 🌙", "Check off what you finished and plan tomorrow."),
 }
 
 object ReminderNotifications {

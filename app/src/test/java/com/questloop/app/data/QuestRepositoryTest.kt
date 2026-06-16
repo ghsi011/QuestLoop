@@ -254,6 +254,15 @@ class QuestRepositoryTest {
     }
 
     @Test
+    fun `saving ai config makes it usable`() = runTest {
+        assertFalse(repo.aiConfig().usable)
+        repo.setAiConfig(AiConfig(enabled = true, apiKey = "sk-test", model = "m"))
+        val cfg = repo.aiConfig()
+        assertTrue(cfg.usable)
+        assertEquals("sk-test", cfg.apiKey)
+    }
+
+    @Test
     fun `onboarding flag flips once completed`() = runTest {
         assertFalse(repo.isOnboardingComplete())
         repo.completeOnboarding()

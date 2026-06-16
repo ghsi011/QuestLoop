@@ -72,7 +72,7 @@ fun RewardsScreen(viewModel: RewardsViewModel) {
         }
 
         Text(
-            "Not financial advice — you manage all money yourself, outside the app.",
+            "You manage your own money. Not financial advice.",
             style = MaterialTheme.typography.bodySmall,
         )
         TextButton(onClick = { showDetails = !showDetails }) {

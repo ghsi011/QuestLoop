@@ -72,7 +72,7 @@ class RewardEngine(private val config: RewardConfig = RewardConfig()) {
                 xp = 0,
                 baseXp = 0,
                 multipliers = emptyMap(),
-                explanation = "Rescheduled — no penalty. Adjusting plans is part of the system.",
+                explanation = "Rescheduled — no penalty. Plans change, that's fine.",
             )
         }
     }

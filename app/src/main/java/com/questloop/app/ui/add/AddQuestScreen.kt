@@ -130,15 +130,15 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
-        SectionHeader("Quick add from a list")
+        SectionHeader("Quick add")
         Text(
-            "Paste todos, one per line. They become safe, easy quests you can refine later.",
+            "One idea per line — we'll shape them into quests.",
             style = MaterialTheme.typography.bodySmall,
         )
         OutlinedTextField(
             value = quickText,
             onValueChange = { quickText = it },
-            label = { Text("One todo per line") },
+            label = { Text("One idea per line") },
             modifier = Modifier.fillMaxWidth(),
             minLines = 3,
         )
@@ -163,10 +163,6 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
         quickResult?.let { msg ->
             Text(msg, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
         }
-        Text(
-            "Uses your AI provider if configured in Settings, otherwise safe defaults.",
-            style = MaterialTheme.typography.bodySmall,
-        )
     }
 }
 

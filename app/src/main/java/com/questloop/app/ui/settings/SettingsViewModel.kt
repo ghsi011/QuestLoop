@@ -42,9 +42,10 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
 
     fun setReminders(config: ReminderConfig) = update { repository.setReminderConfig(config) }
 
-    fun setAiEnabled(enabled: Boolean) = update { repository.setAiConfig(_state.value.ai.copy(enabled = enabled)) }
-    fun setAiKey(key: String) = update { repository.setAiConfig(_state.value.ai.copy(apiKey = key.trim())) }
-    fun setAiModel(model: String) = update { repository.setAiConfig(_state.value.ai.copy(model = model.trim())) }
+    /** Persists the whole AI config in one write (avoids racing partial copies). */
+    fun saveAi(enabled: Boolean, apiKey: String, model: String) = update {
+        repository.setAiConfig(AiConfig(enabled = enabled, apiKey = apiKey.trim(), model = model.trim()))
+    }
 
     fun setMaxDaily(value: Int) = update { repository.setMaxDaily(value) }
 
