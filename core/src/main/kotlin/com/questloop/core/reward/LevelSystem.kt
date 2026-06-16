@@ -1,7 +1,6 @@
 package com.questloop.core.reward
 
 import kotlin.math.floor
-import kotlin.math.pow
 import kotlin.math.sqrt
 
 /**
@@ -66,6 +65,3 @@ object LevelSystem {
         )
     }
 }
-
-/** Helper used by power-curve experiments; kept internal for clarity in tests. */
-internal fun quadraticInverse(value: Double): Double = value.pow(0.5)

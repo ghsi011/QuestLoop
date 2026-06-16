@@ -3,6 +3,7 @@ package com.questloop.app.ui.add
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.questloop.app.data.QuestRepository
+import com.questloop.app.data.SampleData
 import com.questloop.core.model.Difficulty
 import com.questloop.core.model.Priority
 import com.questloop.core.model.Quest
@@ -53,6 +54,8 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
         )
         viewModelScope.launch {
             repository.addQuest(quest)
+            // Creating a quest clears the "Create your first quest" guide.
+            repository.archiveQuest(SampleData.ONBOARDING_CREATE)
             onDone()
         }
     }
@@ -77,6 +80,7 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
                         "${suggestion.error} Nothing added — check your key, model, and connection in Settings."
                 } else {
                     suggestion.quests.forEach { repository.addQuest(it.copy(id = "user-${UUID.randomUUID()}")) }
+                    if (suggestion.quests.isNotEmpty()) repository.archiveQuest(SampleData.ONBOARDING_CREATE)
                     val n = suggestion.quests.size
                     val plural = if (n == 1) "" else "s"
                     _quickResult.value = when {

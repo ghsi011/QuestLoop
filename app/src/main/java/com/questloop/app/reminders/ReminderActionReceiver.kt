@@ -26,17 +26,23 @@ class ReminderActionReceiver : BroadcastReceiver() {
             ?.let { runCatching { ReminderSlot.valueOf(it) }.getOrNull() }
             ?: return
 
+        // The day the notification fired (stamped at show time), so tapping "done"
+        // after midnight still credits the right day. Falls back to today.
+        val epochDay = intent.getLongExtra(EXTRA_DAY, LocalDate.now().toEpochDay())
+
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val db = QuestLoopDatabase.get(context)
-                val repo = QuestRepository(db.questDao(), db.completionDao(), ProfileStore(context.applicationContext))
-                val dayPart = if (slot == ReminderSlot.MORNING) DayPart.MORNING else DayPart.EVENING
-                val quest = RoutineQuestFactory.routinesFor(dayPart).firstOrNull()
-                if (quest != null) {
-                    repo.completeQuest(quest, LocalDate.now().toEpochDay(), CompletionResult.COMPLETED)
+                runCatching {
+                    val db = QuestLoopDatabase.get(context)
+                    val repo = QuestRepository(db.questDao(), db.completionDao(), ProfileStore(context.applicationContext))
+                    val dayPart = if (slot == ReminderSlot.MORNING) DayPart.MORNING else DayPart.EVENING
+                    val quest = RoutineQuestFactory.routinesFor(dayPart).firstOrNull()
+                    if (quest != null) {
+                        repo.completeQuest(quest, epochDay, CompletionResult.COMPLETED)
+                    }
+                    NotificationManagerCompat.from(context).cancel(slot.notificationId)
                 }
-                NotificationManagerCompat.from(context).cancel(slot.notificationId)
             } finally {
                 pending.finish()
             }
@@ -46,5 +52,6 @@ class ReminderActionReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_DONE = "com.questloop.app.REMINDER_DONE"
         const val EXTRA_SLOT = "slot"
+        const val EXTRA_DAY = "day"
     }
 }

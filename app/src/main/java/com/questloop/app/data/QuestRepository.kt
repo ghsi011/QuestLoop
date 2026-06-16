@@ -29,8 +29,11 @@ import com.questloop.core.review.ReviewGenerator
 import com.questloop.core.safety.SafetyGuard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
@@ -53,16 +56,18 @@ class QuestRepository(
 ) {
     private val exportJson = kotlinx.serialization.json.Json { prettyPrint = true; ignoreUnknownKeys = true }
 
-    /** Days of history loaded for same-day reward context (cheap, bounded). */
-    private val contextWindowDays = 2L
+    // Serialises the ledger read-modify-write so concurrent completions (double
+    // taps, quest + measured log) can't read the same XP snapshot and mis-count.
+    private val completionMutex = Mutex()
 
     /** Days of history considered for safety signals. */
     private val safetyWindowDays = 30L
 
-    val quests: Flow<List<Quest>> = questDao.observeActive().map { list -> list.map { it.toModel() } }
+    val quests: Flow<List<Quest>> =
+        questDao.observeActive().map { list -> list.map { it.toModel() } }.distinctUntilChanged()
 
     val completions: Flow<List<CompletionRecord>> =
-        completionDao.observeAll().map { list -> list.map { it.toModel() } }
+        completionDao.observeAll().map { list -> list.map { it.toModel() } }.distinctUntilChanged()
 
     val profile = profileStore.profile
 
@@ -71,7 +76,7 @@ class QuestRepository(
      * zero for display — a gentle miss penalty can momentarily dip the raw ledger
      * below zero, but the user-facing total never shows negative.
      */
-    val totalXp: Flow<Long> = completionDao.observeTotalXp().map { it.coerceAtLeast(0) }
+    val totalXp: Flow<Long> = completionDao.observeTotalXp().map { it.coerceAtLeast(0) }.distinctUntilChanged()
 
     suspend fun totalXp(): Long = completionDao.totalXp().coerceAtLeast(0)
 
@@ -118,8 +123,20 @@ class QuestRepository(
 
     suspend fun seedIfEmpty() {
         if (questDao.count() == 0) {
-            SampleData.starterQuests.forEach { questDao.upsert(it.toEntity()) }
+            SampleData.onboardingQuests.forEach { questDao.upsert(it.toEntity()) }
         }
+    }
+
+    /** Active quest ids (used to show what's already added from the Quest Bank). */
+    suspend fun activeQuestIds(): Set<String> = questDao.getActive().map { it.id }.toSet()
+
+    /**
+     * Adds a Quest Bank entry by its stable id. Re-adding un-archives the same
+     * quest. Adding from the bank clears the "Pick your first quest" guide.
+     */
+    suspend fun addFromBank(quest: Quest) {
+        questDao.upsert(quest.toEntity())
+        questDao.archive(SampleData.ONBOARDING_PICK)
     }
 
     /** Build today's plan from active quests + recent history + the day's routine. */
@@ -200,7 +217,7 @@ class QuestRepository(
      * partial log), otherwise removes it. XP follows automatically because it's
      * derived from the ledger.
      */
-    suspend fun undoCompletion(instanceId: String, previous: CompletionRecord?) {
+    suspend fun undoCompletion(instanceId: String, previous: CompletionRecord?) = completionMutex.withLock {
         if (previous != null) completionDao.upsert(previous.toEntity()) else completionDao.delete(instanceId)
     }
 
@@ -216,6 +233,17 @@ class QuestRepository(
         result: CompletionResult,
         fraction: Double = if (result == CompletionResult.COMPLETED) 1.0 else 0.0,
         verification: VerificationMethod = VerificationMethod.MANUAL,
+    ): CompleteOutcome = completionMutex.withLock {
+        completeQuestLocked(quest, epochDay, result, fraction, verification)
+    }
+
+    /** Caller MUST hold [completionMutex]. */
+    private suspend fun completeQuestLocked(
+        quest: Quest,
+        epochDay: Long,
+        result: CompletionResult,
+        fraction: Double,
+        verification: VerificationMethod,
     ): CompleteOutcome {
         val instanceId = "${quest.id}@$epochDay"
         val existing = completionDao.find(instanceId)
@@ -269,7 +297,7 @@ class QuestRepository(
      * For counting/timed quests progress is monotonic (never decreases on re-log)
      * and credited proportionally — never penalised (SPEC §8).
      */
-    suspend fun completeMeasured(quest: Quest, epochDay: Long, value: Int): CompleteOutcome {
+    suspend fun completeMeasured(quest: Quest, epochDay: Long, value: Int): CompleteOutcome = completionMutex.withLock {
         val existingProgress = todayProgress(epochDay)[quest.id] ?: 0
         val scaled = when (quest.completionStyle) {
             CompletionStyle.QUANTITATIVE ->
@@ -286,7 +314,7 @@ class QuestRepository(
             CompletionStyle.QUANTITATIVE -> VerificationMethod.CHECKLIST
             else -> VerificationMethod.MANUAL
         }
-        return completeQuest(quest, epochDay, scaled.result, scaled.fraction, verification)
+        completeQuestLocked(quest, epochDay, scaled.result, scaled.fraction, verification)
     }
 
     /** Aggregate progress for achievements, built from cheap DB queries. */

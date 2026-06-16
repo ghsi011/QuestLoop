@@ -19,6 +19,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -43,7 +44,11 @@ import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestFrequency
 
 @Composable
-fun QuestsScreen(viewModel: QuestsViewModel, snackbarHostState: SnackbarHostState) {
+fun QuestsScreen(
+    viewModel: QuestsViewModel,
+    snackbarHostState: SnackbarHostState,
+    onOpenBank: () -> Unit,
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var pendingDelete by remember { mutableStateOf<Quest?>(null) }
 
@@ -66,6 +71,13 @@ fun QuestsScreen(viewModel: QuestsViewModel, snackbarHostState: SnackbarHostStat
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        item {
+            OutlinedButton(
+                onClick = onOpenBank,
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            ) { Text("Browse quest bank") }
+        }
+
         if (state.total == 0) {
             item {
                 InfoCard(

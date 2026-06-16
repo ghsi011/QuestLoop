@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.questloop.core.model.BadHabit
@@ -18,10 +19,12 @@ import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.UserPreferences
 import com.questloop.core.model.UserProfile
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import java.io.IOException
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "questloop_profile")
 
@@ -59,6 +62,12 @@ class ProfileStore(private val context: Context) : ProfilePreferences {
 
     private val json = Json { ignoreUnknownKeys = true }
 
+    // A corrupt preferences file surfaces as IOException on read; fall back to
+    // empty defaults rather than crashing (e.g. the onboarding check on launch).
+    private val safeData: Flow<Preferences> = context.dataStore.data.catch { e ->
+        if (e is IOException) emit(emptyPreferences()) else throw e
+    }
+
     private object Keys {
         val MAX_DAILY = intPreferencesKey("max_daily_quests")
         val AVAILABLE_MIN = intPreferencesKey("default_available_minutes")
@@ -84,7 +93,7 @@ class ProfileStore(private val context: Context) : ProfilePreferences {
     }
 
     // Total XP is derived from the completion ledger, not stored here.
-    override val profile: Flow<UserProfile> = context.dataStore.data.map { prefs ->
+    override val profile: Flow<UserProfile> = safeData.map { prefs ->
         UserProfile(
             preferences = UserPreferences(
                 maxDailyQuests = prefs[Keys.MAX_DAILY] ?: 6,
@@ -151,7 +160,7 @@ class ProfileStore(private val context: Context) : ProfilePreferences {
     }
 
     override suspend fun getCheckIn(): EnergyCheckIn? {
-        val prefs = context.dataStore.data.first()
+        val prefs = safeData.first()
         val day = prefs[Keys.CHECKIN_DAY] ?: return null
         return EnergyCheckIn(
             epochDay = day,
@@ -161,7 +170,7 @@ class ProfileStore(private val context: Context) : ProfilePreferences {
     }
 
     override suspend fun getAiConfig(): AiConfig {
-        val prefs = context.dataStore.data.first()
+        val prefs = safeData.first()
         return AiConfig(
             enabled = (prefs[Keys.AI_ENABLED] ?: 0) == 1,
             apiKey = prefs[Keys.AI_KEY].orEmpty(),
@@ -178,14 +187,14 @@ class ProfileStore(private val context: Context) : ProfilePreferences {
     }
 
     override suspend fun isOnboardingComplete(): Boolean =
-        (context.dataStore.data.first()[Keys.ONBOARDED] ?: 0) == 1
+        (safeData.first()[Keys.ONBOARDED] ?: 0) == 1
 
     override suspend fun setOnboardingComplete() {
         context.dataStore.edit { it[Keys.ONBOARDED] = 1 }
     }
 
     override suspend fun getReminderConfig(): ReminderConfig {
-        val prefs = context.dataStore.data.first()
+        val prefs = safeData.first()
         return ReminderConfig(
             enabled = (prefs[Keys.REMIND_ENABLED] ?: 0) == 1,
             morningHour = prefs[Keys.REMIND_MORNING_H] ?: 8,

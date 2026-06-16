@@ -38,7 +38,7 @@ data class RewardConfig(
  * makes [RewardEngine.score] a pure, deterministic function.
  */
 data class RewardContext(
-    /** Completions of the *same* quest within [RewardConfig.antiFarmWindowDays] before this one. */
+    /** Completions of the *same* quest earlier the same day, before this one (drives anti-farm decay). */
     val priorSameQuestCompletions: Int = 0,
     /** Meta XP already granted today (used to enforce the daily meta cap). */
     val metaXpEarnedToday: Long = 0,
@@ -97,7 +97,7 @@ class RewardEngine(private val config: RewardConfig = RewardConfig()) {
             // never out-earn real-world progress (SPEC 6 & 7).
             val remaining = max(0L, config.metaXpDailyCap - context.metaXpEarnedToday)
             val grant = xp.roundToLong().coerceAtMost(remaining)
-            if (grant < xp.roundToLong()) {
+            if (grant < xp.roundToLong() || remaining == 0L) {
                 capReason = "Daily meta-maintenance XP cap reached (${config.metaXpDailyCap})."
             }
             return RewardOutcome(

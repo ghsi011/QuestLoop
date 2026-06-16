@@ -95,11 +95,13 @@ private fun QuestLoopMain(repository: QuestRepository) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination
     val routeName = currentRoute?.route
-    val isSubScreen = routeName == "add" || routeName == "habits" || routeName == "achievements"
+    val isSubScreen = routeName == "add" || routeName == "habits" ||
+        routeName == "achievements" || routeName == "quest-bank"
     val title = when (routeName) {
         "add" -> "Add quest"
         "habits" -> "Habits & goals"
         "achievements" -> "Achievements"
+        "quest-bank" -> "Quest bank"
         else -> "QuestLoop"
     }
     val showFab = currentRoute?.hierarchy?.any {
@@ -154,11 +156,21 @@ private fun QuestLoopMain(repository: QuestRepository) {
         ) {
             composable(Dest.TODAY.route) {
                 val vm: TodayViewModel = viewModel(factory = factory)
-                TodayScreen(vm, snackbarHostState, onOpenAchievements = { navController.navigate("achievements") })
+                TodayScreen(
+                    vm,
+                    snackbarHostState,
+                    onOpenAchievements = { navController.navigate("achievements") },
+                    onOpenQuestBank = { navController.navigate("quest-bank") },
+                    onOpenAddQuest = { navController.navigate("add") },
+                )
             }
             composable(Dest.QUESTS.route) {
                 val vm: QuestsViewModel = viewModel(factory = factory)
-                QuestsScreen(vm, snackbarHostState)
+                QuestsScreen(vm, snackbarHostState, onOpenBank = { navController.navigate("quest-bank") })
+            }
+            composable("quest-bank") {
+                val vm: com.questloop.app.ui.quests.QuestBankViewModel = viewModel(factory = factory)
+                com.questloop.app.ui.quests.QuestBankScreen(vm, snackbarHostState)
             }
             composable("achievements") {
                 val vm: com.questloop.app.ui.achievements.AchievementsViewModel = viewModel(factory = factory)

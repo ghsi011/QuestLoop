@@ -99,7 +99,9 @@ class AiQuestService(
         val category = enumOrDefault(dto.category, QuestCategory.LIFE_ADMIN)
         val difficulty = enumOrDefault(dto.difficulty, Difficulty.EASY)
         return Quest(
-            id = "ai-$index",
+            // Batch-unique id so suggestions from different calls can't collide on
+            // their instance id (questId@day) if persisted directly.
+            id = "ai-${java.util.UUID.randomUUID()}-$index",
             title = title,
             category = category,
             frequency = QuestFrequency.ONE_OFF,

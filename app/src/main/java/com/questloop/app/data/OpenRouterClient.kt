@@ -57,8 +57,12 @@ class OpenRouterClient(
                         if (detail.isNotBlank()) " for model \"$model\": $detail" else " for model \"$model\".",
                 )
             }
-            json.decodeFromString(ChatResponse.serializer(), body)
-                .choices.firstOrNull()?.message?.content.orEmpty()
+            // A 200 with a non-JSON body (proxy page, truncated stream) would throw
+            // SerializationException; normalise to IOException so callers degrade.
+            runCatching {
+                json.decodeFromString(ChatResponse.serializer(), body)
+                    .choices.firstOrNull()?.message?.content.orEmpty()
+            }.getOrElse { throw IOException("OpenRouter returned an unreadable response.", it) }
         }
     }
 

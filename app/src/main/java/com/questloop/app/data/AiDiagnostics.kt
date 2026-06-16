@@ -36,7 +36,8 @@ class FileAiDiagnostics(
     @Synchronized
     override fun record(model: String, message: String) {
         val line = "${Instant.now()}  [$model]  ${message.replace('\n', ' ').trim()}"
-        val existing = if (file.exists()) file.readLines() else emptyList()
+        // Logging an AI error must never itself throw, so guard the read too.
+        val existing = runCatching { if (file.exists()) file.readLines() else emptyList() }.getOrDefault(emptyList())
         val kept = (existing + line).takeLast(maxEntries)
         runCatching { file.writeText(kept.joinToString("\n")) }
     }

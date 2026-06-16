@@ -188,6 +188,25 @@ class QuestRepositoryTest {
     }
 
     @Test
+    fun `fresh install seeds only the onboarding quests`() = runTest {
+        repo.seedIfEmpty()
+        assertEquals(
+            setOf(SampleData.ONBOARDING_PICK, SampleData.ONBOARDING_CREATE),
+            repo.activeQuestIds(),
+        )
+    }
+
+    @Test
+    fun `adding from the bank adds the quest and clears the pick guide`() = runTest {
+        repo.seedIfEmpty()
+        val bankQuest = QuestBank.catalog.first()
+        repo.addFromBank(bankQuest)
+        val ids = repo.activeQuestIds()
+        assertTrue(bankQuest.id in ids)
+        assertFalse(SampleData.ONBOARDING_PICK in ids)
+    }
+
+    @Test
     fun `quest overview lists every active quest with its today status`() = runTest {
         repo.addQuest(quest("daily1"))
         repo.addQuest(quest("weekly1").copy(frequency = QuestFrequency.WEEKLY))

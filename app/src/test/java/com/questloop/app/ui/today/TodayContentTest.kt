@@ -202,6 +202,25 @@ class TodayContentTest {
     }
 
     @Test
+    fun `onboarding pick quest shows a quest-bank CTA`() {
+        var openedBank = false
+        composeRule.setContent {
+            TodayContent(
+                state = stateWith(quest(com.questloop.app.data.SampleData.ONBOARDING_PICK, "Pick your first quest")),
+                actions = TodayActions(
+                    onComplete = {},
+                    onSkip = {},
+                    onCompleteMeasured = { _, _ -> },
+                    onCheckIn = { _, _ -> },
+                    onOpenQuestBank = { openedBank = true },
+                ),
+            )
+        }
+        composeRule.onNodeWithText("Browse quest bank").performClick()
+        assertTrue(openedBank)
+    }
+
+    @Test
     fun `energy check-in fires callback`() {
         var picked: Pair<Int, Int>? = null
         composeRule.setContent {

@@ -45,6 +45,8 @@ object ReminderNotifications {
         val doneIntent = Intent(context, ReminderActionReceiver::class.java)
             .setAction(ReminderActionReceiver.ACTION_DONE)
             .putExtra(ReminderActionReceiver.EXTRA_SLOT, slot.name)
+            // Stamp the firing day so a late "Mark done" credits the correct day.
+            .putExtra(ReminderActionReceiver.EXTRA_DAY, java.time.LocalDate.now().toEpochDay())
         val donePending = PendingIntent.getBroadcast(
             context,
             slot.requestCode + 500,

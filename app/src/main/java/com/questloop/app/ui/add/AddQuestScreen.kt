@@ -137,7 +137,7 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
         )
         OutlinedTextField(
             value = quickText,
-            onValueChange = { quickText = it },
+            onValueChange = { quickText = it; viewModel.consumeQuickResult() },
             label = { Text("What's on your mind?") },
             modifier = Modifier.fillMaxWidth(),
             minLines = 4,

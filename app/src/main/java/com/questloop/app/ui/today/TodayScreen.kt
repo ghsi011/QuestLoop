@@ -55,6 +55,8 @@ data class TodayActions(
     val onSkip: (Quest) -> Unit,
     val onCompleteMeasured: (Quest, Int) -> Unit,
     val onCheckIn: (energy: Int, minutes: Int) -> Unit,
+    val onOpenQuestBank: () -> Unit = {},
+    val onOpenAddQuest: () -> Unit = {},
 )
 
 /** Stateful entry point: wires the ViewModel to the stateless [TodayContent]. */
@@ -63,6 +65,8 @@ fun TodayScreen(
     viewModel: TodayViewModel,
     snackbarHostState: SnackbarHostState,
     onOpenAchievements: () -> Unit = {},
+    onOpenQuestBank: () -> Unit = {},
+    onOpenAddQuest: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val haptics = LocalHapticFeedback.current
@@ -86,6 +90,8 @@ fun TodayScreen(
             onSkip = { viewModel.complete(it, CompletionResult.SKIPPED) },
             onCompleteMeasured = { quest, value -> buzz(); viewModel.completeMeasured(quest, value) },
             onCheckIn = viewModel::setCheckIn,
+            onOpenQuestBank = onOpenQuestBank,
+            onOpenAddQuest = onOpenAddQuest,
         ),
         onOpenAchievements = onOpenAchievements,
     )
@@ -270,13 +276,31 @@ private fun QuestRow(instance: QuestInstance, actions: TodayActions, progress: I
                 }
             }
 
-            when (quest.completionStyle) {
-                CompletionStyle.BINARY -> BinaryActions(quest, actions)
-                CompletionStyle.QUANTITATIVE -> QuantitativeControl(quest, actions, progress)
-                CompletionStyle.DURATION -> DurationControl(quest, actions, progress)
-                CompletionStyle.SUBJECTIVE -> SubjectiveControl(quest, actions)
+            when (quest.id) {
+                com.questloop.app.data.SampleData.ONBOARDING_PICK ->
+                    OnboardingActions("Browse quest bank", actions.onOpenQuestBank) { actions.onSkip(quest) }
+                com.questloop.app.data.SampleData.ONBOARDING_CREATE ->
+                    OnboardingActions("Create a quest", actions.onOpenAddQuest) { actions.onSkip(quest) }
+                else -> when (quest.completionStyle) {
+                    CompletionStyle.BINARY -> BinaryActions(quest, actions)
+                    CompletionStyle.QUANTITATIVE -> QuantitativeControl(quest, actions, progress)
+                    CompletionStyle.DURATION -> DurationControl(quest, actions, progress)
+                    CompletionStyle.SUBJECTIVE -> SubjectiveControl(quest, actions)
+                }
             }
         }
+    }
+}
+
+/** First-run guide quests: a primary CTA that navigates, plus a quiet dismiss. */
+@Composable
+private fun OnboardingActions(ctaLabel: String, onCta: () -> Unit, onDismiss: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Button(onClick = onCta) { Text(ctaLabel) }
+        OutlinedButton(onClick = onDismiss) { Text("Dismiss") }
     }
 }
 

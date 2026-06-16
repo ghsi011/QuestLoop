@@ -9,9 +9,12 @@ import com.questloop.app.data.ReminderConfig
 /**
  * Schedules/cancels the daily morning & evening reminder alarms.
  *
- * Uses inexact repeating alarms (no exact-alarm permission needed) — a daily
- * nudge doesn't need to-the-minute precision. Alarms don't survive reboot in
- * this MVP; they're re-armed whenever the app is next opened (see QuestLoopApp).
+ * Uses one-shot inexact-while-idle alarms that each re-arm the next day from the
+ * receiver (see [rearm]). A single self-rescheduling alarm is more reliable than
+ * a long-lived repeating alarm, which the OS can silently drop (force-stop, app
+ * standby, OEM battery managers). Boot and app-open also re-arm as a safety net.
+ * Inexact avoids the SCHEDULE_EXACT_ALARM permission; a daily nudge doesn't need
+ * to-the-minute precision.
  */
 class ReminderScheduler(private val context: Context) {
 
@@ -26,23 +29,22 @@ class ReminderScheduler(private val context: Context) {
     }
 
     fun cancelAll() {
-        ReminderSlot.entries.forEach { alarmManager?.cancel(pendingIntent(it)) }
+        ReminderSlot.entries.forEach { alarmManager?.cancel(pendingIntent(it, 0, 0)) }
     }
 
-    private fun schedule(slot: ReminderSlot, hour: Int, minute: Int) {
-        val triggerAt = ReminderSchedule.nextTriggerMillis(System.currentTimeMillis(), hour, minute)
-        alarmManager?.setInexactRepeating(
-            AlarmManager.RTC_WAKEUP,
-            triggerAt,
-            AlarmManager.INTERVAL_DAY,
-            pendingIntent(slot),
-        )
+    /** Arm the next occurrence of [slot] at [hour]:[minute] (today if still ahead, else tomorrow). */
+    fun schedule(slot: ReminderSlot, hour: Int, minute: Int) {
+        // +1 min so re-arming right after a fire rolls cleanly to the next day.
+        val triggerAt = ReminderSchedule.nextTriggerMillis(System.currentTimeMillis() + 60_000L, hour, minute)
+        alarmManager?.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent(slot, hour, minute))
     }
 
-    private fun pendingIntent(slot: ReminderSlot): PendingIntent {
+    private fun pendingIntent(slot: ReminderSlot, hour: Int, minute: Int): PendingIntent {
         val intent = Intent(context, ReminderReceiver::class.java)
             .setAction(ACTION_REMINDER)
             .putExtra(EXTRA_SLOT, slot.name)
+            .putExtra(EXTRA_HOUR, hour)
+            .putExtra(EXTRA_MINUTE, minute)
         return PendingIntent.getBroadcast(
             context,
             slot.requestCode,
@@ -54,5 +56,7 @@ class ReminderScheduler(private val context: Context) {
     companion object {
         const val ACTION_REMINDER = "com.questloop.app.REMINDER"
         const val EXTRA_SLOT = "slot"
+        const val EXTRA_HOUR = "hour"
+        const val EXTRA_MINUTE = "minute"
     }
 }

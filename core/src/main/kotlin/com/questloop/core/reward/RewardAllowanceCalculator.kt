@@ -75,7 +75,10 @@ object RewardAllowanceCalculator {
         // Difficulty-weighted completion rate (harder tasks count more, SPEC 8).
         val completionRate = (completedWeighted / attemptedWeighted).coerceIn(0.0, 1.0)
 
-        val consistencyFactor = (input.activeDays.toDouble() / input.daysInMonth.toDouble())
+        // Guard the denominator: a zero/negative month span would yield NaN, which
+        // slips through coerceIn (all NaN comparisons are false) into the figure.
+        val daysInMonth = input.daysInMonth.coerceAtLeast(1)
+        val consistencyFactor = (input.activeDays.coerceAtLeast(0).toDouble() / daysInMonth.toDouble())
             .coerceIn(0.0, 1.0)
 
         val criticalMissed = input.records.count {
