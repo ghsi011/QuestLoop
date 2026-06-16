@@ -25,6 +25,7 @@ data class TodayUiState(
     val totalXp: Long = 0,
     val level: Int = 1,
     val levelProgress: Double = 0.0,
+    val streak: Int = 0,
     val signals: List<SafetyGuard.Signal> = emptyList(),
     val achievements: List<Achievement> = emptyList(),
     val energy: Int? = null,
@@ -62,6 +63,7 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
             // Total XP is sourced from the completion ledger.
             val xp = repository.totalXp()
             val progress = LevelSystem.progress(xp)
+            val streak = repository.currentStreak(today)
             _state.update {
                 it.copy(
                     loading = false,
@@ -69,6 +71,7 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
                     totalXp = xp,
                     level = progress.level,
                     levelProgress = progress.fractionToNext,
+                    streak = streak,
                     signals = signals,
                     achievements = achievements,
                     todayProgress = todayProgress,

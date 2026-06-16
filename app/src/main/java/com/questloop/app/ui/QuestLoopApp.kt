@@ -91,10 +91,11 @@ private fun QuestLoopMain(repository: QuestRepository) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination
     val routeName = currentRoute?.route
-    val isSubScreen = routeName == "add" || routeName == "habits"
+    val isSubScreen = routeName == "add" || routeName == "habits" || routeName == "achievements"
     val title = when (routeName) {
         "add" -> "Add quest"
         "habits" -> "Habits & goals"
+        "achievements" -> "Achievements"
         else -> "QuestLoop"
     }
     val showFab = currentRoute?.hierarchy?.any { it.route == Dest.TODAY.route } == true
@@ -147,7 +148,11 @@ private fun QuestLoopMain(repository: QuestRepository) {
         ) {
             composable(Dest.TODAY.route) {
                 val vm: TodayViewModel = viewModel(factory = factory)
-                TodayScreen(vm, snackbarHostState)
+                TodayScreen(vm, snackbarHostState, onOpenAchievements = { navController.navigate("achievements") })
+            }
+            composable("achievements") {
+                val vm: com.questloop.app.ui.achievements.AchievementsViewModel = viewModel(factory = factory)
+                com.questloop.app.ui.achievements.AchievementsScreen(vm)
             }
             composable(Dest.REVIEWS.route) {
                 val vm: ReviewViewModel = viewModel(factory = factory)

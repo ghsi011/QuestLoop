@@ -35,6 +35,51 @@ fun SectionHeader(text: String, modifier: Modifier = Modifier) {
     )
 }
 
+/** Compact hero: a level ring (progress to next level) + XP and streak flame. */
+@Composable
+fun LevelRing(
+    level: Int,
+    fraction: Double,
+    totalXp: Long,
+    streakDays: Int,
+    modifier: Modifier = Modifier,
+) {
+    val ringColor = MaterialTheme.colorScheme.primary
+    val trackColor = MaterialTheme.colorScheme.surfaceVariant
+    Card(modifier.fillMaxWidth()) {
+        Row(
+            Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            androidx.compose.foundation.layout.Box(
+                modifier = Modifier.size(64.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                androidx.compose.foundation.Canvas(Modifier.size(64.dp)) {
+                    val stroke = androidx.compose.ui.graphics.drawscope.Stroke(width = 8.dp.toPx())
+                    drawArc(trackColor, 0f, 360f, false, style = stroke)
+                    drawArc(
+                        color = ringColor,
+                        startAngle = -90f,
+                        sweepAngle = (fraction.coerceIn(0.0, 1.0) * 360f).toFloat(),
+                        useCenter = false,
+                        style = stroke,
+                    )
+                }
+                Text("$level", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            }
+            Column {
+                Text("Level $level", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("$totalXp XP", style = MaterialTheme.typography.bodyMedium)
+                if (streakDays > 0) {
+                    Text("🔥 $streakDays-day streak", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun LevelBar(level: Int, fraction: Double, totalXp: Long, modifier: Modifier = Modifier) {
     Card(modifier = modifier.fillMaxWidth()) {

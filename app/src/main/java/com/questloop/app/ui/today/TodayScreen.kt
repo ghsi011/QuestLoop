@@ -33,6 +33,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -40,7 +42,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.questloop.app.ui.components.CategoryDot
 import com.questloop.app.ui.components.DifficultyPips
 import com.questloop.app.ui.components.InfoCard
-import com.questloop.app.ui.components.LevelBar
+import com.questloop.app.ui.components.LevelRing
 import com.questloop.core.model.CompletionResult
 import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.Quest
@@ -57,8 +59,13 @@ data class TodayActions(
 
 /** Stateful entry point: wires the ViewModel to the stateless [TodayContent]. */
 @Composable
-fun TodayScreen(viewModel: TodayViewModel, snackbarHostState: SnackbarHostState) {
+fun TodayScreen(
+    viewModel: TodayViewModel,
+    snackbarHostState: SnackbarHostState,
+    onOpenAchievements: () -> Unit = {},
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val haptics = LocalHapticFeedback.current
 
     LaunchedEffect(state.toast) {
         val message = state.toast ?: return@LaunchedEffect
@@ -70,20 +77,23 @@ fun TodayScreen(viewModel: TodayViewModel, snackbarHostState: SnackbarHostState)
         if (result == SnackbarResult.ActionPerformed) viewModel.undoLast() else viewModel.consumeToast()
     }
 
+    fun buzz() = haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+
     TodayContent(
         state = state,
         actions = TodayActions(
-            onComplete = { viewModel.complete(it, CompletionResult.COMPLETED) },
+            onComplete = { buzz(); viewModel.complete(it, CompletionResult.COMPLETED) },
             onSkip = { viewModel.complete(it, CompletionResult.SKIPPED) },
-            onCompleteMeasured = { quest, value -> viewModel.completeMeasured(quest, value) },
+            onCompleteMeasured = { quest, value -> buzz(); viewModel.completeMeasured(quest, value) },
             onCheckIn = viewModel::setCheckIn,
         ),
+        onOpenAchievements = onOpenAchievements,
     )
 }
 
 /** Pure UI for the Today screen — no ViewModel dependency, fully testable. */
 @Composable
-fun TodayContent(state: TodayUiState, actions: TodayActions) {
+fun TodayContent(state: TodayUiState, actions: TodayActions, onOpenAchievements: () -> Unit = {}) {
     if (state.loading && state.plan == null) {
         Column(
             Modifier.fillMaxSize().testTag("today-loading"),
@@ -98,10 +108,11 @@ fun TodayContent(state: TodayUiState, actions: TodayActions) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            LevelBar(
+            LevelRing(
                 level = state.level,
                 fraction = state.levelProgress,
                 totalXp = state.totalXp,
+                streakDays = state.streak,
                 modifier = Modifier.padding(top = 12.dp),
             )
         }
@@ -132,7 +143,7 @@ fun TodayContent(state: TodayUiState, actions: TodayActions) {
 
         // Achievements as a compact badge strip rather than stacked cards.
         if (state.achievements.isNotEmpty()) {
-            item { AchievementStrip(state.achievements.map { it.title }) }
+            item { AchievementStrip(state.achievements.map { it.title }, onOpenAchievements) }
         }
 
         item { Spacer(Modifier.padding(24.dp)) }
@@ -181,12 +192,13 @@ private fun EnergyOption(label: String, energy: Int, minutes: Int, selected: Int
 }
 
 @Composable
-private fun AchievementStrip(titles: List<String>) {
+private fun AchievementStrip(titles: List<String>, onOpen: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        titles.forEach { AssistChip(onClick = {}, label = { Text("🏆 $it") }) }
+        titles.forEach { AssistChip(onClick = onOpen, label = { Text("🏆 $it") }) }
+        AssistChip(onClick = onOpen, label = { Text("See all") })
     }
 }
 

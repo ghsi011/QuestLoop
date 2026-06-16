@@ -258,6 +258,20 @@ class QuestRepository(
     suspend fun unlockedAchievements(): List<Achievement> =
         AchievementEngine.unlocked(progressStats(completionDao.totalXp(), completionDao.activeDays().toSet()))
 
+    /** Current streak (consecutive active days up to today), honouring grace days. */
+    suspend fun currentStreak(today: Long): Int {
+        val grace = profileStore.profile.first().preferences.streakGraceDays
+        return StreakTracker.currentStreak(completionDao.activeDays().toSet(), today, grace)
+    }
+
+    data class AchievementStatus(val achievement: Achievement, val unlocked: Boolean)
+
+    /** All achievements with their unlocked state, for the achievements screen. */
+    suspend fun achievementStatuses(): List<AchievementStatus> {
+        val unlocked = unlockedAchievements().map { it.id }.toSet()
+        return AchievementEngine.ALL.map { AchievementStatus(it, it.id in unlocked) }
+    }
+
     suspend fun review(periodLabel: String, fromEpochDay: Long, toEpochDay: Long): ReviewGenerator.Review {
         val rows = completionDao.between(fromEpochDay, toEpochDay)
         val xpByInstance = rows.associate { it.instanceId to it.xpAwarded }

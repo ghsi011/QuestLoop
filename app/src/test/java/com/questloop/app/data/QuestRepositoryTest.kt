@@ -234,6 +234,26 @@ class QuestRepositoryTest {
     }
 
     @Test
+    fun `current streak counts a completion today`() = runTest {
+        repo.addQuest(quest("a"))
+        assertEquals(0, repo.currentStreak(1))
+        repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)
+        assertEquals(1, repo.currentStreak(1))
+    }
+
+    @Test
+    fun `achievement statuses cover all and reflect unlocks`() = runTest {
+        val before = repo.achievementStatuses()
+        assertTrue(before.isNotEmpty())
+        assertTrue(before.none { it.unlocked })
+        repo.addQuest(quest("a"))
+        repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)
+        val after = repo.achievementStatuses()
+        assertEquals(before.size, after.size)
+        assertTrue(after.any { it.achievement.id == "first_steps" && it.unlocked })
+    }
+
+    @Test
     fun `onboarding flag flips once completed`() = runTest {
         assertFalse(repo.isOnboardingComplete())
         repo.completeOnboarding()
