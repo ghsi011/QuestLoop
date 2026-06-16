@@ -467,6 +467,21 @@ class QuestRepository(
         }
     }
 
+    /**
+     * Revises a single not-yet-saved suggestion per the user's instruction via the
+     * configured AI provider. Returns an error reason when AI is off or the call
+     * fails (the caller keeps the original quest).
+     */
+    suspend fun refineQuest(quest: Quest, instruction: String): AiQuestService.RefineResult {
+        val config = profileStore.getAiConfig()
+        if (!config.usable) {
+            return AiQuestService.RefineResult(null, "AI is off — turn it on in Settings to refine quests.")
+        }
+        val result = AiQuestService(OpenRouterClient(config.apiKey, config.model)).refine(quest, instruction)
+        result.error?.let { aiDiagnostics.record(config.model, it) }
+        return result
+    }
+
     /** Erases all on-device data (SPEC §9: users can delete their data). */
     suspend fun deleteAllData() {
         completionDao.clear()

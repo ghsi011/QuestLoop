@@ -2,6 +2,7 @@ package com.questloop.core.ai
 
 import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.Difficulty
+import com.questloop.core.model.Priority
 import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.QuestFrequency
@@ -16,7 +17,12 @@ internal data class AiQuestDto(
     val title: String = "",
     val category: String = "LIFE_ADMIN",
     val difficulty: String = "EASY",
+    val priority: String = "NORMAL",
+    val frequency: String = "ONE_OFF",
+    val completionStyle: String = "BINARY",
     val estimatedMinutes: Int? = null,
+    val targetCount: Int? = null,
+    val unit: String? = null,
     val rationale: String? = null,
 )
 
@@ -82,6 +88,44 @@ class AiQuestService(
         error = error,
     )
 
+    /** Outcome of refining a single quest: the revised quest, or an error reason. */
+    data class RefineResult(val quest: Quest?, val error: String? = null)
+
+    /**
+     * Revises one [quest] according to a free-text [instruction] (e.g. "make it
+     * weekly and easier"), through the same guardrails. The revised quest keeps
+     * the original id so the caller can replace it in place.
+     */
+    suspend fun refine(quest: Quest, instruction: String, existing: List<Quest> = emptyList()): RefineResult {
+        if (instruction.isBlank()) return RefineResult(quest)
+        val payload = PromptLibrary.questRefineUserPayload(
+            currentQuestJson = json.encodeToString(AiQuestDto.serializer(), dtoFrom(quest)),
+            instruction = instruction,
+        ) + "\n\n" + SCHEMA_INSTRUCTION
+        val attempt = runCatching { client.complete(PromptLibrary.QUEST_REFINE_SYSTEM, payload) }
+        if (attempt.isFailure) {
+            val reason = attempt.exceptionOrNull()?.message?.takeIf { it.isNotBlank() } ?: "couldn't reach the model"
+            return RefineResult(null, "AI request failed: $reason")
+        }
+        val proposed = attempt.getOrNull()?.let(::parse)?.mapIndexedNotNull(::toQuest).orEmpty()
+        val revised = validator.validate(proposed, existing).accepted.firstOrNull()
+            ?: return RefineResult(null, "AI didn't return a usable revision.")
+        return RefineResult(revised.copy(id = quest.id, origin = QuestOrigin.AI_SUGGESTED))
+    }
+
+    private fun dtoFrom(q: Quest) = AiQuestDto(
+        title = q.title,
+        category = q.category.name,
+        difficulty = q.difficulty.name,
+        priority = q.priority.name,
+        frequency = q.frequency.name,
+        completionStyle = q.completionStyle.name,
+        estimatedMinutes = q.estimatedMinutes,
+        targetCount = q.targetCount,
+        unit = q.unit,
+        rationale = q.rationale,
+    )
+
     /** Extracts the JSON array from a possibly-chatty/markdown-fenced response. */
     internal fun parse(raw: String): List<AiQuestDto> {
         val start = raw.indexOf('[')
@@ -98,18 +142,22 @@ class AiQuestService(
         if (title.isBlank()) return null
         val category = enumOrDefault(dto.category, QuestCategory.LIFE_ADMIN)
         val difficulty = enumOrDefault(dto.difficulty, Difficulty.EASY)
+        val style = enumOrDefault(dto.completionStyle, CompletionStyle.BINARY)
         return Quest(
             // Batch-unique id so suggestions from different calls can't collide on
             // their instance id (questId@day) if persisted directly.
             id = "ai-${java.util.UUID.randomUUID()}-$index",
             title = title,
             category = category,
-            frequency = QuestFrequency.ONE_OFF,
+            frequency = enumOrDefault(dto.frequency, QuestFrequency.ONE_OFF),
             difficulty = difficulty,
+            priority = enumOrDefault(dto.priority, Priority.NORMAL),
             origin = QuestOrigin.AI_SUGGESTED,
             estimatedMinutes = (dto.estimatedMinutes ?: Quest.defaultMinutes(difficulty)).coerceIn(1, 240),
             isReductionQuest = category == QuestCategory.BAD_HABIT_REDUCTION,
-            completionStyle = CompletionStyle.BINARY,
+            completionStyle = style,
+            targetCount = if (style == CompletionStyle.QUANTITATIVE) (dto.targetCount ?: 1).coerceIn(1, 1000) else null,
+            unit = if (style == CompletionStyle.QUANTITATIVE) dto.unit?.trim()?.ifBlank { null } else null,
             rationale = dto.rationale?.trim()?.ifBlank { null },
         )
     }
@@ -124,8 +172,13 @@ class AiQuestService(
             appendLine("  {")
             appendLine("    \"title\": string,")
             appendLine("    \"category\": one of ${QuestCategory.entries.joinToString(", ") { it.name }},")
-            appendLine("    \"difficulty\": one of ${Difficulty.entries.joinToString(", ") { it.name }},")
-            appendLine("    \"estimatedMinutes\": integer,")
+            appendLine("    \"difficulty\": one of ${Difficulty.entries.joinToString(", ") { it.name }} (sets XP),")
+            appendLine("    \"priority\": one of ${Priority.entries.joinToString(", ") { it.name }},")
+            appendLine("    \"frequency\": one of ${QuestFrequency.entries.joinToString(", ") { it.name }},")
+            appendLine("    \"completionStyle\": one of ${CompletionStyle.entries.joinToString(", ") { it.name }},")
+            appendLine("    \"estimatedMinutes\": integer (the target for DURATION),")
+            appendLine("    \"targetCount\": integer (only for QUANTITATIVE),")
+            appendLine("    \"unit\": short string (only for QUANTITATIVE, e.g. \"glasses\"),")
             appendLine("    \"rationale\": short string")
             appendLine("  }")
             append("Return at most 6 quests.")

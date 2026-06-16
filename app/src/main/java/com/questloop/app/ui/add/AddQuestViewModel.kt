@@ -12,20 +12,27 @@ import com.questloop.core.model.QuestFrequency
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
 
+data class AddUiState(
+    /** True while the initial suggestion request is in flight. */
+    val generating: Boolean = false,
+    /** Editable AI/fallback suggestions awaiting the user's review. */
+    val suggestions: List<Quest> = emptyList(),
+    /** Id of the suggestion currently being refined by AI, if any. */
+    val refiningId: String? = null,
+    /** One-shot status/error message for the quick-add flow. */
+    val message: String? = null,
+)
+
 class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
 
-    /** True while an AI suggestion request is in flight. */
-    private val _generating = MutableStateFlow(false)
-    val generating: StateFlow<Boolean> = _generating.asStateFlow()
+    private val _state = MutableStateFlow(AddUiState())
+    val state: StateFlow<AddUiState> = _state.asStateFlow()
 
-    /** One-shot message describing the last quick-add result (AI vs fallback). */
-    private val _quickResult = MutableStateFlow<String?>(null)
-    val quickResult: StateFlow<String?> = _quickResult.asStateFlow()
-
-    fun consumeQuickResult() { _quickResult.value = null }
+    fun consumeMessage() = _state.update { it.copy(message = null) }
 
     fun addQuest(
         title: String,
@@ -54,47 +61,95 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
         )
         viewModelScope.launch {
             repository.addQuest(quest)
-            // Creating a quest clears the "Create your first quest" guide.
             repository.archiveQuest(SampleData.ONBOARDING_CREATE)
             onDone()
         }
     }
 
     /**
-     * Turns free-text todo lines into quests. Routes through the repository's AI
-     * suggester when configured (guardrailed), and a deterministic safe fallback
-     * otherwise. Reports the outcome via [quickResult] (the screen stays open so
-     * the user can see what was added and add more).
+     * Turns free-text into suggestions for review (NOT added yet). The user's text
+     * is left untouched so they can tweak and re-generate. AI failures are shown;
+     * when AI is off, deterministic suggestions are offered for review instead.
      */
-    fun quickAddFromText(text: String) {
+    fun generate(text: String) {
         val lines = text.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
         if (lines.isEmpty()) return
         viewModelScope.launch {
-            _generating.value = true
-            try {
-                val suggestion = repository.suggestQuests(lines)
-                if (suggestion.error != null) {
-                    // AI was configured but the call failed — don't silently turn the
-                    // user's text into quests; tell them so they can fix and retry.
-                    _quickResult.value =
-                        "${suggestion.error} Nothing added — check your key, model, and connection in Settings."
-                } else {
-                    suggestion.quests.forEach { repository.addQuest(it.copy(id = "user-${UUID.randomUUID()}")) }
-                    if (suggestion.quests.isNotEmpty()) repository.archiveQuest(SampleData.ONBOARDING_CREATE)
-                    val n = suggestion.quests.size
-                    val plural = if (n == 1) "" else "s"
-                    _quickResult.value = when {
-                        n == 0 -> "Nothing to add — try rephrasing."
-                        suggestion.fromAi -> "Added $n quest$plural ✨"
-                        // No error but not from AI means AI is off — nudge, don't pretend.
-                        else -> "Added $n quest$plural. Turn on AI in Settings for smarter suggestions."
-                    }
-                }
-            } catch (e: Exception) {
-                _quickResult.value = "Something went wrong. Your data is safe — please try again."
-            } finally {
-                _generating.value = false
+            _state.update { it.copy(generating = true, message = null) }
+            val suggestion = repository.suggestQuests(lines)
+            val n = suggestion.quests.size
+            val plural = if (n == 1) "" else "s"
+            _state.update {
+                it.copy(
+                    generating = false,
+                    suggestions = suggestion.quests,
+                    message = when {
+                        suggestion.error != null ->
+                            "${suggestion.error} Showing your text below — edit, refine, or discard."
+                        n == 0 -> "Nothing to suggest — try rephrasing."
+                        suggestion.fromAi -> "Review $n suggestion$plural below."
+                        else -> "AI is off — showing basic suggestions. Turn it on in Settings for smarter ones."
+                    },
+                )
             }
         }
     }
+
+    /** Replaces a suggestion after a manual edit (same id). */
+    fun updateSuggestion(quest: Quest) {
+        _state.update { st -> st.copy(suggestions = st.suggestions.map { if (it.id == quest.id) quest else it }) }
+    }
+
+    fun removeSuggestion(id: String) {
+        _state.update { st -> st.copy(suggestions = st.suggestions.filterNot { it.id == id }) }
+    }
+
+    /** Asks the AI to revise one suggestion per a free-text instruction. */
+    fun refineSuggestion(id: String, instruction: String) {
+        val target = _state.value.suggestions.firstOrNull { it.id == id } ?: return
+        viewModelScope.launch {
+            _state.update { it.copy(refiningId = id, message = null) }
+            val result = repository.refineQuest(target, instruction)
+            _state.update { st ->
+                st.copy(
+                    refiningId = null,
+                    suggestions = if (result.quest != null) {
+                        st.suggestions.map { if (it.id == id) result.quest else it }
+                    } else {
+                        st.suggestions
+                    },
+                    message = result.error,
+                )
+            }
+        }
+    }
+
+    /** Persists one reviewed suggestion. */
+    fun acceptSuggestion(id: String) {
+        val quest = _state.value.suggestions.firstOrNull { it.id == id } ?: return
+        viewModelScope.launch {
+            repository.addQuest(quest.copy(id = "user-${UUID.randomUUID()}"))
+            repository.archiveQuest(SampleData.ONBOARDING_CREATE)
+            _state.update {
+                it.copy(
+                    suggestions = it.suggestions.filterNot { s -> s.id == id },
+                    message = "Added \"${quest.title}\".",
+                )
+            }
+        }
+    }
+
+    /** Persists all reviewed suggestions. */
+    fun acceptAll() {
+        val all = _state.value.suggestions
+        if (all.isEmpty()) return
+        viewModelScope.launch {
+            all.forEach { repository.addQuest(it.copy(id = "user-${UUID.randomUUID()}")) }
+            repository.archiveQuest(SampleData.ONBOARDING_CREATE)
+            val plural = if (all.size == 1) "" else "s"
+            _state.update { it.copy(suggestions = emptyList(), message = "Added ${all.size} quest$plural.") }
+        }
+    }
+
+    fun discardSuggestions() = _state.update { it.copy(suggestions = emptyList()) }
 }

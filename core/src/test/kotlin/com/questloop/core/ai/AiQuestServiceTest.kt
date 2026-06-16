@@ -1,6 +1,10 @@
 package com.questloop.core.ai
 
+import com.questloop.core.model.CompletionStyle
+import com.questloop.core.model.Difficulty
+import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestCategory
+import com.questloop.core.model.QuestFrequency
 import com.questloop.core.model.QuestOrigin
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -81,6 +85,67 @@ class AiQuestServiceTest {
         val svc = service("""[{"title":"Stretch","category":"HEALTH","difficulty":"TRIVIAL"}]""")
         val result = svc.suggest(AiQuestService.Input(todos = listOf("stretch")))
         assertTrue(result.fromAi)
+        assertNull(result.error)
+    }
+
+    @Test
+    fun `parses frequency, completion style, priority and target`() = runTest {
+        val svc = service(
+            """[{"title":"Drink water","category":"HEALTH","difficulty":"EASY","priority":"HIGH",
+               "frequency":"DAILY","completionStyle":"QUANTITATIVE","targetCount":8,"unit":"glasses"}]""",
+        )
+        val q = svc.suggest(AiQuestService.Input(todos = listOf("water"))).quests.single()
+        assertEquals(QuestFrequency.DAILY, q.frequency)
+        assertEquals(CompletionStyle.QUANTITATIVE, q.completionStyle)
+        assertEquals(8, q.targetCount)
+        assertEquals("glasses", q.unit)
+    }
+
+    @Test
+    fun `refine revises a quest and keeps its id`() = runTest {
+        val svc = service(
+            """[{"title":"Call mum","category":"SOCIAL","difficulty":"EASY","frequency":"WEEKLY"}]""",
+        )
+        val original = Quest(
+            id = "x",
+            title = "Call mum",
+            category = QuestCategory.SOCIAL,
+            frequency = QuestFrequency.ONE_OFF,
+            difficulty = Difficulty.EASY,
+        )
+        val result = svc.refine(original, "make it a weekly habit")
+        assertEquals("x", result.quest?.id)
+        assertEquals(QuestFrequency.WEEKLY, result.quest?.frequency)
+        assertNull(result.error)
+    }
+
+    @Test
+    fun `refine surfaces an error when the model fails`() = runTest {
+        val svc = service(fail = true)
+        val original = Quest(
+            id = "x",
+            title = "Call mum",
+            category = QuestCategory.SOCIAL,
+            frequency = QuestFrequency.ONE_OFF,
+            difficulty = Difficulty.EASY,
+        )
+        val result = svc.refine(original, "make it harder")
+        assertNull(result.quest)
+        assertNotNull(result.error)
+    }
+
+    @Test
+    fun `refine with a blank instruction returns the original unchanged`() = runTest {
+        val svc = service("[]")
+        val original = Quest(
+            id = "x",
+            title = "Call mum",
+            category = QuestCategory.SOCIAL,
+            frequency = QuestFrequency.ONE_OFF,
+            difficulty = Difficulty.EASY,
+        )
+        val result = svc.refine(original, "   ")
+        assertEquals(original, result.quest)
         assertNull(result.error)
     }
 
