@@ -34,8 +34,6 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
     private val _state = MutableStateFlow(AddUiState())
     val state: StateFlow<AddUiState> = _state.asStateFlow()
 
-    fun consumeMessage() = _state.update { it.copy(message = null) }
-
     fun addQuest(
         title: String,
         category: QuestCategory,
@@ -159,5 +157,4 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
         }
     }
 
-    fun discardSuggestions() = _state.update { it.copy(suggestions = emptyList()) }
 }

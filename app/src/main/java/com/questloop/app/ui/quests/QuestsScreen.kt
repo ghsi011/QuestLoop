@@ -112,6 +112,7 @@ fun QuestsScreen(
             items(group.items, key = { it.quest.id }) { status ->
                 QuestBacklogRow(
                     status = status,
+                    enabled = !state.completing,
                     onComplete = { viewModel.complete(status.quest) },
                     onSkip = { viewModel.skip(status.quest) },
                     onMeasured = { viewModel.completeMeasured(status.quest, it) },
@@ -139,6 +140,7 @@ fun QuestsScreen(
 @Composable
 private fun QuestBacklogRow(
     status: QuestRepository.QuestStatus,
+    enabled: Boolean,
     onComplete: () -> Unit,
     onSkip: () -> Unit,
     onMeasured: (Int) -> Unit,
@@ -174,6 +176,7 @@ private fun QuestBacklogRow(
                 onComplete = onComplete,
                 onSkip = onSkip,
                 onMeasured = onMeasured,
+                enabled = enabled,
             )
         }
     }

@@ -4,6 +4,7 @@ import android.content.Context
 import com.questloop.app.data.FileAiDiagnostics
 import com.questloop.app.data.ProfileStore
 import com.questloop.app.data.QuestRepository
+import com.questloop.app.data.WakeLockAiCallGuard
 import com.questloop.app.data.local.QuestLoopDatabase
 
 /**
@@ -20,5 +21,6 @@ class AppContainer(context: Context) {
         completionDao = db.completionDao(),
         profileStore = profileStore,
         aiDiagnostics = FileAiDiagnostics(context.applicationContext),
+        aiCallGuard = WakeLockAiCallGuard(context.applicationContext),
     )
 }

@@ -169,6 +169,7 @@ fun TodayContent(state: TodayUiState, actions: TodayActions, onOpenAchievements:
                     instance = instance,
                     actions = actions,
                     progress = state.todayProgress[instance.quest.id] ?: 0,
+                    enabled = !state.completing,
                 )
             }
             if (focusMode && quests.size > 1) {
@@ -243,7 +244,7 @@ private fun AchievementStrip(titles: List<String>, onOpen: () -> Unit) {
 }
 
 @Composable
-private fun QuestRow(instance: QuestInstance, actions: TodayActions, progress: Int) {
+private fun QuestRow(instance: QuestInstance, actions: TodayActions, progress: Int, enabled: Boolean = true) {
     val quest: Quest = instance.quest
     var showWhy by remember(quest.id) { mutableStateOf(false) }
     Card(Modifier.fillMaxWidth().testTag("quest-${quest.id}")) {
@@ -290,6 +291,7 @@ private fun QuestRow(instance: QuestInstance, actions: TodayActions, progress: I
                     onComplete = { actions.onComplete(quest) },
                     onSkip = { actions.onSkip(quest) },
                     onMeasured = { actions.onCompleteMeasured(quest, it) },
+                    enabled = enabled,
                 )
             }
         }

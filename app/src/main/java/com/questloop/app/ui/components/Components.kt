@@ -9,10 +9,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -78,34 +76,6 @@ fun LevelRing(
             }
         }
     }
-}
-
-@Composable
-fun LevelBar(level: Int, fraction: Double, totalXp: Long, modifier: Modifier = Modifier) {
-    Card(modifier = modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Level $level", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("$totalXp XP", style = MaterialTheme.typography.bodyMedium)
-            }
-            LinearProgressIndicator(
-                progress = { fraction.toFloat() },
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            )
-        }
-    }
-}
-
-@Composable
-fun CategoryChip(category: QuestCategory) {
-    AssistChip(
-        onClick = {},
-        label = { Text(category.pretty()) },
-    )
 }
 
 @Composable

@@ -29,9 +29,9 @@ class AppSmokeTest {
     private fun present(text: String) =
         composeRule.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
 
-    private fun tapIfPresent(text: String) {
-        if (present(text)) composeRule.onNodeWithText(text).performClick()
-    }
+    /** Hard assertion: fail (timeout) if [text] never appears, so broken nav fails the test. */
+    private fun awaitText(text: String) =
+        composeRule.waitUntil(timeoutMillis = 8_000) { present(text) }
 
     private fun shoot(name: String) {
         composeRule.waitForIdle()
@@ -41,31 +41,29 @@ class AppSmokeTest {
     @Test
     fun walks_main_screens_and_captures_screenshots() {
         // First launch may show onboarding; wait for either it or the Today tab.
-        composeRule.waitUntil(timeoutMillis = 10_000) {
-            present("Get started") || present("Today")
-        }
+        composeRule.waitUntil(timeoutMillis = 10_000) { present("Get started") || present("Today") }
         if (present("Get started")) {
             shoot("01-onboarding")
             composeRule.onNodeWithText("Get started").performClick()
         }
 
-        composeRule.waitUntil(timeoutMillis = 10_000) { present("Today") }
+        awaitText("Today")
         shoot("02-today")
 
-        tapIfPresent("Quests")
-        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Quests").performClick()
+        awaitText("Browse quest bank")
         shoot("03-quests")
 
-        tapIfPresent("Browse quest bank")
-        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Browse quest bank").performClick()
+        awaitText("Daily")
         shoot("04-quest-bank")
 
-        tapIfPresent("Settings")
-        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Settings").performClick()
+        awaitText("AI suggestions")
         shoot("05-settings")
 
-        tapIfPresent("Rewards")
-        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Rewards").performClick()
+        awaitText("Save budget")
         shoot("06-rewards")
     }
 }

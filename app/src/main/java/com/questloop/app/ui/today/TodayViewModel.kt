@@ -29,7 +29,6 @@ data class TodayUiState(
     val signals: List<SafetyGuard.Signal> = emptyList(),
     val achievements: List<Achievement> = emptyList(),
     val energy: Int? = null,
-    val availableMinutes: Int? = null,
     /** Today's logged progress per quest id (count or minutes) for non-binary quests. */
     val todayProgress: Map<String, Int> = emptyMap(),
     val lastEffect: QuestLoopEngine.CompletionEffect? = null,
@@ -37,6 +36,8 @@ data class TodayUiState(
     /** Bumped on every toast so identical consecutive messages still re-fire. */
     val toastId: Long = 0,
     val pendingUndo: PendingUndo? = null,
+    /** True while a completion is being recorded; guards double-taps. */
+    val completing: Boolean = false,
 )
 
 class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
@@ -78,7 +79,6 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
                     achievements = achievements,
                     todayProgress = todayProgress,
                     energy = checkIn?.energy,
-                    availableMinutes = checkIn?.availableMinutes,
                 )
             }
         }
@@ -91,13 +91,26 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
         }
     }
 
-    fun complete(quest: Quest, result: CompletionResult) {
-        viewModelScope.launch { applyOutcome(repository.completeQuest(quest, AppClock.todayEpochDay(), result)) }
+    fun complete(quest: Quest, result: CompletionResult) = runCompletion {
+        repository.completeQuest(quest, AppClock.todayEpochDay(), result)
     }
 
     /** Completes a non-binary quest from a measured value (count/minutes/rating). */
-    fun completeMeasured(quest: Quest, value: Int) {
-        viewModelScope.launch { applyOutcome(repository.completeMeasured(quest, AppClock.todayEpochDay(), value)) }
+    fun completeMeasured(quest: Quest, value: Int) = runCompletion {
+        repository.completeMeasured(quest, AppClock.todayEpochDay(), value)
+    }
+
+    /** Serializes completions so a double-tap can't fire twice or clobber the Undo. */
+    private fun runCompletion(block: suspend () -> QuestRepository.CompleteOutcome) {
+        if (_state.value.completing) return
+        _state.update { it.copy(completing = true) }
+        viewModelScope.launch {
+            try {
+                applyOutcome(block())
+            } finally {
+                _state.update { it.copy(completing = false) }
+            }
+        }
     }
 
     private fun applyOutcome(outcome: QuestRepository.CompleteOutcome) {

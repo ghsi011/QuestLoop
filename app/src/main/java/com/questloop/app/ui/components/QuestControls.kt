@@ -37,14 +37,15 @@ fun QuestCompletionControls(
     onComplete: () -> Unit,
     onSkip: () -> Unit,
     onMeasured: (Int) -> Unit,
+    enabled: Boolean = true,
 ) {
     when (quest.completionStyle) {
         CompletionStyle.BINARY -> Row(
             Modifier.fillMaxWidth().padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Button(onClick = onComplete) { Text("Complete") }
-            OutlinedButton(onClick = onSkip) {
+            Button(onClick = onComplete, enabled = enabled) { Text("Complete") }
+            OutlinedButton(onClick = onSkip, enabled = enabled) {
                 Text(if (quest.isReductionQuest) "Log honestly" else "Skip")
             }
         }
@@ -58,7 +59,7 @@ fun QuestCompletionControls(
                     Text("$count / $target ${quest.unit.orEmpty()}".trim(), style = MaterialTheme.typography.bodyMedium)
                     OutlinedButton(onClick = { if (count < target) count++ }) { Text("+") }
                 }
-                Button(onClick = { onMeasured(count) }, modifier = Modifier.padding(top = 8.dp)) {
+                Button(onClick = { onMeasured(count) }, enabled = enabled, modifier = Modifier.padding(top = 8.dp)) {
                     Text("Log progress")
                 }
             }
@@ -73,7 +74,7 @@ fun QuestCompletionControls(
                     Text("$minutes / $target min", style = MaterialTheme.typography.bodyMedium)
                     OutlinedButton(onClick = { minutes = (minutes + 5).coerceAtMost(1440) }) { Text("+5") }
                 }
-                Button(onClick = { onMeasured(minutes) }, modifier = Modifier.padding(top = 8.dp)) {
+                Button(onClick = { onMeasured(minutes) }, enabled = enabled, modifier = Modifier.padding(top = 8.dp)) {
                     Text("Log time")
                 }
             }
@@ -83,7 +84,7 @@ fun QuestCompletionControls(
             Text("How did it go?", style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
                 (1..5).forEach { rating ->
-                    OutlinedButton(onClick = { onMeasured(rating) }) { Text("$rating") }
+                    OutlinedButton(onClick = { onMeasured(rating) }, enabled = enabled) { Text("$rating") }
                 }
             }
         }

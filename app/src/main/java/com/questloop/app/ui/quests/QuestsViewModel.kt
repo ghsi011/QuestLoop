@@ -24,6 +24,8 @@ data class QuestsUiState(
     val toastId: Long = 0,
     /** Data to reverse the last completion via the snackbar "Undo". */
     val pendingUndo: PendingUndo? = null,
+    /** True while a completion is being recorded; guards double-taps. */
+    val completing: Boolean = false,
 )
 
 /** A titled section of the backlog (e.g. "Today's plan", "Scheduled for later"). */
@@ -47,10 +49,6 @@ class QuestsViewModel(private val repository: QuestRepository) : ViewModel() {
         }
     }
 
-    fun refresh() {
-        viewModelScope.launch { recompute() }
-    }
-
     private suspend fun recompute() {
         val today = AppClock.todayEpochDay()
         val overview = repository.questOverview(today, AppClock.currentDayPart())
@@ -70,18 +68,24 @@ class QuestsViewModel(private val repository: QuestRepository) : ViewModel() {
         repository.completeMeasured(quest, AppClock.todayEpochDay(), value)
     }
 
-    /** Runs a completion and offers Undo (same affordance as the Today screen). */
+    /** Runs a completion (guarded against double-tap) and offers Undo. */
     private fun completeWithUndo(toast: String, block: suspend () -> QuestRepository.CompleteOutcome) {
+        if (_state.value.completing) return
+        _state.update { it.copy(completing = true) }
         viewModelScope.launch {
-            val outcome = block()
-            _state.update {
-                it.copy(
-                    toast = toast,
-                    toastId = it.toastId + 1,
-                    pendingUndo = PendingUndo(outcome.instanceId, outcome.previousRecord),
-                )
+            try {
+                val outcome = block()
+                _state.update {
+                    it.copy(
+                        toast = toast,
+                        toastId = it.toastId + 1,
+                        pendingUndo = PendingUndo(outcome.instanceId, outcome.previousRecord),
+                    )
+                }
+                recompute()
+            } finally {
+                _state.update { it.copy(completing = false) }
             }
-            recompute()
         }
     }
 

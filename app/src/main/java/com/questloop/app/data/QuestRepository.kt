@@ -53,6 +53,7 @@ class QuestRepository(
     private val generator: QuestGenerator = QuestGenerator(),
     private val safetyGuard: SafetyGuard = SafetyGuard(),
     private val aiDiagnostics: AiDiagnostics = NoopAiDiagnostics,
+    private val aiCallGuard: AiCallGuard = NoopAiCallGuard,
 ) {
     private val exportJson = kotlinx.serialization.json.Json { prettyPrint = true; ignoreUnknownKeys = true }
 
@@ -171,12 +172,24 @@ class QuestRepository(
     }
 
     /**
+     * Every quest that can appear in a plan, keyed by id: stored quests plus the
+     * ones derived from habits/bad-habits/goals. Used wherever a quest's style or
+     * fields are needed, so derived (non-stored) quests aren't silently treated as
+     * binary or skipped for progress.
+     */
+    private suspend fun candidateQuestsById(): Map<String, Quest> {
+        val profile = profileStore.profile.first()
+        val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals)
+        return (questDao.getActive().map { it.toModel() } + derived).associateBy { it.id }
+    }
+
+    /**
      * Quest ids that should not appear again today. Style-aware: a partially
      * logged QUANTITATIVE/DURATION quest is *not* dismissed so the user can keep
      * adding progress.
      */
     private suspend fun dismissedQuestIdsToday(epochDay: Long): Set<String> {
-        val styleById = questDao.getActive().associate { it.id to it.toModel().completionStyle }
+        val styleById = candidateQuestsById().mapValues { it.value.completionStyle }
         return completionDao.between(epochDay, epochDay)
             .map { it.toModel() }
             .filter { rec ->
@@ -192,7 +205,7 @@ class QuestRepository(
      * DURATION), so the UI can resume partial logging from where it left off.
      */
     suspend fun todayProgress(epochDay: Long): Map<String, Int> {
-        val quests = questDao.getActive().map { it.toModel() }.associateBy { it.id }
+        val quests = candidateQuestsById()
         return buildMap {
             for (e in completionDao.between(epochDay, epochDay)) {
                 val quest = quests[e.questId] ?: continue
@@ -452,9 +465,14 @@ class QuestRepository(
             goals = profile.goals.map { it.title },
             focusAreas = profile.preferences.focusCategories.toList(),
             availableMinutes = profile.preferences.defaultAvailableMinutes,
+            // Dedup AI output against quests the user already has.
+            existing = questDao.getActive().map { it.toModel() },
         )
         return if (config.usable) {
-            val suggestion = AiQuestService(OpenRouterClient(config.apiKey, config.model)).suggest(input)
+            // Hold a CPU wake lock so a slow response isn't dropped if the screen sleeps.
+            val suggestion = aiCallGuard.keepAwake {
+                AiQuestService(OpenRouterClient(config.apiKey, config.model)).suggest(input)
+            }
             // Record real failures so the user can export them for troubleshooting.
             suggestion.error?.let { aiDiagnostics.record(config.model, it) }
             suggestion
@@ -477,7 +495,9 @@ class QuestRepository(
         if (!config.usable) {
             return AiQuestService.RefineResult(null, "AI is off — turn it on in Settings to refine quests.")
         }
-        val result = AiQuestService(OpenRouterClient(config.apiKey, config.model)).refine(quest, instruction)
+        val result = aiCallGuard.keepAwake {
+            AiQuestService(OpenRouterClient(config.apiKey, config.model)).refine(quest, instruction)
+        }
         result.error?.let { aiDiagnostics.record(config.model, it) }
         return result
     }

@@ -1,5 +1,6 @@
 package com.questloop.app.ui
 
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -95,7 +96,10 @@ fun QuestLoopApp(repository: QuestRepository) {
     LaunchedEffect(Unit) { onboarded = repository.isOnboardingComplete() }
 
     when (onboarded) {
-        null -> Unit // brief: flag not loaded yet
+        null -> androidx.compose.foundation.layout.Box(
+            Modifier.fillMaxSize(),
+            contentAlignment = androidx.compose.ui.Alignment.Center,
+        ) { androidx.compose.material3.CircularProgressIndicator() }
         false -> OnboardingScreen(
             onGetStarted = { scope.launch { repository.completeOnboarding(); onboarded = true } },
         )
