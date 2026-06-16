@@ -42,12 +42,22 @@ object ReminderNotifications {
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+        val doneIntent = Intent(context, ReminderActionReceiver::class.java)
+            .setAction(ReminderActionReceiver.ACTION_DONE)
+            .putExtra(ReminderActionReceiver.EXTRA_SLOT, slot.name)
+        val donePending = PendingIntent.getBroadcast(
+            context,
+            slot.requestCode + 500,
+            doneIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(slot.title)
             .setContentText(slot.text)
             .setAutoCancel(true)
             .setContentIntent(openApp)
+            .addAction(0, "Mark done", donePending)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
         // Guarded: on Android 13+ this is a no-op if the user hasn't granted POST_NOTIFICATIONS.
