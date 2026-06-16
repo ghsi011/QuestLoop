@@ -55,6 +55,11 @@ android {
     }
 }
 
+// Where Room writes exported schemas (for migrations and migration tests).
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     implementation(project(":core"))
     implementation(libs.kotlinx.serialization.json)
