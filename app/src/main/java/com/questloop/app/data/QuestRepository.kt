@@ -72,6 +72,43 @@ class QuestRepository(
 
     suspend fun archiveQuest(id: String) = questDao.archive(id)
 
+    /** A user-managed quest plus where it stands relative to today. */
+    data class QuestStatus(
+        val quest: Quest,
+        /** In today's curated plan (visible on the Today screen). */
+        val inTodaysPlan: Boolean,
+        /** Eligible to be done today by its recurrence cadence. */
+        val dueToday: Boolean,
+        /** Already completed today. */
+        val completedToday: Boolean,
+    )
+
+    /**
+     * The full backlog of user-managed quests with each one's status for today.
+     * Powers the Quests screen so nothing the user created (or AI suggested) is
+     * ever hidden behind the curated daily plan. Habit-derived quests are excluded
+     * here because they're managed on the Habits screen, not individually.
+     */
+    suspend fun questOverview(epochDay: Long, dayPart: DayPart): List<QuestStatus> {
+        val checkIn = todayCheckIn(epochDay)
+        val plan = todayPlan(epochDay, dayPart, checkIn)
+        val inPlan = plan.quests.map { it.quest.id }.toSet()
+        val lastCompleted = completionDao.lastCompletedDays().associate { it.questId to it.lastDay }
+        val completedTodayIds = completionDao.between(epochDay, epochDay)
+            .map { it.toModel() }
+            .filter { it.result == CompletionResult.COMPLETED }
+            .map { it.questId }
+            .toSet()
+        return questDao.getActive().map { it.toModel() }.map { quest ->
+            QuestStatus(
+                quest = quest,
+                inTodaysPlan = quest.id in inPlan,
+                dueToday = QuestScheduler.isDue(quest.frequency, epochDay, lastCompleted[quest.id]),
+                completedToday = quest.id in completedTodayIds,
+            )
+        }
+    }
+
     suspend fun seedIfEmpty() {
         if (questDao.count() == 0) {
             SampleData.starterQuests.forEach { questDao.upsert(it.toEntity()) }

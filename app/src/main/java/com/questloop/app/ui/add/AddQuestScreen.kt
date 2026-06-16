@@ -130,17 +130,17 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
-        SectionHeader("Quick add")
+        SectionHeader("Quick add with AI")
         Text(
-            "One idea per line — we'll shape them into quests.",
+            "Type a list or just brain-dump what's on your plate. We'll turn it into quests.",
             style = MaterialTheme.typography.bodySmall,
         )
         OutlinedTextField(
             value = quickText,
             onValueChange = { quickText = it },
-            label = { Text("One idea per line") },
+            label = { Text("What's on your mind?") },
             modifier = Modifier.fillMaxWidth(),
-            minLines = 3,
+            minLines = 4,
         )
         val generating by viewModel.generating.collectAsStateWithLifecycle()
         val quickResult by viewModel.quickResult.collectAsStateWithLifecycle()

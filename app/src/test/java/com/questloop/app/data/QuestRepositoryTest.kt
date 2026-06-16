@@ -177,6 +177,34 @@ class QuestRepositoryTest {
     }
 
     @Test
+    fun `quest overview lists every active quest with its today status`() = runTest {
+        repo.addQuest(quest("daily1"))
+        repo.addQuest(quest("weekly1").copy(frequency = QuestFrequency.WEEKLY))
+        repo.completeQuest(quest("daily1"), epochDay = 1, result = CompletionResult.COMPLETED)
+
+        val overview = repo.questOverview(epochDay = 1, dayPart = DayPart.MIDDAY)
+        assertEquals(2, overview.size)
+        val daily = overview.first { it.quest.id == "daily1" }
+        val weekly = overview.first { it.quest.id == "weekly1" }
+        // Completed today -> shown as done and no longer in the curated plan.
+        assertTrue(daily.completedToday)
+        assertFalse(daily.inTodaysPlan)
+        // A never-completed weekly quest is due today and visible in the backlog.
+        assertFalse(weekly.completedToday)
+        assertTrue(weekly.dueToday)
+    }
+
+    @Test
+    fun `archived quest drops out of the overview`() = runTest {
+        repo.addQuest(quest("keep"))
+        repo.addQuest(quest("toss"))
+        repo.archiveQuest("toss")
+        val overview = repo.questOverview(epochDay = 1, dayPart = DayPart.MIDDAY)
+        assertTrue(overview.any { it.quest.id == "keep" })
+        assertFalse(overview.any { it.quest.id == "toss" })
+    }
+
+    @Test
     fun `first completion unlocks the first-steps achievement`() = runTest {
         repo.addQuest(quest("a"))
         val outcome = repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)

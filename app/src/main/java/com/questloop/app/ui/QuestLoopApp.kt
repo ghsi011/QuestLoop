@@ -6,6 +6,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
@@ -43,6 +44,8 @@ import com.questloop.app.ui.add.AddQuestScreen
 import com.questloop.app.ui.add.AddQuestViewModel
 import com.questloop.app.ui.habits.HabitsScreen
 import com.questloop.app.ui.habits.HabitsViewModel
+import com.questloop.app.ui.quests.QuestsScreen
+import com.questloop.app.ui.quests.QuestsViewModel
 import com.questloop.app.ui.review.ReviewScreen
 import com.questloop.app.ui.review.ReviewViewModel
 import com.questloop.app.ui.rewards.RewardsScreen
@@ -54,6 +57,7 @@ import com.questloop.app.ui.today.TodayViewModel
 
 private enum class Dest(val route: String, val label: String, val icon: ImageVector) {
     TODAY("today", "Today", Icons.Filled.Home),
+    QUESTS("quests", "Quests", Icons.Filled.Checklist),
     REVIEWS("reviews", "Reviews", Icons.Filled.BarChart),
     REWARDS("rewards", "Rewards", Icons.Filled.CardGiftcard),
     SETTINGS("settings", "Settings", Icons.Filled.Settings),
@@ -82,7 +86,7 @@ private fun QuestLoopMain(repository: QuestRepository) {
     val factory = remember(repository) { appViewModelFactory(repository) }
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Re-arm reminder alarms on launch (they don't survive reboot in this MVP).
+    // Re-arm reminder alarms on launch (a BootReceiver also restores them after reboot).
     val context = LocalContext.current
     LaunchedEffect(Unit) {
         runCatching { ReminderScheduler(context).apply(repository.reminderConfig()) }
@@ -98,7 +102,9 @@ private fun QuestLoopMain(repository: QuestRepository) {
         "achievements" -> "Achievements"
         else -> "QuestLoop"
     }
-    val showFab = currentRoute?.hierarchy?.any { it.route == Dest.TODAY.route } == true
+    val showFab = currentRoute?.hierarchy?.any {
+        it.route == Dest.TODAY.route || it.route == Dest.QUESTS.route
+    } == true
 
     Scaffold(
         topBar = {
@@ -150,6 +156,10 @@ private fun QuestLoopMain(repository: QuestRepository) {
                 val vm: TodayViewModel = viewModel(factory = factory)
                 TodayScreen(vm, snackbarHostState, onOpenAchievements = { navController.navigate("achievements") })
             }
+            composable(Dest.QUESTS.route) {
+                val vm: QuestsViewModel = viewModel(factory = factory)
+                QuestsScreen(vm, snackbarHostState)
+            }
             composable("achievements") {
                 val vm: com.questloop.app.ui.achievements.AchievementsViewModel = viewModel(factory = factory)
                 com.questloop.app.ui.achievements.AchievementsScreen(vm)
@@ -164,7 +174,11 @@ private fun QuestLoopMain(repository: QuestRepository) {
             }
             composable(Dest.SETTINGS.route) {
                 val vm: SettingsViewModel = viewModel(factory = factory)
-                SettingsScreen(vm, onOpenHabits = { navController.navigate("habits") })
+                SettingsScreen(
+                    vm,
+                    onOpenHabits = { navController.navigate("habits") },
+                    snackbarHostState = snackbarHostState,
+                )
             }
             composable("habits") {
                 val vm: HabitsViewModel = viewModel(factory = factory)

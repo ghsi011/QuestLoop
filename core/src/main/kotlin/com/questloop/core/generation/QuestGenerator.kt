@@ -52,6 +52,11 @@ class QuestGenerator(
         val prefs = request.profile.preferences
         val energy = request.checkIn?.energy
         val availableMinutes = request.checkIn?.availableMinutes ?: prefs.defaultAvailableMinutes
+        // The time budget is only a hard limit when the user has actually told us
+        // how much time they have today (an energy/time check-in). Without one, the
+        // default minutes are a guess, so the user's "max quests per day" setting
+        // governs the count and time is only advisory (a note if the plan runs long).
+        val enforceTimeBudget = request.checkIn != null
 
         val notes = mutableListOf<String>()
 
@@ -81,7 +86,9 @@ class QuestGenerator(
             if (selected.size >= maxQuests) return false
             if (quest.difficulty.ordinal > difficultyCeiling.ordinal) return false
             if (quest.category.isMeta && metaIncluded >= 1) return false
-            if (usedMinutes + quest.estimatedMinutes > availableMinutes && selected.isNotEmpty()) return false
+            if (enforceTimeBudget && usedMinutes + quest.estimatedMinutes > availableMinutes && selected.isNotEmpty()) {
+                return false
+            }
             return true
         }
 

@@ -18,6 +18,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,6 +31,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -46,7 +49,11 @@ import com.questloop.app.ui.components.pretty
 import com.questloop.core.model.QuestCategory
 
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel, onOpenHabits: () -> Unit) {
+fun SettingsScreen(
+    viewModel: SettingsViewModel,
+    onOpenHabits: () -> Unit,
+    snackbarHostState: SnackbarHostState,
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val prefs = state.prefs
     var confirmDelete by remember { mutableStateOf(false) }
@@ -55,6 +62,13 @@ fun SettingsScreen(viewModel: SettingsViewModel, onOpenHabits: () -> Unit) {
     // (Re)schedule reminder alarms whenever the config changes.
     LaunchedEffect(state.reminders) {
         ReminderScheduler(context).apply(state.reminders)
+    }
+
+    // Confirm saves so the user knows a setting took effect.
+    LaunchedEffect(state.savedMessage) {
+        val message = state.savedMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
+        viewModel.consumeSavedMessage()
     }
 
     val notifPermissionLauncher = rememberLauncherForActivityResult(
@@ -82,12 +96,22 @@ fun SettingsScreen(viewModel: SettingsViewModel, onOpenHabits: () -> Unit) {
 
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
-                Text("Max quests per day: ${prefs.maxDailyQuests}", fontWeight = FontWeight.SemiBold)
+                // Local while dragging; persisted (with a confirmation) on release so
+                // the snackbar fires once, not on every tick.
+                var sliderValue by remember(prefs.maxDailyQuests) {
+                    mutableIntStateOf(prefs.maxDailyQuests)
+                }
+                Text("Max quests per day: $sliderValue", fontWeight = FontWeight.SemiBold)
                 Slider(
-                    value = prefs.maxDailyQuests.toFloat(),
-                    onValueChange = { viewModel.setMaxDaily(it.toInt()) },
+                    value = sliderValue.toFloat(),
+                    onValueChange = { sliderValue = it.toInt() },
+                    onValueChangeFinished = { viewModel.setMaxDaily(sliderValue) },
                     valueRange = 1f..12f,
                     steps = 10,
+                )
+                Text(
+                    "How many quests QuestLoop puts in your daily plan.",
+                    style = MaterialTheme.typography.bodySmall,
                 )
             }
         }

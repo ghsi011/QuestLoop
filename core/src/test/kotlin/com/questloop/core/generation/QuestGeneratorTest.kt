@@ -55,6 +55,23 @@ class QuestGeneratorTest {
     }
 
     @Test
+    fun `without a check-in the count governs and time is only advisory`() {
+        // 8 quests of 30m each = 240m, well over the 120m default budget. With no
+        // check-in, the user's max-per-day (8) should still be honoured.
+        val cats = QuestCategory.entries.filterNot { it.isMeta }
+        val candidates = (1..12).map { quest("q$it", category = cats[it % cats.size], minutes = 30) }
+        val plan = generator.generateDaily(
+            QuestGenerator.Request(
+                epochDay = 100,
+                profile = profile(UserPreferences(maxDailyQuests = 8, defaultAvailableMinutes = 120)),
+                candidates = candidates,
+            ),
+        )
+        assertEquals(8, plan.quests.size)
+        assertTrue(plan.notes.any { it.contains("time", ignoreCase = true) }, "should note the long plan")
+    }
+
+    @Test
     fun `respects available time budget`() {
         val candidates = (1..10).map { quest("q$it", minutes = 30) }
         val plan = generator.generateDaily(

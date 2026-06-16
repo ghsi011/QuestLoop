@@ -21,6 +21,8 @@ data class SettingsUiState(
     val reminders: ReminderConfig = ReminderConfig(),
     /** Set when an export is ready to be shared; consumed by the UI. */
     val exportJson: String? = null,
+    /** One-shot confirmation shown after a setting is saved; consumed by the UI. */
+    val savedMessage: String? = null,
 )
 
 class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
@@ -33,29 +35,36 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
     fun load() {
         viewModelScope.launch {
             _state.update { it.copy(loading = true) }
-            val prefs = repository.profile.first().preferences
-            val ai = repository.aiConfig()
-            val reminders = repository.reminderConfig()
-            _state.update { it.copy(loading = false, prefs = prefs, ai = ai, reminders = reminders) }
+            reload()
         }
     }
 
-    fun setReminders(config: ReminderConfig) = update { repository.setReminderConfig(config) }
+    private suspend fun reload() {
+        val prefs = repository.profile.first().preferences
+        val ai = repository.aiConfig()
+        val reminders = repository.reminderConfig()
+        _state.update { it.copy(loading = false, prefs = prefs, ai = ai, reminders = reminders) }
+    }
+
+    fun setReminders(config: ReminderConfig) =
+        update(if (config.enabled) "Reminders on" else "Reminders off") { repository.setReminderConfig(config) }
 
     /** Persists the whole AI config in one write (avoids racing partial copies). */
-    fun saveAi(enabled: Boolean, apiKey: String, model: String) = update {
+    fun saveAi(enabled: Boolean, apiKey: String, model: String) = update("AI settings saved") {
         repository.setAiConfig(AiConfig(enabled = enabled, apiKey = apiKey.trim(), model = model.trim()))
     }
 
-    fun setMaxDaily(value: Int) = update { repository.setMaxDaily(value) }
+    fun setMaxDaily(value: Int) = update("Saved · up to $value quests a day") { repository.setMaxDaily(value) }
 
-    fun setAvailableMinutes(value: Int) = update { repository.setAvailableMinutes(value) }
+    fun setAvailableMinutes(value: Int) = update("Saved · ${value}m a day") { repository.setAvailableMinutes(value) }
 
     fun toggleFocus(category: QuestCategory) {
         val current = _state.value.prefs.focusCategories
         val next = if (category in current) current - category else current + category
-        update { repository.setFocusCategories(next) }
+        update("Focus areas updated") { repository.setFocusCategories(next) }
     }
+
+    fun consumeSavedMessage() = _state.update { it.copy(savedMessage = null) }
 
     fun requestExport() {
         viewModelScope.launch {
@@ -74,10 +83,11 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
         }
     }
 
-    private fun update(action: suspend () -> Unit) {
+    private fun update(message: String, action: suspend () -> Unit) {
         viewModelScope.launch {
             action()
-            load()
+            reload()
+            _state.update { it.copy(savedMessage = message) }
         }
     }
 }
