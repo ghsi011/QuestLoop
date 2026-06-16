@@ -79,6 +79,18 @@ Target: roughly halve on-screen words on Today, Rewards, and Settings.
 8. **Calm, adaptive theming.** Material 3 *expressive* surfaces; a softer palette
    on low-energy days; dark-first.
 
+## Roadmap status
+- ✅ **Phase 1 — Streamline:** quest-row pips/dots + collapsible rationale, safety
+  banner, compact energy control, achievement strip; trimmed Rewards/Settings/
+  Onboarding copy.
+- ✅ **Phase 2 — Glanceable progression:** XP ring + streak flame, completion
+  haptic, dedicated Achievements screen.
+- ✅ **Phase 3 — Minimal-interaction reach:** Glance home-screen widget;
+  reminder "Mark done" notification action + boot-persistence.
+- ◑ **Phase 4 — Bolder bets:** Focus mode (next-quest collapse) shipped;
+  swipe-stack deck, progression journey view, and conversational capture remain
+  as future exploration (larger, gesture/animation-heavy).
+
 ## Sequenced next steps
 
 - **Phase 1 — Streamline (low risk, do now):** quest-row redesign (pips +
