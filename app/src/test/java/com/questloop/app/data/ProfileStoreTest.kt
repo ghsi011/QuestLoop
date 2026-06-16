@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -57,6 +58,19 @@ class ProfileStoreTest {
         val profile = store.profile.first()
         assertEquals(emptyList<Habit>(), profile.habits)
         assertEquals(6, profile.preferences.maxDailyQuests)
+    }
+
+    @Test
+    fun `ai config round-trips and is not left in plaintext datastore`() = runTest {
+        val ds = realDataStore()
+        val store = ProfileStore(ctx, ds)
+        store.setAiConfig(AiConfig(enabled = true, apiKey = "sk-xyz", model = "model-1"))
+        val cfg = store.getAiConfig()
+        assertEquals(true, cfg.enabled)
+        assertEquals("sk-xyz", cfg.apiKey)
+        assertEquals("model-1", cfg.model)
+        // The default key store keeps the key out of the legacy plaintext slot.
+        assertNull(ds.data.first()[androidx.datastore.preferences.core.stringPreferencesKey("ai_api_key")])
     }
 
     @Test

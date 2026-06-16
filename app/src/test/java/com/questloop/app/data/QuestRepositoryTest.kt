@@ -384,6 +384,14 @@ class QuestRepositoryTest {
     }
 
     @Test
+    fun `export never contains the ai api key`() = runTest {
+        repo.setAiConfig(AiConfig(enabled = true, apiKey = "sk-super-secret-key", model = "m"))
+        repo.addQuest(quest("a"))
+        val json = repo.exportJson()
+        assertFalse(json.contains("sk-super-secret-key"))
+    }
+
+    @Test
     fun `delete all data resets xp and quests`() = runTest {
         repo.addQuest(quest("a"))
         repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)

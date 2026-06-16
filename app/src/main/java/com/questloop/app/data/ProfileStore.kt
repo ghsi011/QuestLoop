@@ -61,6 +61,7 @@ interface ProfilePreferences {
 class ProfileStore(
     context: Context,
     private val dataStore: DataStore<Preferences> = context.dataStore,
+    private val keyStore: SecureKeyStore = DataStoreKeyStore(dataStore),
 ) : ProfilePreferences {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -174,17 +175,27 @@ class ProfileStore(
 
     override suspend fun getAiConfig(): AiConfig {
         val prefs = safeData.first()
+        var apiKey = keyStore.getApiKey()
+        // One-time migration: move a legacy plaintext key from DataStore into the
+        // secure key store, then scrub it from the plaintext prefs.
+        val legacy = prefs[Keys.AI_KEY]
+        if (apiKey.isBlank() && !legacy.isNullOrBlank()) {
+            keyStore.setApiKey(legacy)
+            dataStore.edit { it.remove(Keys.AI_KEY) }
+            apiKey = legacy
+        }
         return AiConfig(
             enabled = (prefs[Keys.AI_ENABLED] ?: 0) == 1,
-            apiKey = prefs[Keys.AI_KEY].orEmpty(),
+            apiKey = apiKey,
             model = prefs[Keys.AI_MODEL] ?: AiConfig.DEFAULT_MODEL,
         )
     }
 
     override suspend fun setAiConfig(config: AiConfig) {
+        keyStore.setApiKey(config.apiKey)
         dataStore.edit {
             it[Keys.AI_ENABLED] = if (config.enabled) 1 else 0
-            it[Keys.AI_KEY] = config.apiKey
+            it.remove(Keys.AI_KEY) // never persist the key in plaintext
             it[Keys.AI_MODEL] = config.model
         }
     }
@@ -219,5 +230,6 @@ class ProfileStore(
 
     override suspend fun clear() {
         dataStore.edit { it.clear() }
+        keyStore.clear()
     }
 }

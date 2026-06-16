@@ -1,6 +1,7 @@
 package com.questloop.app.di
 
 import android.content.Context
+import com.questloop.app.data.EncryptedKeyStore
 import com.questloop.app.data.FileAiDiagnostics
 import com.questloop.app.data.ProfileStore
 import com.questloop.app.data.QuestRepository
@@ -14,7 +15,10 @@ import com.questloop.app.data.local.QuestLoopDatabase
  */
 class AppContainer(context: Context) {
     private val db = QuestLoopDatabase.get(context)
-    private val profileStore = ProfileStore(context.applicationContext)
+    private val profileStore = ProfileStore(
+        context.applicationContext,
+        keyStore = EncryptedKeyStore(context.applicationContext),
+    )
 
     val repository: QuestRepository = QuestRepository(
         questDao = db.questDao(),
