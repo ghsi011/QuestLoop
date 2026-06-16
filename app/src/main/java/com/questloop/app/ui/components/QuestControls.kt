@@ -44,9 +44,13 @@ fun QuestCompletionControls(
             Modifier.fillMaxWidth().padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Button(onClick = onComplete, enabled = enabled) { Text("Complete") }
+            // Reduction quests succeed by NOT doing the thing, so use plain, honest
+            // labels: "Stayed on track" vs "Slipped" (slipping is rewarded for honesty).
+            Button(onClick = onComplete, enabled = enabled) {
+                Text(if (quest.isReductionQuest) "Stayed on track" else "Complete")
+            }
             OutlinedButton(onClick = onSkip, enabled = enabled) {
-                Text(if (quest.isReductionQuest) "Log honestly" else "Skip")
+                Text(if (quest.isReductionQuest) "Slipped" else "Skip")
             }
         }
 

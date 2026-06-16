@@ -218,13 +218,23 @@ class QuestRepositoryTest {
     }
 
     @Test
-    fun `adding from the bank adds the quest and clears the pick guide`() = runTest {
+    fun `adding from the bank adds the quest and completes the pick guide for xp`() = runTest {
         repo.seedIfEmpty()
         val bankQuest = QuestBank.catalog.first()
-        repo.addFromBank(bankQuest)
+        repo.addFromBank(bankQuest, epochDay = 1)
         val ids = repo.activeQuestIds()
         assertTrue(bankQuest.id in ids)
+        // The guide is completed (XP) then archived, so it's gone from the list.
         assertFalse(SampleData.ONBOARDING_PICK in ids)
+        assertTrue("picking the first quest awards XP", repo.totalXp() > 0)
+    }
+
+    @Test
+    fun `completing an onboarding guide awards xp and removes it`() = runTest {
+        repo.seedIfEmpty()
+        repo.completeOnboardingQuest(SampleData.ONBOARDING_CREATE, epochDay = 1)
+        assertTrue(repo.totalXp() > 0)
+        assertFalse(SampleData.ONBOARDING_CREATE in repo.activeQuestIds())
     }
 
     @Test

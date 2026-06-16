@@ -134,12 +134,22 @@ class QuestRepository(
     suspend fun activeQuestIds(): Set<String> = questDao.getActive().map { it.id }.toSet()
 
     /**
-     * Adds a Quest Bank entry by its stable id. Re-adding un-archives the same
-     * quest. Adding from the bank clears the "Pick your first quest" guide.
+     * Adds a Quest Bank entry by its stable id (re-adding un-archives it) and
+     * completes the "Pick your first quest" guide so the user earns its XP.
      */
-    suspend fun addFromBank(quest: Quest) {
+    suspend fun addFromBank(quest: Quest, epochDay: Long) {
         questDao.upsert(quest.toEntity())
-        questDao.archive(SampleData.ONBOARDING_PICK)
+        completeOnboardingQuest(SampleData.ONBOARDING_PICK, epochDay)
+    }
+
+    /**
+     * Completes a first-run guide quest (awarding its XP) and then archives it so
+     * it's gone for good. No-op if it's already been completed/archived.
+     */
+    suspend fun completeOnboardingQuest(id: String, epochDay: Long) {
+        val quest = questDao.getActive().firstOrNull { it.id == id }?.toModel() ?: return
+        completeQuest(quest, epochDay, CompletionResult.COMPLETED)
+        questDao.archive(id)
     }
 
     /** Build today's plan from active quests + recent history + the day's routine. */

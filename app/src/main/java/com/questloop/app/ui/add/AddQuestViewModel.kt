@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.data.SampleData
+import com.questloop.app.ui.AppClock
 import com.questloop.core.model.Difficulty
 import com.questloop.core.model.Priority
 import com.questloop.core.model.Quest
@@ -61,7 +62,7 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
         )
         viewModelScope.launch {
             repository.addQuest(quest)
-            repository.archiveQuest(SampleData.ONBOARDING_CREATE)
+            repository.completeOnboardingQuest(SampleData.ONBOARDING_CREATE, AppClock.todayEpochDay())
             onDone()
         }
     }
@@ -132,7 +133,7 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
         _state.update { it.copy(saving = true) }
         viewModelScope.launch {
             repository.addQuest(quest.copy(id = "user-${UUID.randomUUID()}", title = quest.title.trim()))
-            repository.archiveQuest(SampleData.ONBOARDING_CREATE)
+            repository.completeOnboardingQuest(SampleData.ONBOARDING_CREATE, AppClock.todayEpochDay())
             _state.update {
                 it.copy(
                     saving = false,
@@ -151,7 +152,7 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
         _state.update { it.copy(saving = true) }
         viewModelScope.launch {
             all.forEach { repository.addQuest(it.copy(id = "user-${UUID.randomUUID()}", title = it.title.trim())) }
-            repository.archiveQuest(SampleData.ONBOARDING_CREATE)
+            repository.completeOnboardingQuest(SampleData.ONBOARDING_CREATE, AppClock.todayEpochDay())
             val plural = if (all.size == 1) "" else "s"
             _state.update { it.copy(saving = false, suggestions = emptyList(), message = "Added ${all.size} quest$plural.") }
         }

@@ -1,5 +1,8 @@
 package com.questloop.app.ui
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -185,6 +188,11 @@ private fun QuestLoopMain(repository: QuestRepository) {
             navController = navController,
             startDestination = Dest.TODAY.route,
             modifier = Modifier.padding(padding),
+            // A consistent gentle crossfade reads smoother than the default slide.
+            enterTransition = { fadeIn(tween(180)) },
+            exitTransition = { fadeOut(tween(180)) },
+            popEnterTransition = { fadeIn(tween(180)) },
+            popExitTransition = { fadeOut(tween(180)) },
         ) {
             composable(Dest.TODAY.route) {
                 val vm: TodayViewModel = viewModel(factory = factory)

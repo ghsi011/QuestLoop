@@ -84,6 +84,14 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
         }
     }
 
+    /** Permanently removes a first-run guide quest (no XP, no penalty). */
+    fun dismissGuide(quest: Quest) {
+        viewModelScope.launch {
+            repository.archiveQuest(quest.id)
+            refresh()
+        }
+    }
+
     fun setCheckIn(energy: Int, availableMinutes: Int) {
         viewModelScope.launch {
             repository.setCheckIn(EnergyCheckIn(AppClock.todayEpochDay(), energy, availableMinutes))

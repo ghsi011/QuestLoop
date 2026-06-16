@@ -7,6 +7,7 @@ import com.questloop.app.ui.AppClock
 import com.questloop.app.ui.today.PendingUndo
 import com.questloop.core.model.CompletionResult
 import com.questloop.core.model.Quest
+import com.questloop.core.model.QuestFrequency
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -117,7 +118,11 @@ class QuestsViewModel(private val repository: QuestRepository) : ViewModel() {
         val open = items.filterNot { it.done }
         val inPlan = open.filter { it.inTodaysPlan }
         val alsoDue = open.filter { !it.inTodaysPlan && it.dueToday }
-        val later = open.filter { !it.inTodaysPlan && !it.dueToday }
+        // A not-due ONE_OFF has already been done, so it's finished — don't list it
+        // as "scheduled for later" (that's only for recurring quests).
+        val later = open.filter {
+            !it.inTodaysPlan && !it.dueToday && it.quest.frequency != QuestFrequency.ONE_OFF
+        }
         return buildList {
             if (inPlan.isNotEmpty()) add(QuestGroup("Today's plan", inPlan))
             if (alsoDue.isNotEmpty()) add(QuestGroup("Also due today", alsoDue))

@@ -132,7 +132,7 @@ class TodayContentTest {
     }
 
     @Test
-    fun `reduction quest shows log honestly instead of skip`() {
+    fun `reduction quest shows on-track and slipped instead of complete and skip`() {
         composeRule.setContent {
             TodayContent(
                 state = stateWith(
@@ -141,7 +141,8 @@ class TodayContentTest {
                 actions = noopActions(),
             )
         }
-        composeRule.onNodeWithText("Log honestly").assertIsDisplayed()
+        composeRule.onNodeWithText("Stayed on track").assertIsDisplayed()
+        composeRule.onNodeWithText("Slipped").assertIsDisplayed()
     }
 
     @Test

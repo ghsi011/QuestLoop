@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.questloop.app.data.QuestBank
 import com.questloop.app.data.QuestRepository
+import com.questloop.app.ui.AppClock
 import com.questloop.core.model.Quest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,7 +43,7 @@ class QuestBankViewModel(private val repository: QuestRepository) : ViewModel() 
 
     fun add(quest: Quest) {
         viewModelScope.launch {
-            repository.addFromBank(quest)
+            repository.addFromBank(quest, AppClock.todayEpochDay())
             _state.update { it.copy(toast = "Added \"${quest.title}\".", toastId = it.toastId + 1) }
         }
     }

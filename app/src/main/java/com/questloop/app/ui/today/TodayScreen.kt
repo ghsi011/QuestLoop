@@ -56,6 +56,8 @@ data class TodayActions(
     val onCheckIn: (energy: Int, minutes: Int) -> Unit,
     val onOpenQuestBank: () -> Unit = {},
     val onOpenAddQuest: () -> Unit = {},
+    /** Permanently dismiss a first-run guide quest. */
+    val onDismissGuide: (Quest) -> Unit = {},
 )
 
 /** Stateful entry point: wires the ViewModel to the stateless [TodayContent]. */
@@ -95,6 +97,7 @@ fun TodayScreen(
             onCheckIn = viewModel::setCheckIn,
             onOpenQuestBank = onOpenQuestBank,
             onOpenAddQuest = onOpenAddQuest,
+            onDismissGuide = viewModel::dismissGuide,
         ),
         onOpenAchievements = onOpenAchievements,
     )
@@ -282,9 +285,9 @@ private fun QuestRow(instance: QuestInstance, actions: TodayActions, progress: I
 
             when (quest.id) {
                 com.questloop.app.data.SampleData.ONBOARDING_PICK ->
-                    OnboardingActions("Browse quest bank", actions.onOpenQuestBank) { actions.onSkip(quest) }
+                    OnboardingActions("Browse quest bank", actions.onOpenQuestBank) { actions.onDismissGuide(quest) }
                 com.questloop.app.data.SampleData.ONBOARDING_CREATE ->
-                    OnboardingActions("Create a quest", actions.onOpenAddQuest) { actions.onSkip(quest) }
+                    OnboardingActions("Create a quest", actions.onOpenAddQuest) { actions.onDismissGuide(quest) }
                 else -> com.questloop.app.ui.components.QuestCompletionControls(
                     quest = quest,
                     progress = progress,
