@@ -23,17 +23,16 @@ data class AiConfig(
         const val DEFAULT_MODEL = "openrouter/free"
 
         /**
-         * Quick-pick free models (current as of June 2026). The first auto-selects;
-         * the rest are strong specific models. OpenRouter's free line-up changes
-         * over time, so if one returns "model not found", pick another or paste any
-         * id from openrouter.ai/models.
+         * Quick-pick free models. The first auto-selects a working free model; the
+         * rest are specific picks. OpenRouter's free line-up changes over time, so
+         * if one returns "model not found", pick another or paste any id from
+         * openrouter.ai/models.
          */
         val FREE_MODEL_PRESETS = listOf(
             "openrouter/free",
-            "meta-llama/llama-3.3-70b-instruct:free",
-            "deepseek/deepseek-chat-v3-0324:free",
-            "meta-llama/llama-4-maverick:free",
-            "deepseek/deepseek-r1:free",
+            "nex-agi/nex-n2-pro:free",
+            "nvidia/nemotron-3-super-120b-a12b:free",
+            "qwen/qwen3-next-80b-a3b-instruct:free",
         )
     }
 }
