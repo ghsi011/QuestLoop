@@ -27,9 +27,11 @@ import com.questloop.core.reward.RewardAllowanceCalculator
 import com.questloop.core.reward.StreakTracker
 import com.questloop.core.review.ReviewGenerator
 import com.questloop.core.safety.SafetyGuard
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 /**
@@ -47,6 +49,7 @@ class QuestRepository(
     private val engine: QuestLoopEngine = QuestLoopEngine(),
     private val generator: QuestGenerator = QuestGenerator(),
     private val safetyGuard: SafetyGuard = SafetyGuard(),
+    private val aiDiagnostics: AiDiagnostics = NoopAiDiagnostics,
 ) {
     private val exportJson = kotlinx.serialization.json.Json { prettyPrint = true; ignoreUnknownKeys = true }
 
@@ -394,6 +397,10 @@ class QuestRepository(
     suspend fun aiConfig(): AiConfig = profileStore.getAiConfig()
     suspend fun setAiConfig(config: AiConfig) = profileStore.setAiConfig(config)
 
+    /** Recent AI error log (model + reason), for the user to export when AI misbehaves. */
+    suspend fun aiDiagnosticsDump(): String = withContext(Dispatchers.IO) { aiDiagnostics.dump() }
+    suspend fun clearAiDiagnostics() = withContext(Dispatchers.IO) { aiDiagnostics.clear() }
+
     suspend fun isOnboardingComplete(): Boolean = profileStore.isOnboardingComplete()
     suspend fun completeOnboarding() = profileStore.setOnboardingComplete()
 
@@ -417,7 +424,10 @@ class QuestRepository(
             availableMinutes = profile.preferences.defaultAvailableMinutes,
         )
         return if (config.usable) {
-            AiQuestService(OpenRouterClient(config.apiKey, config.model)).suggest(input)
+            val suggestion = AiQuestService(OpenRouterClient(config.apiKey, config.model)).suggest(input)
+            // Record real failures so the user can export them for troubleshooting.
+            suggestion.error?.let { aiDiagnostics.record(config.model, it) }
+            suggestion
         } else {
             // No AI configured: deterministic, always-safe suggestions.
             AiQuestService.Suggestion(

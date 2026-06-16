@@ -20,6 +20,7 @@ import java.util.concurrent.TimeUnit
 class OpenRouterClient(
     private val apiKey: String,
     private val model: String,
+    private val endpoint: String = ENDPOINT,
     private val http: OkHttpClient = sharedClient,
 ) : LlmClient {
 
@@ -37,7 +38,7 @@ class OpenRouterClient(
             ),
         )
         val request = Request.Builder()
-            .url(ENDPOINT)
+            .url(endpoint)
             .addHeader("Authorization", "Bearer $apiKey")
             // Optional attribution headers recommended by OpenRouter.
             .addHeader("HTTP-Referer", "https://github.com/ghsi011/QuestLoop")
@@ -48,11 +49,26 @@ class OpenRouterClient(
         http.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                throw IOException("OpenRouter request failed (${response.code})")
+                // Surface the model/provider's own reason (e.g. an unknown model on a
+                // 404) instead of a bare status code, so the user can act on it.
+                val detail = providerError(body)
+                throw IOException(
+                    "OpenRouter request failed (${response.code})" +
+                        if (detail.isNotBlank()) " for model \"$model\": $detail" else " for model \"$model\".",
+                )
             }
             json.decodeFromString(ChatResponse.serializer(), body)
                 .choices.firstOrNull()?.message?.content.orEmpty()
         }
+    }
+
+    /** Extracts OpenRouter's `{ "error": { "message": ... } }` text, or a trimmed body. */
+    private fun providerError(body: String): String {
+        if (body.isBlank()) return ""
+        val parsed = runCatching {
+            json.decodeFromString(ErrorEnvelope.serializer(), body).error?.message
+        }.getOrNull()
+        return (parsed ?: body).trim().take(300)
     }
 
     @Serializable
@@ -70,6 +86,12 @@ class OpenRouterClient(
 
     @Serializable
     private data class Choice(val message: ChatMessage? = null)
+
+    @Serializable
+    private data class ErrorEnvelope(val error: ErrorBody? = null)
+
+    @Serializable
+    private data class ErrorBody(val message: String? = null, val code: Int? = null)
 
     companion object {
         private const val ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"

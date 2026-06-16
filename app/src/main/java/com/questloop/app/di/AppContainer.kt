@@ -1,6 +1,7 @@
 package com.questloop.app.di
 
 import android.content.Context
+import com.questloop.app.data.FileAiDiagnostics
 import com.questloop.app.data.ProfileStore
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.data.local.QuestLoopDatabase
@@ -18,5 +19,6 @@ class AppContainer(context: Context) {
         questDao = db.questDao(),
         completionDao = db.completionDao(),
         profileStore = profileStore,
+        aiDiagnostics = FileAiDiagnostics(context.applicationContext),
     )
 }

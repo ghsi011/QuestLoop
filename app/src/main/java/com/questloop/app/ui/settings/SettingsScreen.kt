@@ -88,6 +88,19 @@ fun SettingsScreen(
         }
     }
 
+    // When the AI error log is ready, hand it to the system share sheet.
+    LaunchedEffect(state.diagnostics) {
+        state.diagnostics?.let { log ->
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TITLE, "questloop-ai-log.txt")
+                putExtra(Intent.EXTRA_TEXT, log)
+            }
+            context.startActivity(Intent.createChooser(intent, "Share AI error log"))
+            viewModel.consumeDiagnostics()
+        }
+    }
+
     Column(
         Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -153,6 +166,9 @@ fun SettingsScreen(
 
         SectionHeader("AI suggestions")
         AiSection(config = state.ai, onSave = viewModel::saveAi)
+        TextButton(onClick = viewModel::shareDiagnostics) {
+            Text("Share AI error log")
+        }
 
         SectionHeader("Habits")
         OutlinedButton(onClick = onOpenHabits, modifier = Modifier.fillMaxWidth()) {
@@ -279,7 +295,8 @@ private fun AiSection(
                     FilterChip(
                         selected = model == preset,
                         onClick = { model = preset },
-                        label = { Text(preset.substringBefore('/').ifEmpty { preset }) },
+                        // Show the model name (e.g. "llama-3.3-70b-instruct"), not the provider.
+                        label = { Text(preset.substringAfter('/').substringBefore(':').ifEmpty { preset }) },
                     )
                 }
             }

@@ -21,6 +21,8 @@ data class SettingsUiState(
     val reminders: ReminderConfig = ReminderConfig(),
     /** Set when an export is ready to be shared; consumed by the UI. */
     val exportJson: String? = null,
+    /** Set when the AI error log is ready to be shared; consumed by the UI. */
+    val diagnostics: String? = null,
     /** One-shot confirmation shown after a setting is saved; consumed by the UI. */
     val savedMessage: String? = null,
 )
@@ -74,6 +76,20 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
     }
 
     fun consumeExport() = _state.update { it.copy(exportJson = null) }
+
+    /** Loads the AI error log to share; tells the user when there's nothing logged. */
+    fun shareDiagnostics() {
+        viewModelScope.launch {
+            val dump = repository.aiDiagnosticsDump()
+            if (dump.isBlank()) {
+                _state.update { it.copy(savedMessage = "No AI errors logged yet.") }
+            } else {
+                _state.update { it.copy(diagnostics = dump) }
+            }
+        }
+    }
+
+    fun consumeDiagnostics() = _state.update { it.copy(diagnostics = null) }
 
     fun deleteAllData(onDone: () -> Unit) {
         viewModelScope.launch {

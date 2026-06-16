@@ -15,13 +15,17 @@ data class AiConfig(
     val usable: Boolean get() = enabled && apiKey.isNotBlank()
 
     companion object {
-        const val DEFAULT_MODEL = "google/gemma-2-9b-it:free"
+        const val DEFAULT_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
 
-        /** A few free OpenRouter models offered as quick presets. */
+        /**
+         * A few free OpenRouter models offered as quick presets. OpenRouter's free
+         * line-up changes over time; if one returns "model not found", pick another
+         * or paste any id from openrouter.ai/models.
+         */
         val FREE_MODEL_PRESETS = listOf(
-            "google/gemma-2-9b-it:free",
-            "meta-llama/llama-3.1-8b-instruct:free",
+            "meta-llama/llama-3.3-70b-instruct:free",
             "mistralai/mistral-7b-instruct:free",
+            "qwen/qwen-2.5-7b-instruct:free",
         )
     }
 }
