@@ -23,6 +23,8 @@ data class AddUiState(
     val suggestions: List<Quest> = emptyList(),
     /** Id of the suggestion currently being refined by AI, if any. */
     val refiningId: String? = null,
+    /** True while suggestions are being persisted (guards double-add). */
+    val saving: Boolean = false,
     /** One-shot status/error message for the quick-add flow. */
     val message: String? = null,
 )
@@ -125,30 +127,35 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
         }
     }
 
-    /** Persists one reviewed suggestion. */
+    /** Persists one reviewed suggestion. Guards against double-tap duplicates. */
     fun acceptSuggestion(id: String) {
+        if (_state.value.saving) return
         val quest = _state.value.suggestions.firstOrNull { it.id == id } ?: return
+        _state.update { it.copy(saving = true) }
         viewModelScope.launch {
-            repository.addQuest(quest.copy(id = "user-${UUID.randomUUID()}"))
+            repository.addQuest(quest.copy(id = "user-${UUID.randomUUID()}", title = quest.title.trim()))
             repository.archiveQuest(SampleData.ONBOARDING_CREATE)
             _state.update {
                 it.copy(
+                    saving = false,
                     suggestions = it.suggestions.filterNot { s -> s.id == id },
-                    message = "Added \"${quest.title}\".",
+                    message = "Added \"${quest.title.trim()}\".",
                 )
             }
         }
     }
 
-    /** Persists all reviewed suggestions. */
+    /** Persists all reviewed suggestions. Guards against double-tap duplicates. */
     fun acceptAll() {
+        if (_state.value.saving) return
         val all = _state.value.suggestions
         if (all.isEmpty()) return
+        _state.update { it.copy(saving = true) }
         viewModelScope.launch {
-            all.forEach { repository.addQuest(it.copy(id = "user-${UUID.randomUUID()}")) }
+            all.forEach { repository.addQuest(it.copy(id = "user-${UUID.randomUUID()}", title = it.title.trim())) }
             repository.archiveQuest(SampleData.ONBOARDING_CREATE)
             val plural = if (all.size == 1) "" else "s"
-            _state.update { it.copy(suggestions = emptyList(), message = "Added ${all.size} quest$plural.") }
+            _state.update { it.copy(saving = false, suggestions = emptyList(), message = "Added ${all.size} quest$plural.") }
         }
     }
 

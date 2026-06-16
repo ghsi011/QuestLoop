@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,7 +45,8 @@ import com.questloop.core.model.QuestFrequency
 
 @Composable
 fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
-    var title by remember { mutableStateOf("") }
+    // Text fields are saveable so a half-typed quest survives rotation / process death.
+    var title by rememberSaveable { mutableStateOf("") }
     var category by remember { mutableStateOf(QuestCategory.LIFE_ADMIN) }
     var difficulty by remember { mutableStateOf(Difficulty.MEDIUM) }
     var priority by remember { mutableStateOf(Priority.NORMAL) }
@@ -52,8 +54,8 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
     var minutes by remember { mutableIntStateOf(25) }
     var completionStyle by remember { mutableStateOf(CompletionStyle.BINARY) }
     var targetCount by remember { mutableIntStateOf(8) }
-    var unit by remember { mutableStateOf("") }
-    var quickText by remember { mutableStateOf("") }
+    var unit by rememberSaveable { mutableStateOf("") }
+    var quickText by rememberSaveable { mutableStateOf("") }
 
     val state by viewModel.state.collectAsStateWithLifecycle()
 
@@ -156,7 +158,8 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
             if (state.generating) {
                 CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
             } else {
-                Text("Suggest quests ✨")
+                // Make it explicit that re-running replaces the suggestions below.
+                Text(if (state.suggestions.isEmpty()) "Suggest quests ✨" else "Regenerate (replaces below) ✨")
             }
         }
         state.message?.let { msg ->
@@ -170,12 +173,13 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 SectionHeader("Review suggestions", modifier = Modifier.weight(1f))
-                Button(onClick = { viewModel.acceptAll() }) { Text("Add all") }
+                Button(onClick = { viewModel.acceptAll() }, enabled = !state.saving) { Text("Add all") }
             }
             state.suggestions.forEach { suggestion ->
                 SuggestionCard(
                     quest = suggestion,
                     refining = state.refiningId == suggestion.id,
+                    addEnabled = !state.saving,
                     onChange = viewModel::updateSuggestion,
                     onAccept = { viewModel.acceptSuggestion(suggestion.id) },
                     onRemove = { viewModel.removeSuggestion(suggestion.id) },
@@ -190,6 +194,7 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
 private fun SuggestionCard(
     quest: Quest,
     refining: Boolean,
+    addEnabled: Boolean,
     onChange: (Quest) -> Unit,
     onAccept: () -> Unit,
     onRemove: () -> Unit,
@@ -278,7 +283,7 @@ private fun SuggestionCard(
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onAccept, enabled = quest.title.isNotBlank()) { Text("Add") }
+                Button(onClick = onAccept, enabled = quest.title.isNotBlank() && addEnabled) { Text("Add") }
                 OutlinedButton(onClick = onRemove) { Text("Discard") }
             }
         }

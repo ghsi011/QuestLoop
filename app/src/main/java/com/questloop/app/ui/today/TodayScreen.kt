@@ -29,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -111,7 +112,7 @@ fun TodayContent(state: TodayUiState, actions: TodayActions, onOpenAchievements:
         return
     }
 
-    var focusMode by remember { mutableStateOf(false) }
+    var focusMode by rememberSaveable { mutableStateOf(false) }
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp).testTag("today-list"),
         verticalArrangement = Arrangement.spacedBy(12.dp),

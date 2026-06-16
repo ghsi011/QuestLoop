@@ -16,6 +16,8 @@ data class RewardsUiState(
     val loading: Boolean = true,
     val budgetCap: Double = 0.0,
     val allowance: RewardAllowanceCalculator.AllowanceResult? = null,
+    /** One-shot confirmation shown after the budget is saved; consumed by the UI. */
+    val savedMessage: String? = null,
 )
 
 class RewardsViewModel(private val repository: QuestRepository) : ViewModel() {
@@ -39,6 +41,10 @@ class RewardsViewModel(private val repository: QuestRepository) : ViewModel() {
         viewModelScope.launch {
             repository.setBudgetCap(value)
             load()
+            val msg = if (value > 0) "Budget saved: ${"%.2f".format(value)}." else "Budget cleared."
+            _state.update { it.copy(savedMessage = msg) }
         }
     }
+
+    fun consumeSavedMessage() = _state.update { it.copy(savedMessage = null) }
 }

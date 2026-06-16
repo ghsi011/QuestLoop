@@ -13,6 +13,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
@@ -21,6 +22,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +41,8 @@ import com.questloop.core.model.QuestCategory
 @Composable
 fun HabitsScreen(viewModel: HabitsViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // Title + the action to run if the user confirms the deletion.
+    var pendingDelete by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
 
     Column(
         Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
@@ -49,7 +53,7 @@ fun HabitsScreen(viewModel: HabitsViewModel) {
             RowItem(
                 title = habit.title,
                 subtitle = "${habit.category.pretty()} · ${habit.targetPerWeek}×/week",
-                onRemove = { viewModel.removeHabit(habit.id) },
+                onRemove = { pendingDelete = habit.title to { viewModel.removeHabit(habit.id) } },
             )
         }
         AddHabitForm(onAdd = viewModel::addHabit)
@@ -59,7 +63,7 @@ fun HabitsScreen(viewModel: HabitsViewModel) {
             RowItem(
                 title = bad.title,
                 subtitle = bad.dailyLimit?.let { "Daily limit: $it" } ?: "Honest tracking",
-                onRemove = { viewModel.removeBadHabit(bad.id) },
+                onRemove = { pendingDelete = bad.title to { viewModel.removeBadHabit(bad.id) } },
             )
         }
         AddBadHabitForm(onAdd = viewModel::addBadHabit)
@@ -69,10 +73,22 @@ fun HabitsScreen(viewModel: HabitsViewModel) {
             RowItem(
                 title = goal.title,
                 subtitle = "${goal.category.pretty()} · weekly progress",
-                onRemove = { viewModel.removeGoal(goal.id) },
+                onRemove = { pendingDelete = goal.title to { viewModel.removeGoal(goal.id) } },
             )
         }
         AddGoalForm(onAdd = viewModel::addGoal)
+    }
+
+    pendingDelete?.let { (title, confirm) ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Remove \"$title\"?") },
+            text = { Text("This stops generating quests from it. Your past history stays.") },
+            confirmButton = {
+                Button(onClick = { confirm(); pendingDelete = null }) { Text("Remove") }
+            },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Cancel") } },
+        )
     }
 }
 

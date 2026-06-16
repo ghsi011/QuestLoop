@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.ui.AppClock
+import com.questloop.app.ui.today.PendingUndo
 import com.questloop.core.model.CompletionResult
 import com.questloop.core.model.Quest
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,6 +20,8 @@ data class QuestsUiState(
     val groups: List<QuestGroup> = emptyList(),
     val total: Int = 0,
     val toast: String? = null,
+    /** Data to reverse the last completion via the snackbar "Undo". */
+    val pendingUndo: PendingUndo? = null,
 )
 
 /** A titled section of the backlog (e.g. "Today's plan", "Scheduled for later"). */
@@ -52,31 +55,48 @@ class QuestsViewModel(private val repository: QuestRepository) : ViewModel() {
         _state.update { it.copy(loading = false, groups = group(overview), total = overview.size) }
     }
 
-    fun complete(quest: Quest) = act("Nice — done. ✨") {
+    fun complete(quest: Quest) = completeWithUndo("Nice — done. ✨") {
         repository.completeQuest(quest, AppClock.todayEpochDay(), CompletionResult.COMPLETED)
     }
 
-    fun skip(quest: Quest) = act(if (quest.isReductionQuest) "Logged honestly." else "Skipped for today.") {
-        repository.completeQuest(quest, AppClock.todayEpochDay(), CompletionResult.SKIPPED)
-    }
+    fun skip(quest: Quest) =
+        completeWithUndo(if (quest.isReductionQuest) "Logged honestly." else "Skipped for today.") {
+            repository.completeQuest(quest, AppClock.todayEpochDay(), CompletionResult.SKIPPED)
+        }
 
-    fun completeMeasured(quest: Quest, value: Int) = act("Progress logged. ✨") {
+    fun completeMeasured(quest: Quest, value: Int) = completeWithUndo("Progress logged. ✨") {
         repository.completeMeasured(quest, AppClock.todayEpochDay(), value)
     }
 
-    fun delete(quest: Quest) = act("Deleted \"${quest.title}\".") {
-        repository.archiveQuest(quest.id)
-    }
-
-    private fun act(toast: String, block: suspend () -> Unit) {
+    /** Runs a completion and offers Undo (same affordance as the Today screen). */
+    private fun completeWithUndo(toast: String, block: suspend () -> QuestRepository.CompleteOutcome) {
         viewModelScope.launch {
-            block()
-            _state.update { it.copy(toast = toast) }
+            val outcome = block()
+            _state.update {
+                it.copy(toast = toast, pendingUndo = PendingUndo(outcome.instanceId, outcome.previousRecord))
+            }
             recompute()
         }
     }
 
-    fun consumeToast() = _state.update { it.copy(toast = null) }
+    fun undoLast() {
+        val undo = _state.value.pendingUndo ?: return
+        viewModelScope.launch {
+            repository.undoCompletion(undo.instanceId, undo.previous)
+            _state.update { it.copy(toast = null, pendingUndo = null) }
+            recompute()
+        }
+    }
+
+    fun delete(quest: Quest) {
+        viewModelScope.launch {
+            repository.archiveQuest(quest.id)
+            _state.update { it.copy(toast = "Deleted \"${quest.title}\".", pendingUndo = null) }
+            recompute()
+        }
+    }
+
+    fun consumeToast() = _state.update { it.copy(toast = null, pendingUndo = null) }
 
     /**
      * Groups the not-yet-done backlog: what's on for today, what else is due, and

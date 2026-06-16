@@ -82,6 +82,11 @@ private fun NavController.switchTab(route: String) {
     }
 }
 
+/** Open a sub-screen/modal once (no duplicate back-stack entries on rapid taps). */
+private fun NavController.openOnce(route: String) {
+    navigate(route) { launchSingleTop = true }
+}
+
 @Composable
 fun QuestLoopApp(repository: QuestRepository) {
     // First-run gate: show onboarding until the user taps "Get started".
@@ -145,7 +150,7 @@ private fun QuestLoopMain(repository: QuestRepository) {
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             if (showFab) {
-                androidx.compose.material3.FloatingActionButton(onClick = { navController.navigate("add") }) {
+                androidx.compose.material3.FloatingActionButton(onClick = { navController.openOnce("add") }) {
                     Icon(Icons.Filled.Add, contentDescription = "Add quest")
                 }
             }
@@ -182,14 +187,14 @@ private fun QuestLoopMain(repository: QuestRepository) {
                 TodayScreen(
                     vm,
                     snackbarHostState,
-                    onOpenAchievements = { navController.navigate("achievements") },
-                    onOpenQuestBank = { navController.navigate("quest-bank") },
-                    onOpenAddQuest = { navController.navigate("add") },
+                    onOpenAchievements = { navController.openOnce("achievements") },
+                    onOpenQuestBank = { navController.openOnce("quest-bank") },
+                    onOpenAddQuest = { navController.openOnce("add") },
                 )
             }
             composable(Dest.QUESTS.route) {
                 val vm: QuestsViewModel = viewModel(factory = factory)
-                QuestsScreen(vm, snackbarHostState, onOpenBank = { navController.navigate("quest-bank") })
+                QuestsScreen(vm, snackbarHostState, onOpenBank = { navController.openOnce("quest-bank") })
             }
             composable("quest-bank") {
                 val vm: com.questloop.app.ui.quests.QuestBankViewModel = viewModel(factory = factory)
@@ -205,13 +210,13 @@ private fun QuestLoopMain(repository: QuestRepository) {
             }
             composable(Dest.REWARDS.route) {
                 val vm: RewardsViewModel = viewModel(factory = factory)
-                RewardsScreen(vm)
+                RewardsScreen(vm, snackbarHostState)
             }
             composable(Dest.SETTINGS.route) {
                 val vm: SettingsViewModel = viewModel(factory = factory)
                 SettingsScreen(
                     vm,
-                    onOpenHabits = { navController.navigate("habits") },
+                    onOpenHabits = { navController.openOnce("habits") },
                     snackbarHostState = snackbarHostState,
                 )
             }

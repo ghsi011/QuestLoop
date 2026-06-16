@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -53,8 +54,12 @@ fun QuestsScreen(
 
     LaunchedEffect(state.toast) {
         val message = state.toast ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
-        viewModel.consumeToast()
+        val result = snackbarHostState.showSnackbar(
+            message = message,
+            actionLabel = if (state.pendingUndo != null) "Undo" else null,
+            duration = SnackbarDuration.Short,
+        )
+        if (result == SnackbarResult.ActionPerformed) viewModel.undoLast() else viewModel.consumeToast()
     }
 
     if (state.loading && state.groups.isEmpty()) {

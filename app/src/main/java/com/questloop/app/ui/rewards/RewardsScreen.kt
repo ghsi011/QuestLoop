@@ -13,9 +13,12 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,10 +33,21 @@ import com.questloop.app.ui.components.SectionHeader
 import com.questloop.core.reward.RewardAllowanceCalculator
 
 @Composable
-fun RewardsScreen(viewModel: RewardsViewModel) {
+fun RewardsScreen(viewModel: RewardsViewModel, snackbarHostState: SnackbarHostState) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var budgetText by remember(state.budgetCap) { mutableStateOf(if (state.budgetCap > 0) state.budgetCap.toString() else "") }
     var showDetails by remember { mutableStateOf(false) }
+
+    // Refresh on re-entry so the allowance reflects quests completed elsewhere.
+    LaunchedEffect(Unit) { viewModel.load() }
+    LaunchedEffect(state.savedMessage) {
+        val msg = state.savedMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Short)
+        viewModel.consumeSavedMessage()
+    }
+
+    val parsedBudget = budgetText.toDoubleOrNull()
+    val budgetValid = budgetText.isBlank() || parsedBudget != null
 
     Column(
         Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
@@ -61,13 +75,24 @@ fun RewardsScreen(viewModel: RewardsViewModel) {
 
         OutlinedTextField(
             value = budgetText,
-            onValueChange = { budgetText = it.filter { c -> c.isDigit() || c == '.' } },
+            onValueChange = { input ->
+                // Digits and at most one decimal point.
+                val filtered = input.filter { c -> c.isDigit() || c == '.' }
+                val firstDot = filtered.indexOf('.')
+                budgetText = if (firstDot < 0) filtered
+                else filtered.substring(0, firstDot + 1) + filtered.substring(firstDot + 1).replace(".", "")
+            },
             label = { Text("Affordable monthly budget") },
+            isError = !budgetValid,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
-        Button(onClick = { viewModel.setBudgetCap(budgetText.toDoubleOrNull() ?: 0.0) }, modifier = Modifier.fillMaxWidth()) {
+        Button(
+            onClick = { viewModel.setBudgetCap(parsedBudget ?: 0.0) },
+            enabled = budgetValid,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
             Text("Save budget")
         }
 

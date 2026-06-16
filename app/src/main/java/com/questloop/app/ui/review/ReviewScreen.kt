@@ -12,6 +12,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,6 +27,9 @@ import kotlin.math.roundToInt
 @Composable
 fun ReviewScreen(viewModel: ReviewViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+
+    // Refresh on re-entry so stats reflect quests completed elsewhere.
+    LaunchedEffect(Unit) { viewModel.load() }
 
     LazyColumn(
         Modifier.fillMaxSize().padding(horizontal = 16.dp),

@@ -34,7 +34,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -71,9 +73,20 @@ fun SettingsScreen(
         viewModel.consumeSavedMessage()
     }
 
+    val scope = rememberCoroutineScope()
     val notifPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) { /* result ignored: notifications simply won't show if denied */ }
+    ) { granted ->
+        // Be honest: if denied, reminders won't actually fire.
+        if (!granted) {
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    "Allow notifications in system settings for reminders to show.",
+                    duration = SnackbarDuration.Long,
+                )
+            }
+        }
+    }
 
     // When an export is ready, hand it to the system share sheet.
     LaunchedEffect(state.exportJson) {
@@ -304,6 +317,13 @@ private fun AiSection(
                 enabled = !enabled || key.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Save") }
+            if (enabled && key.isBlank()) {
+                Text(
+                    "Enter your OpenRouter key to turn on AI.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
         }
     }
 }

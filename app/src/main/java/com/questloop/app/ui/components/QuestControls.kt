@@ -71,7 +71,7 @@ fun QuestCompletionControls(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { if (minutes >= 5) minutes -= 5 }) { Text("−5") }
                     Text("$minutes / $target min", style = MaterialTheme.typography.bodyMedium)
-                    OutlinedButton(onClick = { minutes += 5 }) { Text("+5") }
+                    OutlinedButton(onClick = { minutes = (minutes + 5).coerceAtMost(1440) }) { Text("+5") }
                 }
                 Button(onClick = { onMeasured(minutes) }, modifier = Modifier.padding(top = 8.dp)) {
                     Text("Log time")
