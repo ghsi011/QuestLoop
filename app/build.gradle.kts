@@ -17,6 +17,9 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Route instrumented-test output (screenshots) through Test Storage so AGP
+        // pulls it into build/outputs/connected_android_test_additional_output.
+        testInstrumentationRunnerArguments["useTestStorageService"] = "true"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -90,6 +93,10 @@ dependencies {
     testImplementation(libs.androidx.compose.ui.test.manifest)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(libs.androidx.test.core.ktx)
+    androidTestImplementation(libs.androidx.test.rules)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    // Test Storage service: collects screenshots written during instrumented tests.
+    androidTestUtil(libs.androidx.test.services)
 }
