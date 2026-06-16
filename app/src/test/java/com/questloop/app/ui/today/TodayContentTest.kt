@@ -106,6 +106,21 @@ class TodayContentTest {
     }
 
     @Test
+    fun `focus mode collapses the list to the next quest`() {
+        composeRule.setContent {
+            TodayContent(
+                state = stateWith(quest("a", "First quest"), quest("b", "Second quest")),
+                actions = noopActions(),
+            )
+        }
+        composeRule.onNodeWithText("First quest").assertIsDisplayed()
+        composeRule.onNodeWithText("Second quest").assertIsDisplayed()
+        composeRule.onNodeWithText("Focus").performClick()
+        composeRule.onNodeWithText("First quest").assertIsDisplayed()
+        composeRule.onNodeWithText("Second quest").assertDoesNotExist()
+    }
+
+    @Test
     fun `safety signal renders as a single banner`() {
         val state = stateWith(quest("q1", "Anything")).copy(
             signals = listOf(

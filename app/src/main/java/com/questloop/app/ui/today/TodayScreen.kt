@@ -103,6 +103,7 @@ fun TodayContent(state: TodayUiState, actions: TodayActions, onOpenAchievements:
         return
     }
 
+    var focusMode by remember { mutableStateOf(false) }
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp).testTag("today-list"),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -132,12 +133,42 @@ fun TodayContent(state: TodayUiState, actions: TodayActions, onOpenAchievements:
                 )
             }
         } else {
-            items(quests, key = { it.instanceId }) { instance ->
+            if (quests.size > 1) {
+                item {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            if (focusMode) "Next up" else "Today",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f),
+                        )
+                        FilterChip(
+                            selected = focusMode,
+                            onClick = { focusMode = !focusMode },
+                            label = { Text("Focus") },
+                        )
+                    }
+                }
+            }
+            val shown = if (focusMode) quests.take(1) else quests
+            items(shown, key = { it.instanceId }) { instance ->
                 QuestRow(
                     instance = instance,
                     actions = actions,
                     progress = state.todayProgress[instance.quest.id] ?: 0,
                 )
+            }
+            if (focusMode && quests.size > 1) {
+                item {
+                    Text(
+                        "+${quests.size - 1} more — turn off Focus to see all",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
         }
 
