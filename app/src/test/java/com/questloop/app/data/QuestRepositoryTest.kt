@@ -11,8 +11,12 @@ import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.QuestFrequency
 import com.questloop.core.model.UserPreferences
 import com.questloop.core.model.UserProfile
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -185,6 +189,23 @@ class QuestRepositoryTest {
         assertFalse(repo.todayPlan(epochDay = 2, dayPart = DayPart.MIDDAY).quests.any { it.quest.id == "review" })
         // A week later: due again.
         assertTrue(repo.todayPlan(epochDay = 8, dayPart = DayPart.MIDDAY).quests.any { it.quest.id == "review" })
+    }
+
+    @Test
+    fun `concurrent meta completions stay within the daily meta cap`() = runBlocking {
+        // The completion mutex must serialize the ledger read-modify-write. Two
+        // EPIC meta quests completed at once would each read meta-earned=0 and grant
+        // the full 30 (=60, over the cap) without it; serialized, the second sees
+        // the first's 30 and grants 0.
+        val m1 = quest("m1", category = QuestCategory.META_MAINTENANCE, difficulty = Difficulty.EPIC)
+        val m2 = quest("m2", category = QuestCategory.META_MAINTENANCE, difficulty = Difficulty.EPIC)
+        repo.addQuest(m1)
+        repo.addQuest(m2)
+        listOf(
+            launch(Dispatchers.Default) { repo.completeQuest(m1, epochDay = 1, result = CompletionResult.COMPLETED) },
+            launch(Dispatchers.Default) { repo.completeQuest(m2, epochDay = 1, result = CompletionResult.COMPLETED) },
+        ).joinAll()
+        assertEquals(30L, repo.totalXp())
     }
 
     @Test

@@ -31,6 +31,22 @@ class QuestSchedulerTest {
     }
 
     @Test
+    fun `period boundary is exact for weekly and monthly`() {
+        // Exactly one day short of the period -> still NOT due (guards >= vs >).
+        assertFalse(QuestScheduler.isDue(QuestFrequency.WEEKLY, today = 100, lastCompletedEpochDay = 94)) // delta 6
+        assertTrue(QuestScheduler.isDue(QuestFrequency.WEEKLY, today = 100, lastCompletedEpochDay = 93)) // delta 7
+        assertFalse(QuestScheduler.isDue(QuestFrequency.MONTHLY, today = 100, lastCompletedEpochDay = 71)) // delta 29
+        assertTrue(QuestScheduler.isDue(QuestFrequency.MONTHLY, today = 100, lastCompletedEpochDay = 70)) // delta 30
+    }
+
+    @Test
+    fun `recurring behaves like daily and monthly is due when never completed`() {
+        assertTrue(QuestScheduler.isDue(QuestFrequency.RECURRING, today = 100, lastCompletedEpochDay = 99))
+        assertFalse(QuestScheduler.isDue(QuestFrequency.RECURRING, today = 100, lastCompletedEpochDay = 100))
+        assertTrue(QuestScheduler.isDue(QuestFrequency.MONTHLY, today = 100, lastCompletedEpochDay = null))
+    }
+
+    @Test
     fun `one-off is due only until first completion`() {
         assertTrue(QuestScheduler.isDue(QuestFrequency.ONE_OFF, today = 100, lastCompletedEpochDay = null))
         assertFalse(QuestScheduler.isDue(QuestFrequency.ONE_OFF, today = 100, lastCompletedEpochDay = 50))

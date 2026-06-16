@@ -77,6 +77,26 @@ class AchievementEngineTest {
     }
 
     @Test
+    fun `thresholds unlock exactly at the boundary, not one below`() {
+        fun ids(stats: ProgressStats) = AchievementEngine.unlocked(stats).map { it.id }.toSet()
+        val base = ProgressStats(0, 1, 0, 0, 0, 0)
+        assertFalse("getting_going" in ids(base.copy(totalCompleted = 9)))
+        assertTrue("getting_going" in ids(base.copy(totalCompleted = 10)))
+        assertFalse("centurion" in ids(base.copy(totalCompleted = 99)))
+        assertTrue("centurion" in ids(base.copy(totalCompleted = 100)))
+        assertFalse("consistent" in ids(base.copy(longestStreak = 2)))
+        assertTrue("consistent" in ids(base.copy(longestStreak = 3)))
+        assertFalse("week_warrior" in ids(base.copy(longestStreak = 6)))
+        assertTrue("week_warrior" in ids(base.copy(longestStreak = 7)))
+        assertFalse("level_10" in ids(base.copy(level = 9)))
+        assertTrue("level_10" in ids(base.copy(level = 10)))
+        assertFalse("well_rounded" in ids(base.copy(distinctCategories = 4)))
+        assertTrue("well_rounded" in ids(base.copy(distinctCategories = 5)))
+        assertFalse("breaking_free" in ids(base.copy(reductionWins = 9)))
+        assertTrue("breaking_free" in ids(base.copy(reductionWins = 10)))
+    }
+
+    @Test
     fun `level gates use the xp curve`() {
         val statsLow = ProgressStats.from(listOf(rec("q1")), totalXp = 0, longestStreak = 0)
         assertFalse("level_5" in AchievementEngine.unlocked(statsLow).map { it.id })

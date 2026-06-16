@@ -71,6 +71,29 @@ class OpenRouterClientTest {
     }
 
     @Test
+    fun `a 5xx surfaces an error`() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(503).setBody("""{"error":{"message":"upstream is down"}}"""),
+        )
+        val error = runCatching { client().complete("s", "u") }.exceptionOrNull()
+        assertTrue(error is IOException)
+        assertTrue(error!!.message.orEmpty().contains("503"))
+    }
+
+    @Test
+    fun `a 200 with a non-json body surfaces an unreadable-response error`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("<html>maintenance</html>"))
+        val error = runCatching { client().complete("s", "u") }.exceptionOrNull()
+        assertTrue("non-json 200 must not escape as SerializationException", error is IOException)
+    }
+
+    @Test
+    fun `a 200 with no choices returns empty content`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"choices":[]}"""))
+        assertEquals("", client().complete("s", "u"))
+    }
+
+    @Test
     fun `AiQuestService turns a mock success into ai quests end to end`() = runTest {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(

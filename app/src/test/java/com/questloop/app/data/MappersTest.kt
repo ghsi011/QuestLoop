@@ -9,7 +9,9 @@ import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.QuestFrequency
 import com.questloop.core.model.QuestOrigin
 import com.questloop.core.model.VerificationMethod
+import com.questloop.app.data.local.QuestEntity
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -49,6 +51,49 @@ class MappersTest {
         val restored = quest.toEntity().toModel()
         assertEquals(emptyList<String>(), restored.tags)
         assertEquals(quest, restored)
+    }
+
+    @Test
+    fun `archived flag is carried onto the entity`() {
+        val quest = Quest(
+            id = "q3",
+            title = "Old quest",
+            category = QuestCategory.CHORES,
+            frequency = QuestFrequency.WEEKLY,
+            difficulty = Difficulty.EASY,
+        )
+        assertTrue(quest.toEntity(archived = true).archived)
+        assertEquals(false, quest.toEntity().archived)
+    }
+
+    @Test
+    fun `unknown enum names fall back to safe defaults instead of crashing`() {
+        // Forward/backward compatibility: a stored value the current build doesn't
+        // know must not throw — it maps to the documented default.
+        val entity = QuestEntity(
+            id = "q4",
+            title = "From a future version",
+            category = "BOGUS_CATEGORY",
+            frequency = "BOGUS_FREQ",
+            difficulty = "BOGUS_DIFF",
+            priority = "BOGUS_PRIO",
+            origin = "BOGUS_ORIGIN",
+            estimatedMinutes = 10,
+            deadlineEpochDay = null,
+            isReductionQuest = false,
+            completionStyle = "BOGUS_STYLE",
+            targetCount = null,
+            unit = null,
+            tags = "",
+            rationale = null,
+        )
+        val model = entity.toModel()
+        assertEquals(QuestCategory.LIFE_ADMIN, model.category)
+        assertEquals(QuestFrequency.ONE_OFF, model.frequency)
+        assertEquals(Difficulty.MEDIUM, model.difficulty)
+        assertEquals(Priority.NORMAL, model.priority)
+        assertEquals(QuestOrigin.USER_CREATED, model.origin)
+        assertEquals(com.questloop.core.model.CompletionStyle.BINARY, model.completionStyle)
     }
 
     @Test

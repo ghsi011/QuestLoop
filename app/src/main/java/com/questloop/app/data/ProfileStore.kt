@@ -58,13 +58,16 @@ interface ProfilePreferences {
  * typed prefs, and the habit/bad-habit/goal lists as JSON (the core models are
  * @Serializable). Quests, completion history, and total XP live in Room.
  */
-class ProfileStore(private val context: Context) : ProfilePreferences {
+class ProfileStore(
+    context: Context,
+    private val dataStore: DataStore<Preferences> = context.dataStore,
+) : ProfilePreferences {
 
     private val json = Json { ignoreUnknownKeys = true }
 
     // A corrupt preferences file surfaces as IOException on read; fall back to
     // empty defaults rather than crashing (e.g. the onboarding check on launch).
-    private val safeData: Flow<Preferences> = context.dataStore.data.catch { e ->
+    private val safeData: Flow<Preferences> = dataStore.data.catch { e ->
         if (e is IOException) emit(emptyPreferences()) else throw e
     }
 
@@ -116,37 +119,37 @@ class ProfileStore(private val context: Context) : ProfilePreferences {
         else runCatching { json.decodeFromString(ListSerializer(serializer), raw) }.getOrDefault(emptyList())
 
     override suspend fun setBudgetCap(value: Double) {
-        context.dataStore.edit { it[Keys.BUDGET_CAP] = value.coerceAtLeast(0.0) }
+        dataStore.edit { it[Keys.BUDGET_CAP] = value.coerceAtLeast(0.0) }
     }
 
     override suspend fun setMaxDaily(value: Int) {
-        context.dataStore.edit { it[Keys.MAX_DAILY] = value.coerceIn(1, 20) }
+        dataStore.edit { it[Keys.MAX_DAILY] = value.coerceIn(1, 20) }
     }
 
     override suspend fun setAvailableMinutes(value: Int) {
-        context.dataStore.edit { it[Keys.AVAILABLE_MIN] = value.coerceIn(5, 1440) }
+        dataStore.edit { it[Keys.AVAILABLE_MIN] = value.coerceIn(5, 1440) }
     }
 
     override suspend fun setFocusCategories(cats: Set<QuestCategory>) {
-        context.dataStore.edit { it[Keys.FOCUS] = cats.map { c -> c.name }.toSet() }
+        dataStore.edit { it[Keys.FOCUS] = cats.map { c -> c.name }.toSet() }
     }
 
     override suspend fun setHabits(habits: List<Habit>) {
-        context.dataStore.edit { it[Keys.HABITS] = json.encodeToString(ListSerializer(Habit.serializer()), habits) }
+        dataStore.edit { it[Keys.HABITS] = json.encodeToString(ListSerializer(Habit.serializer()), habits) }
     }
 
     override suspend fun setBadHabits(badHabits: List<BadHabit>) {
-        context.dataStore.edit {
+        dataStore.edit {
             it[Keys.BAD_HABITS] = json.encodeToString(ListSerializer(BadHabit.serializer()), badHabits)
         }
     }
 
     override suspend fun setGoals(goals: List<Goal>) {
-        context.dataStore.edit { it[Keys.GOALS] = json.encodeToString(ListSerializer(Goal.serializer()), goals) }
+        dataStore.edit { it[Keys.GOALS] = json.encodeToString(ListSerializer(Goal.serializer()), goals) }
     }
 
     override suspend fun setCheckIn(checkIn: EnergyCheckIn?) {
-        context.dataStore.edit { prefs ->
+        dataStore.edit { prefs ->
             if (checkIn == null) {
                 prefs.remove(Keys.CHECKIN_DAY)
                 prefs.remove(Keys.CHECKIN_ENERGY)
@@ -179,7 +182,7 @@ class ProfileStore(private val context: Context) : ProfilePreferences {
     }
 
     override suspend fun setAiConfig(config: AiConfig) {
-        context.dataStore.edit {
+        dataStore.edit {
             it[Keys.AI_ENABLED] = if (config.enabled) 1 else 0
             it[Keys.AI_KEY] = config.apiKey
             it[Keys.AI_MODEL] = config.model
@@ -190,7 +193,7 @@ class ProfileStore(private val context: Context) : ProfilePreferences {
         (safeData.first()[Keys.ONBOARDED] ?: 0) == 1
 
     override suspend fun setOnboardingComplete() {
-        context.dataStore.edit { it[Keys.ONBOARDED] = 1 }
+        dataStore.edit { it[Keys.ONBOARDED] = 1 }
     }
 
     override suspend fun getReminderConfig(): ReminderConfig {
@@ -205,7 +208,7 @@ class ProfileStore(private val context: Context) : ProfilePreferences {
     }
 
     override suspend fun setReminderConfig(config: ReminderConfig) {
-        context.dataStore.edit {
+        dataStore.edit {
             it[Keys.REMIND_ENABLED] = if (config.enabled) 1 else 0
             it[Keys.REMIND_MORNING_H] = config.morningHour
             it[Keys.REMIND_MORNING_M] = config.morningMinute
@@ -215,6 +218,6 @@ class ProfileStore(private val context: Context) : ProfilePreferences {
     }
 
     override suspend fun clear() {
-        context.dataStore.edit { it.clear() }
+        dataStore.edit { it.clear() }
     }
 }

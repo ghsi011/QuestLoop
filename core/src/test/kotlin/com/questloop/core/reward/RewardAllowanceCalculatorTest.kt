@@ -28,6 +28,24 @@ class RewardAllowanceCalculatorTest {
     )
 
     @Test
+    fun `zero days in month does not produce NaN`() {
+        // Regression: activeDays / daysInMonth with daysInMonth == 0 yields NaN,
+        // which slips through coerceIn into the suggested figure.
+        val result = RewardAllowanceCalculator.calculate(
+            RewardAllowanceCalculator.AllowanceInput(
+                monthlyBudgetCap = 100.0,
+                records = listOf(rec(CompletionResult.COMPLETED)),
+                activeDays = 3,
+                daysInMonth = 0,
+            ),
+        )
+        assertTrue(result.suggestedAllowance.isFinite(), "allowance must be finite")
+        assertTrue(result.suggestedAllowance in 0.0..100.0)
+        assertTrue(result.consistencyFactor.isFinite())
+        assertTrue(result.earnedFraction in 0.0..1.0)
+    }
+
+    @Test
     fun `disclaimers are always present`() {
         val result = RewardAllowanceCalculator.calculate(
             RewardAllowanceCalculator.AllowanceInput(
