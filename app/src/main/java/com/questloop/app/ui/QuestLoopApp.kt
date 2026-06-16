@@ -33,7 +33,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.questloop.app.reminders.ReminderScheduler
 import com.questloop.app.ui.onboarding.OnboardingScreen
 import kotlinx.coroutines.launch
-import androidx.navigation.NavDestination.Companion.hierarchy
+import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -61,6 +61,25 @@ private enum class Dest(val route: String, val label: String, val icon: ImageVec
     REVIEWS("reviews", "Reviews", Icons.Filled.BarChart),
     REWARDS("rewards", "Rewards", Icons.Filled.CardGiftcard),
     SETTINGS("settings", "Settings", Icons.Filled.Settings),
+}
+
+/** Which bottom-nav tab a route belongs to (sub-screens map to their parent tab). */
+private fun tabForRoute(route: String?): Dest? = when (route) {
+    Dest.TODAY.route, "achievements" -> Dest.TODAY
+    Dest.QUESTS.route, "quest-bank" -> Dest.QUESTS
+    Dest.REVIEWS.route -> Dest.REVIEWS
+    Dest.REWARDS.route -> Dest.REWARDS
+    Dest.SETTINGS.route, "habits" -> Dest.SETTINGS
+    else -> null // "add" is a modal with no owning tab
+}
+
+/** Switch tabs, saving the outgoing tab's stack and restoring the target's. */
+private fun NavController.switchTab(route: String) {
+    navigate(route) {
+        popUpTo(graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+    }
 }
 
 @Composable
@@ -104,9 +123,11 @@ private fun QuestLoopMain(repository: QuestRepository) {
         "quest-bank" -> "Quest bank"
         else -> "QuestLoop"
     }
-    val showFab = currentRoute?.hierarchy?.any {
-        it.route == Dest.TODAY.route || it.route == Dest.QUESTS.route
-    } == true
+    // The tab a (possibly sub-) screen belongs to, so the right tab stays lit and
+    // re-tapping it returns to that tab's root. "add" is a modal (no tab).
+    val activeTab = tabForRoute(routeName)
+    // FAB (add a quest) only on the two list roots, not on sub-screens.
+    val showFab = routeName == Dest.TODAY.route || routeName == Dest.QUESTS.route
 
     Scaffold(
         topBar = {
@@ -132,14 +153,16 @@ private fun QuestLoopMain(repository: QuestRepository) {
         bottomBar = {
             NavigationBar {
                 Dest.entries.forEach { dest ->
-                    val selected = currentRoute?.hierarchy?.any { it.route == dest.route } == true
                     NavigationBarItem(
-                        selected = selected,
+                        selected = activeTab == dest,
                         onClick = {
-                            navController.navigate(dest.route) {
-                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
+                            if (activeTab == dest) {
+                                // Re-tap the current tab: return to its root view (e.g.
+                                // Quests -> pop the Quest Bank). No-op if already there.
+                                val popped = navController.popBackStack(dest.route, inclusive = false)
+                                if (!popped) navController.switchTab(dest.route)
+                            } else {
+                                navController.switchTab(dest.route)
                             }
                         },
                         icon = { Icon(dest.icon, contentDescription = dest.label) },
