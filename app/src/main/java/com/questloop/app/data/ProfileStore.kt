@@ -38,6 +38,8 @@ interface ProfilePreferences {
     suspend fun setMaxDaily(value: Int)
     suspend fun setAvailableMinutes(value: Int)
     suspend fun setFocusCategories(cats: Set<QuestCategory>)
+    suspend fun setStreakGraceDays(value: Int)
+    suspend fun setSensitiveOptIn(value: Boolean)
     suspend fun setHabits(habits: List<Habit>)
     suspend fun setBadHabits(badHabits: List<BadHabit>)
     suspend fun setGoals(goals: List<Goal>)
@@ -134,6 +136,14 @@ class ProfileStore(
 
     override suspend fun setFocusCategories(cats: Set<QuestCategory>) {
         dataStore.edit { it[Keys.FOCUS] = cats.map { c -> c.name }.toSet() }
+    }
+
+    override suspend fun setStreakGraceDays(value: Int) {
+        dataStore.edit { it[Keys.GRACE_DAYS] = value.coerceIn(0, 7) }
+    }
+
+    override suspend fun setSensitiveOptIn(value: Boolean) {
+        dataStore.edit { it[Keys.SENSITIVE_OPT_IN] = if (value) 1 else 0 }
     }
 
     override suspend fun setHabits(habits: List<Habit>) {

@@ -17,6 +17,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -50,7 +51,21 @@ class QuestRepositoryTest {
         override suspend fun setBudgetCap(value: Double) {}
         override suspend fun setMaxDaily(value: Int) {}
         override suspend fun setAvailableMinutes(value: Int) {}
-        override suspend fun setFocusCategories(cats: Set<QuestCategory>) {}
+        override suspend fun setFocusCategories(cats: Set<QuestCategory>) {
+            state.value = state.value.copy(
+                preferences = state.value.preferences.copy(focusCategories = cats),
+            )
+        }
+        override suspend fun setStreakGraceDays(value: Int) {
+            state.value = state.value.copy(
+                preferences = state.value.preferences.copy(streakGraceDays = value),
+            )
+        }
+        override suspend fun setSensitiveOptIn(value: Boolean) {
+            state.value = state.value.copy(
+                preferences = state.value.preferences.copy(sensitiveNotificationsOptIn = value),
+            )
+        }
         override suspend fun setHabits(habits: List<com.questloop.core.model.Habit>) {
             state.value = state.value.copy(habits = habits)
         }
@@ -169,6 +184,22 @@ class QuestRepositoryTest {
         assertEquals(1, result.completions)
         assertEquals(1, result.skipped)
         assertEquals(20L, repo.totalXp()) // the 9999 phantom row was dropped
+    }
+
+    @Test
+    fun `import restores grace days and sensitive opt-in`() = runTest {
+        val snapshot = ExportSnapshot(
+            quests = emptyList(),
+            completions = emptyList(),
+            profile = UserProfile(
+                preferences = UserPreferences(streakGraceDays = 3, sensitiveNotificationsOptIn = true),
+            ),
+        )
+        val json = Json.encodeToString(ExportSnapshot.serializer(), snapshot)
+        repo.importJson(json)
+        val prefs = repo.profile.first().preferences
+        assertEquals(3, prefs.streakGraceDays)
+        assertTrue(prefs.sensitiveNotificationsOptIn)
     }
 
     @Test

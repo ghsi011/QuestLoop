@@ -45,6 +45,8 @@ class AddQuestViewModelTest {
         override suspend fun setMaxDaily(value: Int) {}
         override suspend fun setAvailableMinutes(value: Int) {}
         override suspend fun setFocusCategories(cats: Set<QuestCategory>) {}
+        override suspend fun setStreakGraceDays(value: Int) {}
+        override suspend fun setSensitiveOptIn(value: Boolean) {}
         override suspend fun setHabits(habits: List<Habit>) {}
         override suspend fun setBadHabits(badHabits: List<BadHabit>) {}
         override suspend fun setGoals(goals: List<Goal>) {}

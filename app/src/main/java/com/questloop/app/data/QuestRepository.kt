@@ -483,6 +483,8 @@ class QuestRepository(
         profileStore.setAvailableMinutes(prefs.defaultAvailableMinutes)
         profileStore.setBudgetCap(prefs.monthlyRewardBudgetCap)
         profileStore.setFocusCategories(prefs.focusCategories)
+        profileStore.setStreakGraceDays(prefs.streakGraceDays)
+        profileStore.setSensitiveOptIn(prefs.sensitiveNotificationsOptIn)
 
         // The set of quest ids a completion may legitimately reference.
         val derivedIds = HabitQuestFactory.deriveAll(habits, badHabits, goals).map { it.id }
