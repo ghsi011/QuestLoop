@@ -1,15 +1,12 @@
 package com.questloop.app
 
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.filterToOne
 import androidx.compose.ui.test.hasClickAction
-import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onAllNodes
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -203,8 +200,8 @@ class NavigationTransitionTest {
         await { onToday() }
         composeRule.onNodeWithContentDescription("Add quest").performClick()
         await { onAdd() }
-        // The title is the first editable field on the form.
-        composeRule.onAllNodes(hasSetTextAction())[0].performTextInput(title)
+        // The title field, located by its label (merged into the field's node).
+        composeRule.onNodeWithText("What do you want to get done?").performTextInput(title)
         // The button shares its text with the top-bar title; pick the clickable one.
         composeRule.onAllNodesWithText("Add quest").filterToOne(hasClickAction()).performClick()
 
