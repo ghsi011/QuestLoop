@@ -204,8 +204,10 @@ class NavigationTransitionTest {
         composeRule.waitForIdle()
         // Confirm the text registered (so the Add button enables) before submitting.
         await { present(title) }
-        // The button shares its text with the top-bar title; pick the clickable one.
-        composeRule.onAllNodesWithText("Add quest").filterToOne(hasClickAction()).performClick()
+        // The button shares its text with the top-bar title; pick the clickable one,
+        // and scroll to it first (it sits below the fold on the long Add form).
+        composeRule.onAllNodesWithText("Add quest").filterToOne(hasClickAction())
+            .performScrollTo().performClick()
 
         // Adding closes the modal (re-loading Today's plan can be slow on a cold
         // emulator, so wait generously for the modal to go).
