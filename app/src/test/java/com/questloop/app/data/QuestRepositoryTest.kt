@@ -109,6 +109,40 @@ class QuestRepositoryTest {
     )
 
     @Test
+    fun `export then import restores quests and xp`() = runTest {
+        repo.addQuest(quest("a"))
+        repo.addQuest(quest("b"))
+        repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)
+        val xp = repo.totalXp()
+        assertTrue(xp > 0)
+        val json = repo.exportJson()
+
+        repo.deleteAllData()
+        assertEquals(0L, repo.totalXp())
+
+        val result = repo.importJson(json)
+        assertEquals(null, result.error)
+        assertEquals(2, result.quests)
+        assertEquals(xp, repo.totalXp())
+        assertTrue(repo.activeQuestIds().containsAll(setOf("a", "b")))
+    }
+
+    @Test
+    fun `import is idempotent and rejects junk`() = runTest {
+        repo.addQuest(quest("a"))
+        repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)
+        val xp = repo.totalXp()
+        val json = repo.exportJson()
+        // Re-importing the same backup must not double-count XP (idempotent by instanceId).
+        repo.importJson(json)
+        repo.importJson(json)
+        assertEquals(xp, repo.totalXp())
+        // Malformed input is rejected with a message, no crash.
+        val bad = repo.importJson("not json at all")
+        assertTrue(bad.error != null)
+    }
+
+    @Test
     fun `total xp comes from the ledger`() = runTest {
         repo.addQuest(quest("a"))
         repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)

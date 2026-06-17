@@ -37,7 +37,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -90,6 +92,19 @@ fun SettingsScreen(
                     duration = SnackbarDuration.Long,
                 )
             }
+        }
+    }
+
+    // Pick a previously-exported backup file and restore it.
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val json = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                }.getOrNull()
+            }
+            if (json != null) viewModel.importData(json) else viewModel.reportImportError()
         }
     }
 
@@ -200,6 +215,9 @@ fun SettingsScreen(
         )
         OutlinedButton(onClick = viewModel::requestExport, modifier = Modifier.fillMaxWidth()) {
             Text("Export my data")
+        }
+        OutlinedButton(onClick = { importLauncher.launch(arrayOf("application/json", "text/*")) }, modifier = Modifier.fillMaxWidth()) {
+            Text("Import a backup")
         }
         OutlinedButton(onClick = { confirmDelete = true }, modifier = Modifier.fillMaxWidth()) {
             Text("Delete all my data")

@@ -95,6 +95,20 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
 
     fun consumeExport() = _state.update { it.copy(exportJson = null) }
 
+    /** Restores a backup the user picked; reports counts or a plain error. */
+    fun importData(json: String) {
+        viewModelScope.launch {
+            val result = repository.importJson(json)
+            reload()
+            emitMessage(
+                result.error
+                    ?: "Imported ${result.quests} quests and ${result.completions} entries.",
+            )
+        }
+    }
+
+    fun reportImportError() = emitMessage("Couldn't read that file.")
+
     /** Loads the AI error log to share; tells the user when there's nothing logged. */
     fun shareDiagnostics() {
         viewModelScope.launch {

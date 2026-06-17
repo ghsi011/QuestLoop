@@ -12,8 +12,13 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data class ExportSnapshot(
-    val version: Int = 1,
+    val version: Int = CURRENT_VERSION,
     val quests: List<Quest>,
     val completions: List<CompletionRecord>,
     val profile: UserProfile,
-)
+) {
+    companion object {
+        /** Bump when the snapshot shape changes incompatibly; import rejects newer. */
+        const val CURRENT_VERSION = 1
+    }
+}

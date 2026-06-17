@@ -442,6 +442,46 @@ class QuestRepository(
         return exportJson.encodeToString(ExportSnapshot.serializer(), snapshot)
     }
 
+    data class ImportResult(val quests: Int, val completions: Int, val error: String? = null)
+
+    /**
+     * Restores a previously [exportJson]ed snapshot (SPEC §9 portability). Merge,
+     * not wipe: quests upsert by id, completions upsert idempotently by instanceId
+     * (so re-importing the same file changes nothing and XP — derived from the
+     * ledger — is restored automatically), and profile lists union by id. The API
+     * key is never in a snapshot, so it's untouched. Rejects malformed JSON and
+     * snapshots from a newer app version.
+     */
+    suspend fun importJson(json: String): ImportResult {
+        val snapshot = runCatching { exportJson.decodeFromString(ExportSnapshot.serializer(), json) }.getOrNull()
+            ?: return ImportResult(0, 0, "That file isn't a QuestLoop backup.")
+        if (snapshot.version > ExportSnapshot.CURRENT_VERSION) {
+            return ImportResult(0, 0, "This backup is from a newer version of QuestLoop. Update the app first.")
+        }
+        completionMutex.withLock {
+            snapshot.quests.forEach { questDao.upsert(it.toEntity()) }
+            snapshot.completions.forEach { completionDao.upsert(it.toEntity()) }
+        }
+        val current = profileStore.profile.first()
+        val prefs = snapshot.profile.preferences
+        profileStore.setHabits(mergeById(current.habits, snapshot.profile.habits) { it.id })
+        profileStore.setBadHabits(mergeById(current.badHabits, snapshot.profile.badHabits) { it.id })
+        profileStore.setGoals(mergeById(current.goals, snapshot.profile.goals) { it.id })
+        profileStore.setMaxDaily(prefs.maxDailyQuests)
+        profileStore.setAvailableMinutes(prefs.defaultAvailableMinutes)
+        profileStore.setBudgetCap(prefs.monthlyRewardBudgetCap)
+        profileStore.setFocusCategories(prefs.focusCategories)
+        return ImportResult(snapshot.quests.size, snapshot.completions.size)
+    }
+
+    /** Union by stable id; the incoming (imported) item wins on a collision. */
+    private fun <T> mergeById(existing: List<T>, incoming: List<T>, id: (T) -> String): List<T> {
+        val byId = LinkedHashMap<String, T>()
+        existing.forEach { byId[id(it)] = it }
+        incoming.forEach { byId[id(it)] = it }
+        return byId.values.toList()
+    }
+
     /** Today's persisted energy check-in, or null if none was made today. */
     suspend fun todayCheckIn(epochDay: Long): EnergyCheckIn? =
         profileStore.getCheckIn()?.takeIf { it.epochDay == epochDay }
