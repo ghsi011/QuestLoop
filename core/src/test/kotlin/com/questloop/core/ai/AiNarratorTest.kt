@@ -75,6 +75,21 @@ class AiNarratorTest {
     }
 
     @Test
+    fun `disabling the filter shows raw model output`() = runTest {
+        val slop = "Amazing job — you're absolutely crushing it! 🎉"
+        val out = narrator(slop).narrateReview(review, sanitize = false)
+        assertTrue(out.fromAi)
+        assertEquals(slop, out.text)
+    }
+
+    @Test
+    fun `disabled filter still falls back on empty output`() = runTest {
+        val out = narrator("   ").narrateReview(review, sanitize = false)
+        assertFalse(out.fromAi)
+        assertEquals(AiNarrator.reviewFallback(review), out.text)
+    }
+
+    @Test
     fun `transport failure falls back`() = runTest {
         val out = narrator(fail = true).narrateReview(review)
         assertFalse(out.fromAi)

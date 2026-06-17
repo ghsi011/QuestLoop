@@ -88,6 +88,7 @@ class ProfileStore(
         val AI_ENABLED = intPreferencesKey("ai_enabled")
         val AI_KEY = stringPreferencesKey("ai_api_key")
         val AI_MODEL = stringPreferencesKey("ai_model")
+        val AI_FILTER_WORDING = intPreferencesKey("ai_filter_wording")
         val ONBOARDED = intPreferencesKey("onboarding_complete")
         val REMIND_ENABLED = intPreferencesKey("remind_enabled")
         val REMIND_MORNING_H = intPreferencesKey("remind_morning_h")
@@ -188,6 +189,8 @@ class ProfileStore(
             enabled = (prefs[Keys.AI_ENABLED] ?: 0) == 1,
             apiKey = apiKey,
             model = prefs[Keys.AI_MODEL] ?: AiConfig.DEFAULT_MODEL,
+            // Default on: the slop filter protects unless the user opts out.
+            filterWording = (prefs[Keys.AI_FILTER_WORDING] ?: 1) == 1,
         )
     }
 
@@ -197,6 +200,7 @@ class ProfileStore(
             it[Keys.AI_ENABLED] = if (config.enabled) 1 else 0
             it.remove(Keys.AI_KEY) // never persist the key in plaintext
             it[Keys.AI_MODEL] = config.model
+            it[Keys.AI_FILTER_WORDING] = if (config.filterWording) 1 else 0
         }
     }
 

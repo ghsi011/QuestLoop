@@ -10,6 +10,11 @@ data class AiConfig(
     val enabled: Boolean = false,
     val apiKey: String = "",
     val model: String = DEFAULT_MODEL,
+    /**
+     * When true (default), AI summaries are run through the slop filter that drops
+     * flattery, filler, and robotic phrasing. Turn off to show raw model output.
+     */
+    val filterWording: Boolean = true,
 ) {
     /** True when AI suggestions can actually be requested. */
     val usable: Boolean get() = enabled && apiKey.isNotBlank()

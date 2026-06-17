@@ -522,7 +522,8 @@ class QuestRepository(
         val config = profileStore.getAiConfig()
         if (!config.usable) return AiNarrator.Narration(AiNarrator.reviewFallback(review), fromAi = false)
         val result = aiCallGuard.keepAwake {
-            AiNarrator(OpenRouterClient(config.apiKey, config.model)).narrateReview(review)
+            AiNarrator(OpenRouterClient(config.apiKey, config.model))
+                .narrateReview(review, sanitize = config.filterWording)
         }
         if (!result.fromAi && result.note?.startsWith("request:") == true) {
             aiDiagnostics.record(config.model, "review narration: ${result.note}")
@@ -545,7 +546,8 @@ class QuestRepository(
         val config = profileStore.getAiConfig()
         if (!config.usable) return AiNarrator.Narration(AiNarrator.planFallback(facts), fromAi = false)
         val result = aiCallGuard.keepAwake {
-            AiNarrator(OpenRouterClient(config.apiKey, config.model)).rationale(facts)
+            AiNarrator(OpenRouterClient(config.apiKey, config.model))
+                .rationale(facts, sanitize = config.filterWording)
         }
         if (!result.fromAi && result.note?.startsWith("request:") == true) {
             aiDiagnostics.record(config.model, "plan rationale: ${result.note}")

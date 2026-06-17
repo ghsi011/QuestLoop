@@ -70,25 +70,37 @@ class AiNarrator(private val client: LlmClient) {
         }
     }
 
-    suspend fun narrateReview(review: ReviewGenerator.Review): Narration {
+    /**
+     * @param sanitize when false, the anti-slop gate is bypassed and the raw model
+     *   text is shown (still falling back on a transport failure or empty output).
+     */
+    suspend fun narrateReview(review: ReviewGenerator.Review, sanitize: Boolean = true): Narration {
         val attempt = runCatching {
             client.complete(PromptLibrary.REVIEW_NARRATION_SYSTEM, reviewPayload(review))
         }
         if (attempt.isFailure) return Narration(reviewFallback(review), false, failNote(attempt))
+        unsanitized(attempt.getOrNull(), sanitize)?.let { return Narration(it, true) }
+        if (!sanitize) return Narration(reviewFallback(review), false, "empty")
         val gate = NarrationSanitizer.gate(attempt.getOrNull(), NarrationSanitizer.Mode.REVIEW)
         return gate.text?.let { Narration(it, true) }
             ?: Narration(reviewFallback(review), false, "style:${gate.reason}")
     }
 
-    suspend fun rationale(facts: PlanFacts): Narration {
+    suspend fun rationale(facts: PlanFacts, sanitize: Boolean = true): Narration {
         val attempt = runCatching {
             client.complete(PromptLibrary.PLAN_RATIONALE_SYSTEM, planPayload(facts))
         }
         if (attempt.isFailure) return Narration(planFallback(facts), false, failNote(attempt))
+        unsanitized(attempt.getOrNull(), sanitize)?.let { return Narration(it, true) }
+        if (!sanitize) return Narration(planFallback(facts), false, "empty")
         val gate = NarrationSanitizer.gate(attempt.getOrNull(), NarrationSanitizer.Mode.RATIONALE)
         return gate.text?.let { Narration(it, true) }
             ?: Narration(planFallback(facts), false, "style:${gate.reason}")
     }
+
+    /** Raw, gate-bypassed text when filtering is off; null means fall through. */
+    private fun unsanitized(raw: String?, sanitize: Boolean): String? =
+        if (!sanitize) raw?.trim()?.ifBlank { null } else null
 
     // ---- payloads (aggregates only; no quest titles leave the device) ----
 

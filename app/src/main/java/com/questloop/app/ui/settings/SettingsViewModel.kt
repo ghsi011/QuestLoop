@@ -62,10 +62,12 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
      * verifies the (encrypted) key actually persisted, so a silent Keystore write
      * failure surfaces to the user instead of falsely reporting success.
      */
-    fun saveAi(enabled: Boolean, apiKey: String, model: String) {
+    fun saveAi(enabled: Boolean, apiKey: String, model: String, filterWording: Boolean) {
         viewModelScope.launch {
             val trimmedKey = apiKey.trim()
-            repository.setAiConfig(AiConfig(enabled = enabled, apiKey = trimmedKey, model = model.trim()))
+            repository.setAiConfig(
+                AiConfig(enabled = enabled, apiKey = trimmedKey, model = model.trim(), filterWording = filterWording),
+            )
             reload()
             val persisted = _state.value.ai.apiKey == trimmedKey
             emitMessage(if (persisted) "AI settings saved" else "Couldn't save your key — please try again.")

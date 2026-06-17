@@ -270,11 +270,12 @@ private fun HourRow(label: String, hour: Int, onHour: (Int) -> Unit) {
 @Composable
 private fun AiSection(
     config: com.questloop.app.data.AiConfig,
-    onSave: (enabled: Boolean, apiKey: String, model: String) -> Unit,
+    onSave: (enabled: Boolean, apiKey: String, model: String, filterWording: Boolean) -> Unit,
 ) {
     var enabled by remember(config.enabled) { mutableStateOf(config.enabled) }
     var key by remember(config.apiKey) { mutableStateOf(config.apiKey) }
     var model by remember(config.model) { mutableStateOf(config.model) }
+    var filterWording by remember(config.filterWording) { mutableStateOf(config.filterWording) }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
@@ -315,8 +316,22 @@ private fun AiSection(
                     )
                 }
             }
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Filter AI fluff", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Trims flattery and robotic phrasing from AI summaries. Off shows raw output.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Switch(checked = filterWording, onCheckedChange = { filterWording = it })
+            }
             Button(
-                onClick = { onSave(enabled, key, model) },
+                onClick = { onSave(enabled, key, model, filterWording) },
                 enabled = !enabled || key.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Save") }
