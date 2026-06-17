@@ -41,6 +41,35 @@ class AiQuestServiceTest {
     }
 
     @Test
+    fun `decomposes a goal into reviewable quests`() = runTest {
+        val svc = service(
+            """[
+              {"title":"Sign up for a 10k race","category":"HEALTH","difficulty":"EASY"},
+              {"title":"Run 2k three times a week","category":"HEALTH","difficulty":"MEDIUM","frequency":"WEEKLY"}
+            ]""",
+        )
+        val result = svc.decomposeGoal("Run a 10k")
+        assertTrue(result.fromAi)
+        assertEquals(2, result.quests.size)
+        assertEquals("Sign up for a 10k race", result.quests[0].title)
+    }
+
+    @Test
+    fun `goal decomposition falls back when the model fails`() = runTest {
+        val result = service(fail = true).decomposeGoal("Run a 10k")
+        assertFalse(result.fromAi)
+        assertTrue(result.quests.isNotEmpty())
+        assertNotNull(result.error)
+    }
+
+    @Test
+    fun `blank goal yields nothing to decompose`() = runTest {
+        val result = service("[]").decomposeGoal("   ")
+        assertTrue(result.quests.isEmpty())
+        assertFalse(result.fromAi)
+    }
+
+    @Test
     fun `tolerates markdown fences and surrounding prose`() = runTest {
         val svc = service("Sure! Here are some quests:\n```json\n[{\"title\":\"Stretch\",\"category\":\"HEALTH\",\"difficulty\":\"TRIVIAL\"}]\n```")
         val result = svc.suggest(AiQuestService.Input(todos = listOf("stretch")))

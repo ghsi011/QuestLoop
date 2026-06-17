@@ -82,6 +82,35 @@ class AiQuestService(
         }
     }
 
+    /**
+     * Breaks one free-text [goal] into a short ladder of reviewable quests, through
+     * the same guardrails + deterministic fallback as [suggest]. Not persisted — the
+     * caller reviews/edits before saving.
+     */
+    suspend fun decomposeGoal(goal: String, existing: List<Quest> = emptyList()): Suggestion {
+        val trimmed = goal.trim()
+        if (trimmed.isBlank()) return Suggestion(emptyList(), fromAi = false, error = "Add a goal to break down.")
+        val payload = PromptLibrary.goalDecompositionUserPayload(trimmed) + "\n\n" + SCHEMA_INSTRUCTION
+        val attempt = runCatching { client.complete(PromptLibrary.GOAL_DECOMPOSITION_SYSTEM, payload) }
+        if (attempt.isFailure) {
+            val reason = attempt.exceptionOrNull()?.message?.takeIf { it.isNotBlank() } ?: "couldn't reach the model"
+            return goalFallback(trimmed, "AI request failed: $reason")
+        }
+        val proposed = attempt.getOrNull()?.let(::parse)?.mapIndexedNotNull(::toQuest).orEmpty()
+        val accepted = validator.validate(proposed, existing).accepted
+        return when {
+            accepted.isNotEmpty() -> Suggestion(accepted, fromAi = true)
+            proposed.isEmpty() -> goalFallback(trimmed, "AI returned an unexpected response.")
+            else -> goalFallback(trimmed, "AI suggestions didn't pass the safety checks.")
+        }
+    }
+
+    private fun goalFallback(goal: String, error: String?) = Suggestion(
+        quests = FallbackSuggester.suggest(listOf("Make a start on: $goal"), emptySet()),
+        fromAi = false,
+        error = error,
+    )
+
     private fun fallback(input: Input, error: String?) = Suggestion(
         quests = FallbackSuggester.suggest(input.todos, input.focusAreas.toSet()),
         fromAi = false,

@@ -96,6 +96,33 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
         }
     }
 
+    /**
+     * Breaks one goal into a short ladder of reviewable quests (NOT added yet),
+     * reusing the same review/accept flow as quick-add.
+     */
+    fun decomposeGoal(goal: String) {
+        if (goal.isBlank()) return
+        viewModelScope.launch {
+            _state.update { it.copy(generating = true, message = null) }
+            val suggestion = repository.decomposeGoal(goal)
+            val n = suggestion.quests.size
+            val plural = if (n == 1) "" else "s"
+            _state.update {
+                it.copy(
+                    generating = false,
+                    suggestions = suggestion.quests,
+                    message = when {
+                        suggestion.error != null ->
+                            "${suggestion.error} Showing a starting point below — edit or discard."
+                        n == 0 -> "Couldn't break that down — try rephrasing the goal."
+                        suggestion.fromAi -> "Broke it into $n step$plural — review below."
+                        else -> "AI is off — showing a starting point. Turn it on in Settings for a full plan."
+                    },
+                )
+            }
+        }
+    }
+
     /** Replaces a suggestion after a manual edit (same id). */
     fun updateSuggestion(quest: Quest) {
         _state.update { st -> st.copy(suggestions = st.suggestions.map { if (it.id == quest.id) quest else it }) }

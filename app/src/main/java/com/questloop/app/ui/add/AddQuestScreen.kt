@@ -58,6 +58,7 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
     var targetCount by rememberSaveable { mutableStateOf(8) }
     var unit by rememberSaveable { mutableStateOf("") }
     var quickText by rememberSaveable { mutableStateOf("") }
+    var goalText by rememberSaveable { mutableStateOf("") }
 
     val state by viewModel.state.collectAsStateWithLifecycle()
 
@@ -164,6 +165,33 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
                 Text(if (state.suggestions.isEmpty()) "Suggest quests ✨" else "Regenerate (replaces below) ✨")
             }
         }
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+        SectionHeader("Break down a goal")
+        Text(
+            "Name one bigger goal and get a short ladder of steps to review.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        OutlinedTextField(
+            value = goalText,
+            onValueChange = { goalText = it },
+            label = { Text("What's the goal?") },
+            placeholder = { Text("e.g. run a 10k") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedButton(
+            onClick = { if (goalText.isNotBlank()) viewModel.decomposeGoal(goalText) },
+            enabled = goalText.isNotBlank() && !state.generating,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            if (state.generating) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+            } else {
+                Text("Break into steps ✨")
+            }
+        }
+
         state.message?.let { msg ->
             Text(msg, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
         }

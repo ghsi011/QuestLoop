@@ -570,6 +570,29 @@ class QuestRepository(
     }
 
     /**
+     * Breaks one goal into a short ladder of reviewable quests via the configured
+     * AI provider (guardrails + dedup against existing quests). When AI is off,
+     * returns a single deterministic starter step so the feature always does
+     * something. Not persisted — the caller reviews before saving.
+     */
+    suspend fun decomposeGoal(goal: String): AiQuestService.Suggestion {
+        val config = profileStore.getAiConfig()
+        return if (config.usable) {
+            val existing = questDao.getActive().map { it.toModel() }
+            val result = aiCallGuard.keepAwake {
+                AiQuestService(OpenRouterClient(config.apiKey, config.model)).decomposeGoal(goal, existing)
+            }
+            result.error?.let { recordAiError(config.model, it) }
+            result
+        } else {
+            AiQuestService.Suggestion(
+                quests = com.questloop.core.ai.FallbackSuggester.suggest(listOf("Make a start on: ${goal.trim()}"), emptySet()),
+                fromAi = false,
+            )
+        }
+    }
+
+    /**
      * Revises a single not-yet-saved suggestion per the user's instruction via the
      * configured AI provider. Returns an error reason when AI is off or the call
      * fails (the caller keeps the original quest).

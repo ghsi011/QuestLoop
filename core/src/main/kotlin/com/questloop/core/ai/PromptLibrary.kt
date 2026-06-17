@@ -163,6 +163,33 @@ object PromptLibrary {
         lack information, produce fewer quests rather than guessing.
     """.trimIndent()
 
+    const val GOAL_DECOMPOSITION_VERSION = "goal-decomp/v1"
+
+    /**
+     * System prompt for breaking ONE goal into a short, ordered ladder of quests.
+     * Reuses the quest-design schema and guardrails; the difference is framing —
+     * concrete, sequenced steps toward a single goal, the first startable today.
+     */
+    val GOAL_DECOMPOSITION_SYSTEM: String = """
+        You are QuestLoop's goal coach. The user gives ONE goal. Break it into 2 to 4
+        concrete quests that make real, ordered progress toward it — the first one small
+        enough to start today.
+
+        Use the same fields and rules as quest design: difficulty sets XP (match real
+        effort, don't inflate), and pick completionStyle, frequency, and priority that fit
+        how the user would track each step. Prefer a short ladder of meaningful steps over
+        a long list of trivial ones.
+
+        Never use shame, guilt, or pressure. No medical advice. No financial or investment
+        advice. Give each quest a short, plain rationale tying it to the goal.
+
+        Output strictly as a JSON array matching the provided schema. If the goal is vague,
+        produce fewer, safer steps rather than guessing.
+    """.trimIndent()
+
+    /** Builds the user-turn payload for decomposing one goal. */
+    fun goalDecompositionUserPayload(goal: String): String = "goal: $goal"
+
     /** System prompt for revising a single existing quest per the user's instruction. */
     val QUEST_REFINE_SYSTEM: String = """
         You are QuestLoop's quest editor. You are given ONE quest as JSON and a
