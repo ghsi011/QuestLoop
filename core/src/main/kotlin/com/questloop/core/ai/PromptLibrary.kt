@@ -175,10 +175,14 @@ object PromptLibrary {
         concrete quests that make real, ordered progress toward it — the first one small
         enough to start today.
 
-        Use the same fields and rules as quest design: difficulty sets XP (match real
-        effort, don't inflate), and pick completionStyle, frequency, and priority that fit
-        how the user would track each step. Prefer a short ladder of meaningful steps over
-        a long list of trivial ones.
+        Use the same fields and rules as quest design. difficulty sets XP, so match it to
+        real effort and ALWAYS set estimatedMinutes to back it up:
+          - TRIVIAL (~5 XP): a couple of minutes.   - EASY (~10 XP): a quick task.
+          - MEDIUM (~20 XP): real focus (the default). - HARD (~35 XP): draining.
+          - EPIC (~60 XP): a major milestone — use sparingly.
+        Don't inflate difficulty to hand out XP. Pick completionStyle, frequency, and
+        priority that fit how the user would track each step. Prefer a short ladder of
+        meaningful steps over a long list of trivial ones.
 
         Never use shame, guilt, or pressure. No medical advice. No financial or investment
         advice. Give each quest a short, plain rationale tying it to the goal.

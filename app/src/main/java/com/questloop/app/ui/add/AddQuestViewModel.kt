@@ -116,7 +116,7 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
                             "${suggestion.error} Showing a starting point below — edit or discard."
                         n == 0 -> "Couldn't break that down — try rephrasing the goal."
                         suggestion.fromAi -> "Broke it into $n step$plural — review below."
-                        else -> "AI is off — showing a starting point. Turn it on in Settings for a full plan."
+                        else -> "Here's a starting point. Turn on AI in Settings for a full breakdown."
                     },
                 )
             }

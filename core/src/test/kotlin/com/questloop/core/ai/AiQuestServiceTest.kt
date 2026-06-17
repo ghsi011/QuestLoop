@@ -70,6 +70,37 @@ class AiQuestServiceTest {
     }
 
     @Test
+    fun `goal decomposition dedups against existing quests`() = runTest {
+        val svc = service(
+            """[
+              {"title":"Sign up for a 10k race","category":"HEALTH","difficulty":"EASY"},
+              {"title":"Buy running shoes","category":"HEALTH","difficulty":"EASY"}
+            ]""",
+        )
+        val existing = listOf(
+            Quest("e", "Buy running shoes", QuestCategory.HEALTH, QuestFrequency.ONE_OFF, Difficulty.EASY),
+        )
+        val result = svc.decomposeGoal("Run a 10k", existing)
+        assertEquals(1, result.quests.size)
+        assertEquals("Sign up for a 10k race", result.quests.single().title)
+    }
+
+    @Test
+    fun `goal decomposition clamps inflated difficulty for a short step`() = runTest {
+        val svc = service("""[{"title":"Quick warm-up","category":"HEALTH","difficulty":"EPIC","estimatedMinutes":2}]""")
+        val result = svc.decomposeGoal("Get fit")
+        assertEquals(Difficulty.TRIVIAL, result.quests.single().difficulty)
+    }
+
+    @Test
+    fun `empty model array falls back to one starter step`() = runTest {
+        val result = service("[]").decomposeGoal("Learn guitar")
+        assertFalse(result.fromAi)
+        assertEquals(1, result.quests.size)
+        assertNotNull(result.error)
+    }
+
+    @Test
     fun `tolerates markdown fences and surrounding prose`() = runTest {
         val svc = service("Sure! Here are some quests:\n```json\n[{\"title\":\"Stretch\",\"category\":\"HEALTH\",\"difficulty\":\"TRIVIAL\"}]\n```")
         val result = svc.suggest(AiQuestService.Input(todos = listOf("stretch")))

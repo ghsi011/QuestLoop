@@ -188,7 +188,8 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
             if (state.generating) {
                 CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
             } else {
-                Text("Break into steps ✨")
+                // Warn that this replaces any suggestions already under review.
+                Text(if (state.suggestions.isEmpty()) "Break into steps ✨" else "Break into steps (replaces below) ✨")
             }
         }
 
