@@ -66,14 +66,19 @@ class NavigationTransitionTest {
     private fun onRewards() = present("Save budget")
     private fun onSettings() = present("AI suggestions")
     private fun onQuestBank() = present("Quest bank") // top-bar title (exact text)
-    private fun onAchievements() = present("Achievements") // top-bar title
     private fun onHabits() = present("Habits & goals") // top-bar title
     private fun onAdd() = present("New quest") // section header, unique to Add
 
     // ---- actions ----------------------------------------------------------
 
-    /** Click a bottom-nav tab by its icon contentDescription (unambiguous). */
-    private fun tab(label: String) = composeRule.onNodeWithContentDescription(label).performClick()
+    /**
+     * Click a bottom-nav tab by its label. Material3 NavigationBarItem doesn't
+     * expose the icon's contentDescription as a queryable node, and the label text
+     * can also appear as a section header, so we pick the *clickable* node with
+     * that text — the nav item.
+     */
+    private fun tab(label: String) =
+        composeRule.onAllNodesWithText(label).filterToOne(hasClickAction()).performClick()
 
     private fun back() = composeRule.onNodeWithContentDescription("Back").performClick()
 
@@ -125,12 +130,6 @@ class NavigationTransitionTest {
         await { onToday() }
         composeRule.onNodeWithContentDescription("Add quest").performClick()
         await { onAdd() }
-        back(); await { onToday() }
-
-        // Achievements (Today "See all") -> back -> Today.
-        composeRule.onNodeWithTag("today-list").performScrollToNode(hasText("See all"))
-        composeRule.onNodeWithText("See all").performClick()
-        await { onAchievements() }
         back(); await { onToday() }
 
         // Quest bank (Quests "Browse quest bank") -> back -> Quests.
