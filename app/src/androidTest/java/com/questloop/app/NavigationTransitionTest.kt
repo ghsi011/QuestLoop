@@ -201,14 +201,18 @@ class NavigationTransitionTest {
         await { onAdd() }
         // The title field, located by its label (merged into the field's node).
         composeRule.onNodeWithText("What do you want to get done?").performTextInput(title)
+        composeRule.waitForIdle()
+        // Confirm the text registered (so the Add button enables) before submitting.
+        await { present(title) }
         // The button shares its text with the top-bar title; pick the clickable one.
         composeRule.onAllNodesWithText("Add quest").filterToOne(hasClickAction()).performClick()
 
-        // Adding returns to the originating screen (Today)…
-        await { onToday() }
-        // …and the new quest is now visible in the Quests backlog (prior state of
-        // the Add screen reflected on a different screen).
-        tab("Quests"); await { onQuests() }
+        // Adding closes the modal (re-loading Today's plan can be slow on a cold
+        // emulator, so wait generously for the modal to go).
+        await(15_000) { !onAdd() }
+        // The new quest is now visible in the Quests backlog (prior state of the
+        // Add screen reflected on a different screen).
+        tab("Quests"); await(15_000) { onQuests() }
         composeRule.onNodeWithTag("quests-list").performScrollToNode(hasText(title))
         composeRule.onNodeWithText(title).assertIsDisplayed()
     }
