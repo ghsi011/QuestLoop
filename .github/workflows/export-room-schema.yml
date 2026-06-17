@@ -8,7 +8,7 @@ name: Export Room schema
 # own commit message has no "[schema]" marker, so it never re-triggers itself.
 on:
   push:
-    branches: ["master", "claude/gamified-quest-todo-habits-vkiiyl"]
+    branches: ["main", "master", "claude/gamified-quest-todo-habits-vkiiyl"]
   workflow_dispatch:
 
 permissions:

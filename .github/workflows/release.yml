@@ -10,7 +10,7 @@ on:
     # Cutting a release from the trunk/dev branch: include "[release]" in the
     # commit message. (Tags can't be pushed from the dev sandbox, so the workflow
     # creates the tag + release server-side using GITHUB_TOKEN.)
-    branches: ["master", "claude/gamified-quest-todo-habits-vkiiyl"]
+    branches: ["main", "master", "claude/gamified-quest-todo-habits-vkiiyl"]
   workflow_dispatch:
     inputs:
       tag:
