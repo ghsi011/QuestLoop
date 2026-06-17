@@ -88,12 +88,17 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
                     energy = checkIn?.energy,
                 )
             }
-            if (narrate) {
-                val key = plan.quests.joinToString("|") { it.quest.id } + "#${checkIn?.energy ?: -1}"
-                if (key != lastRationaleKey) {
+            val key = plan.quests.joinToString("|") { it.quest.id } + "#${checkIn?.energy ?: -1}"
+            if (key != lastRationaleKey) {
+                if (narrate) {
                     lastRationaleKey = key
                     val line = repository.planRationale(plan, checkIn, today).text
                     _state.update { it.copy(planRationale = line) }
+                } else {
+                    // Plan changed (e.g. a quest was completed) but we're not re-narrating
+                    // now — hide the now-stale line rather than show a wrong count. Next
+                    // narrating refresh (re-entry / energy change) writes a fresh one.
+                    _state.update { it.copy(planRationale = null) }
                 }
             }
         }

@@ -132,4 +132,43 @@ class NarrationSanitizerTest {
 
     @Test fun `bare second person is allowed`() =
         pass(Mode.RATIONALE, "You logged 5 of 7, so keep the 6am block.")
+
+    // ---- H1: abbreviations don't inflate the sentence count ----
+
+    @Test fun `rationale allows a-m abbreviation`() =
+        pass(Mode.RATIONALE, "Start at 7 a.m. since mornings held all week.")
+
+    @Test fun `rationale allows e-g abbreviation`() =
+        pass(Mode.RATIONALE, "Two quick wins, e.g. water and a walk, fit today.")
+
+    // ---- H2: compliment-the-person / motivational slop is rejected ----
+
+    @Test fun `rejects dedication paying off`() =
+        reject(Mode.REVIEW, "Solid effort. Your dedication is paying off.")
+
+    @Test fun `rejects future self`() =
+        reject(Mode.REVIEW, "Your future self will thank you for this.")
+
+    @Test fun `rejects trust the process`() =
+        reject(Mode.RATIONALE, "Trust the process and the rest will follow.")
+
+    @Test fun `rejects like a boss`() =
+        reject(Mode.REVIEW, "Energy was low but you pushed through like a boss.")
+
+    @Test fun `rejects consistency shows`() =
+        reject(Mode.REVIEW, "Great week, your consistency really shows.")
+
+    // ---- H3: habit-domain words are NOT mistaken for medical/financial advice ----
+
+    @Test fun `allows investing time`() =
+        pass(Mode.RATIONALE, "Invest 20 minutes in the focus block before lunch.")
+
+    @Test fun `allows a symptom tracker quest`() =
+        pass(Mode.REVIEW, "You logged the symptom tracker 5 of 7 days, steady going.")
+
+    @Test fun `allows synced runs`() =
+        pass(Mode.REVIEW, "You synced 4 runs to the log this week, two short of last.")
+
+    @Test fun `allows remember the deadline as a verb`() =
+        pass(Mode.RATIONALE, "Remember the dentist call leads today, then the rest.")
 }

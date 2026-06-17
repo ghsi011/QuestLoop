@@ -75,11 +75,13 @@ class AiNarratorTest {
     }
 
     @Test
-    fun `disabling the filter shows raw model output`() = runTest {
-        val slop = "Amazing job — you're absolutely crushing it! 🎉"
-        val out = narrator(slop).narrateReview(review, sanitize = false)
+    fun `disabling the filter shows model output with only cosmetic cleanup`() = runTest {
+        // Slop passes through (filter off), but cosmetic cleanup still applies
+        // (markdown/quotes stripped, "!" softened to ".").
+        val out = narrator("**Amazing job** — you're absolutely crushing it!").narrateReview(review, sanitize = false)
         assertTrue(out.fromAi)
-        assertEquals(slop, out.text)
+        assertEquals("unsanitized", out.note)
+        assertEquals("Amazing job — you're absolutely crushing it.", out.text)
     }
 
     @Test

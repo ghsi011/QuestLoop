@@ -322,9 +322,9 @@ private fun AiSection(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("Filter AI fluff", fontWeight = FontWeight.SemiBold)
+                    Text("Keep AI wording plain", fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Trims flattery and robotic phrasing from AI summaries. Off shows raw output.",
+                        "Trims flattery and filler from AI summaries. Off shows them word-for-word.",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }

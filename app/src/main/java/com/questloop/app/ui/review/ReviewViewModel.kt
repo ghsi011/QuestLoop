@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.ui.AppClock
+import com.questloop.core.ai.AiNarrator
 import com.questloop.core.review.ReviewGenerator
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,7 +26,9 @@ class ReviewViewModel(private val repository: QuestRepository) : ViewModel() {
     private val _state = MutableStateFlow(ReviewUiState())
     val state: StateFlow<ReviewUiState> = _state.asStateFlow()
 
-    init { load() }
+    // The review stats the AI summary was last written for, so re-entering the
+    // screen doesn't fire fresh network calls when nothing changed.
+    private var lastNarrationKey: String? = null
 
     fun load() {
         viewModelScope.launch {
@@ -33,12 +36,34 @@ class ReviewViewModel(private val repository: QuestRepository) : ViewModel() {
             val today = AppClock.todayEpochDay()
             val weekly = repository.review("This week", AppClock.startOfWeek(today), today)
             val monthly = repository.review("This month", AppClock.startOfMonth(today), today)
-            // Show the cards immediately; the summaries (which may hit the network
-            // when AI is on) fill in right after.
-            _state.update { it.copy(loading = false, weekly = weekly, monthly = monthly) }
-            val weeklySummary = repository.narrateReview(weekly).text
-            val monthlySummary = repository.narrateReview(monthly).text
-            _state.update { it.copy(weeklySummary = weeklySummary, monthlySummary = monthlySummary) }
+            // Seed the instant deterministic summary so the card never jumps; AI
+            // refines it in place when it's on (keeps an existing AI line on reload).
+            _state.update {
+                it.copy(
+                    loading = false,
+                    weekly = weekly,
+                    monthly = monthly,
+                    weeklySummary = it.weeklySummary ?: AiNarrator.reviewFallback(weekly),
+                    monthlySummary = it.monthlySummary ?: AiNarrator.reviewFallback(monthly),
+                )
+            }
+            val key = signature(weekly) + "|" + signature(monthly)
+            if (key != lastNarrationKey) {
+                lastNarrationKey = key
+                // Refresh the deterministic line for the current numbers, then narrate.
+                _state.update {
+                    it.copy(
+                        weeklySummary = AiNarrator.reviewFallback(weekly),
+                        monthlySummary = AiNarrator.reviewFallback(monthly),
+                    )
+                }
+                val weeklySummary = repository.narrateReview(weekly).text
+                val monthlySummary = repository.narrateReview(monthly).text
+                _state.update { it.copy(weeklySummary = weeklySummary, monthlySummary = monthlySummary) }
+            }
         }
     }
+
+    private fun signature(r: ReviewGenerator.Review): String =
+        "${r.totalCompleted}/${r.totalAttempted}/${r.activeDays}/${r.xpEarned}"
 }

@@ -79,8 +79,11 @@ class AiNarrator(private val client: LlmClient) {
             client.complete(PromptLibrary.REVIEW_NARRATION_SYSTEM, reviewPayload(review))
         }
         if (attempt.isFailure) return Narration(reviewFallback(review), false, failNote(attempt))
-        unsanitized(attempt.getOrNull(), sanitize)?.let { return Narration(it, true) }
-        if (!sanitize) return Narration(reviewFallback(review), false, "empty")
+        if (!sanitize) {
+            val clean = NarrationSanitizer.cosmetic(attempt.getOrNull())
+            return if (clean.isNotBlank()) Narration(clean, true, "unsanitized")
+            else Narration(reviewFallback(review), false, "empty")
+        }
         val gate = NarrationSanitizer.gate(attempt.getOrNull(), NarrationSanitizer.Mode.REVIEW)
         return gate.text?.let { Narration(it, true) }
             ?: Narration(reviewFallback(review), false, "style:${gate.reason}")
@@ -91,16 +94,15 @@ class AiNarrator(private val client: LlmClient) {
             client.complete(PromptLibrary.PLAN_RATIONALE_SYSTEM, planPayload(facts))
         }
         if (attempt.isFailure) return Narration(planFallback(facts), false, failNote(attempt))
-        unsanitized(attempt.getOrNull(), sanitize)?.let { return Narration(it, true) }
-        if (!sanitize) return Narration(planFallback(facts), false, "empty")
+        if (!sanitize) {
+            val clean = NarrationSanitizer.cosmetic(attempt.getOrNull())
+            return if (clean.isNotBlank()) Narration(clean, true, "unsanitized")
+            else Narration(planFallback(facts), false, "empty")
+        }
         val gate = NarrationSanitizer.gate(attempt.getOrNull(), NarrationSanitizer.Mode.RATIONALE)
         return gate.text?.let { Narration(it, true) }
             ?: Narration(planFallback(facts), false, "style:${gate.reason}")
     }
-
-    /** Raw, gate-bypassed text when filtering is off; null means fall through. */
-    private fun unsanitized(raw: String?, sanitize: Boolean): String? =
-        if (!sanitize) raw?.trim()?.ifBlank { null } else null
 
     // ---- payloads (aggregates only; no quest titles leave the device) ----
 

@@ -84,10 +84,25 @@ object NarrationSanitizer {
             CI,
         ),
         "FILLER" to Regex(
-            "(^|[\\s,])(remember|that said|at the end of the day|all in all|in conclusion|" +
-                "needless to say)[,\\s]",
+            "(^|[\\s,])(that said|at the end of the day|all in all|in conclusion|needless to say)[,\\s]",
             CI,
         ),
+        // "Remember," as a discourse marker — but allow the verb "remember the X".
+        "FILLER" to Regex("(^|\\s)remember,", CI),
+        // (h) compliment-the-person / motivational-poster registers small models love.
+        "MOTIVATIONAL" to Regex("\\byour future self\\b", CI),
+        "MOTIVATIONAL" to Regex(
+            "\\b(dedication|consistency|hard work|effort|grind) (is |are |really )*(paying off|pays off|showing|shows)\\b",
+            CI,
+        ),
+        "MOTIVATIONAL" to Regex(
+            "\\b(trust the process|stay the course|onward and upward|keep showing up|the rest will follow|" +
+                "results will come|on the right track|building something (real|great|special)|" +
+                "you'?ve got what it takes|closer than you (feel|think)|that'?s what matters|you showed up)\\b",
+            CI,
+        ),
+        "MOTIVATIONAL" to Regex("\\blike a (boss|champ|pro|machine)\\b", CI),
+        "MOTIVATIONAL" to Regex("\\bthe numbers don'?t lie\\b", CI),
         // (d) AI-meta / assistant-isms
         "AI_META" to Regex("\\bas an ai\\b", CI),
         "AI_META" to Regex(
@@ -115,8 +130,8 @@ object NarrationSanitizer {
         ),
         // (f) developer / app-meta
         "DEV_META" to Regex(
-            "\\b(fallback|config|configuration|mvp|safe defaults?|synced?|syncing|backend|frontend|" +
-                "endpoint|database|cache|parameter|parameters|null|undefined|boolean|deployed|deployment)\\b",
+            "\\b(fallback|config|configuration|mvp|safe defaults?|backend|frontend|" +
+                "endpoint|database|null|undefined|boolean|deployed|deployment)\\b",
             CI,
         ),
         "DEV_META" to Regex("\\bfor now\\b", CI),
@@ -124,9 +139,17 @@ object NarrationSanitizer {
             "\\b(this feature|the app (will|now|can)|part of the system|under the hood|behind the scenes)\\b",
             CI,
         ),
-        // safety: medical / financial advice
-        "UNSAFE" to Regex("\\b(diagnos(e|is|ed)|prescri(be|ption)|dosage|symptom|disease|cure)\\b", CI),
-        "UNSAFE" to Regex("\\b(invest|investment|stocks?|crypto|portfolio|guaranteed returns?)\\b", CI),
+        // safety: medical / financial ADVICE (not bare domain nouns — a habit app
+        // legitimately mentions "invest 20 minutes" or a "symptom tracker").
+        "UNSAFE" to Regex(
+            "\\b(diagnos(e|is|ed) (you|your)|prescri(be|ption)|dosage|you have (a )?(disorder|disease|condition))\\b",
+            CI,
+        ),
+        "UNSAFE" to Regex(
+            "\\b(invest in|investing in|buy (stocks|crypto|shares?)|sell (stocks|crypto|shares?)|" +
+                "guaranteed returns?|cryptocurrency)\\b",
+            CI,
+        ),
     )
 
     // The "it's not just X, it's Y" construction the product owner specifically dislikes.
@@ -140,6 +163,13 @@ object NarrationSanitizer {
         CI,
     )
 
+    /**
+     * Cosmetic cleanup only (normalize + strip markdown/quotes/leading prefix/!),
+     * with no slop rejection. Used when the user has turned the slop filter off but
+     * we still don't want raw markdown or wrapping quotes on screen.
+     */
+    fun cosmetic(raw: String?): String = if (raw == null) "" else stripAndKeep(normalize(raw))
+
     fun gate(raw: String?, mode: Mode): Result {
         if (raw == null) return Result(null, "EMPTY")
         val text = stripAndKeep(normalize(raw))
@@ -149,7 +179,10 @@ object NarrationSanitizer {
         if (text.length < min) return Result(null, "EMPTY")
         if (text.length > max) return Result(null, "TOO_LONG")
 
-        val sentences = text.split(Regex("(?<=[.?])\\s+")).filter { it.isNotBlank() }.size
+        // Count sentence boundaries only where a terminator is followed by an
+        // uppercase letter or quote, so "7 a.m.", "e.g.", "vs." don't inflate the
+        // count and wrongly reject a legitimate single-sentence line.
+        val sentences = (1 + Regex("[.?]\\s+(?=[A-Z\"'])").findAll(text).count())
         val maxSentences = if (mode == Mode.REVIEW) 3 else 1
         if (sentences > maxSentences) return Result(null, "TOO_MANY_SENTENCES")
 
