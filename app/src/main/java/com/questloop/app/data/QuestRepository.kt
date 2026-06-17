@@ -434,44 +434,77 @@ class QuestRepository(
 
     /** Serialises all on-device data to JSON for export (SPEC §9 portability). */
     suspend fun exportJson(): String {
+        // Include archived quests so export is a complete backup, not just active data.
+        val all = questDao.getAll().map { it.toModel() to it.archived }
         val snapshot = ExportSnapshot(
-            quests = questDao.getActive().map { it.toModel() },
+            quests = all.map { it.first },
             completions = completionDao.all().map { it.toModel() },
             profile = profileStore.profile.first(),
+            archivedIds = all.filter { it.second }.map { it.first.id },
         )
         return exportJson.encodeToString(ExportSnapshot.serializer(), snapshot)
     }
 
-    data class ImportResult(val quests: Int, val completions: Int, val error: String? = null)
+    data class ImportResult(val quests: Int, val completions: Int, val skipped: Int = 0, val error: String? = null)
 
     /**
      * Restores a previously [exportJson]ed snapshot (SPEC §9 portability). Merge,
      * not wipe: quests upsert by id, completions upsert idempotently by instanceId
      * (so re-importing the same file changes nothing and XP — derived from the
-     * ledger — is restored automatically), and profile lists union by id. The API
-     * key is never in a snapshot, so it's untouched. Rejects malformed JSON and
-     * snapshots from a newer app version.
+     * ledger — is restored automatically), profile lists union by id, and archived
+     * quests are re-archived. The API key is never in a snapshot, so it's untouched.
+     *
+     * Completions whose quest can't be accounted for (not in the snapshot, the
+     * current quests, the derived habit/goal quests, or a system routine) are
+     * dropped, so a hand-edited file can't inject phantom XP. Rejects malformed
+     * JSON and snapshots from a newer app version. Runs off the main thread; a
+     * cancelled import is harmless because re-import is idempotent.
      */
-    suspend fun importJson(json: String): ImportResult {
+    suspend fun importJson(json: String): ImportResult = withContext(Dispatchers.IO) {
         val snapshot = runCatching { exportJson.decodeFromString(ExportSnapshot.serializer(), json) }.getOrNull()
-            ?: return ImportResult(0, 0, "That file isn't a QuestLoop backup.")
+            ?: return@withContext ImportResult(0, 0, error = "That file isn't a QuestLoop backup.")
         if (snapshot.version > ExportSnapshot.CURRENT_VERSION) {
-            return ImportResult(0, 0, "This backup is from a newer version of QuestLoop. Update the app first.")
+            return@withContext ImportResult(
+                0, 0,
+                error = "This backup is from a newer version of QuestLoop. Update the app first.",
+            )
         }
-        completionMutex.withLock {
-            snapshot.quests.forEach { questDao.upsert(it.toEntity()) }
-            snapshot.completions.forEach { completionDao.upsert(it.toEntity()) }
-        }
+
+        // Merge profile first so derived (habit/goal) quest ids are known.
         val current = profileStore.profile.first()
         val prefs = snapshot.profile.preferences
-        profileStore.setHabits(mergeById(current.habits, snapshot.profile.habits) { it.id })
-        profileStore.setBadHabits(mergeById(current.badHabits, snapshot.profile.badHabits) { it.id })
-        profileStore.setGoals(mergeById(current.goals, snapshot.profile.goals) { it.id })
+        val habits = mergeById(current.habits, snapshot.profile.habits) { it.id }
+        val badHabits = mergeById(current.badHabits, snapshot.profile.badHabits) { it.id }
+        val goals = mergeById(current.goals, snapshot.profile.goals) { it.id }
+        profileStore.setHabits(habits)
+        profileStore.setBadHabits(badHabits)
+        profileStore.setGoals(goals)
         profileStore.setMaxDaily(prefs.maxDailyQuests)
         profileStore.setAvailableMinutes(prefs.defaultAvailableMinutes)
         profileStore.setBudgetCap(prefs.monthlyRewardBudgetCap)
         profileStore.setFocusCategories(prefs.focusCategories)
-        return ImportResult(snapshot.quests.size, snapshot.completions.size)
+
+        // The set of quest ids a completion may legitimately reference.
+        val derivedIds = HabitQuestFactory.deriveAll(habits, badHabits, goals).map { it.id }
+        val routineIds = RoutineQuestFactory.all().map { it.id }
+        val existingIds = questDao.getAll().map { it.id }
+        val validQuestIds = (snapshot.quests.map { it.id } + existingIds + derivedIds + routineIds).toSet()
+
+        var imported = 0
+        var skipped = 0
+        completionMutex.withLock {
+            snapshot.quests.forEach { questDao.upsert(it.toEntity()) }
+            snapshot.archivedIds.forEach { questDao.archive(it) }
+            snapshot.completions.forEach { record ->
+                if (record.questId in validQuestIds) {
+                    completionDao.upsert(record.toEntity())
+                    imported++
+                } else {
+                    skipped++
+                }
+            }
+        }
+        ImportResult(quests = snapshot.quests.size, completions = imported, skipped = skipped)
     }
 
     /** Union by stable id; the incoming (imported) item wins on a collision. */

@@ -16,6 +16,8 @@ data class ExportSnapshot(
     val quests: List<Quest>,
     val completions: List<CompletionRecord>,
     val profile: UserProfile,
+    /** Ids of quests that were archived at export time, re-archived on import. */
+    val archivedIds: List<String> = emptyList(),
 ) {
     companion object {
         /** Bump when the snapshot shape changes incompatibly; import rejects newer. */

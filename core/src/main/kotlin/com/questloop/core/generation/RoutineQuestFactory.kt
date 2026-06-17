@@ -32,6 +32,9 @@ object RoutineQuestFactory {
         DayPart.EVENING -> listOf(eveningReview(), eveningIntake())
     }
 
+    /** Every routine quest (all day parts), e.g. to validate routine completion ids. */
+    fun all(): List<Quest> = listOf(morningReview(), eveningReview(), eveningIntake())
+
     /**
      * Morning micro-quest: glance at today's open quests. Instantly completable
      * for an early, honest dopamine hit that costs ~30 seconds.

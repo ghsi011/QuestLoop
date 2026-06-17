@@ -15,6 +15,10 @@ interface QuestDao {
     @Query("SELECT * FROM quests WHERE archived = 0")
     suspend fun getActive(): List<QuestEntity>
 
+    /** Every quest including archived — used for a complete export. */
+    @Query("SELECT * FROM quests")
+    suspend fun getAll(): List<QuestEntity>
+
     @Upsert
     suspend fun upsert(quest: QuestEntity)
 

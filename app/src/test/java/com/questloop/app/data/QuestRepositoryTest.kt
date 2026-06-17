@@ -2,15 +2,18 @@ package com.questloop.app.data
 
 import androidx.room.Room
 import com.questloop.app.data.local.QuestLoopDatabase
+import com.questloop.core.model.CompletionRecord
 import com.questloop.core.model.CompletionResult
 import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.DayPart
 import com.questloop.core.model.Difficulty
+import com.questloop.core.model.Priority
 import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.QuestFrequency
 import com.questloop.core.model.UserPreferences
 import com.questloop.core.model.UserProfile
+import kotlinx.serialization.json.Json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -140,6 +143,58 @@ class QuestRepositoryTest {
         // Malformed input is rejected with a message, no crash.
         val bad = repo.importJson("not json at all")
         assertTrue(bad.error != null)
+    }
+
+    @Test
+    fun `import drops completions with no backing quest`() = runTest {
+        // A hand-edited snapshot can't inject phantom XP for a quest that doesn't exist.
+        val snapshot = ExportSnapshot(
+            quests = listOf(quest("keep")),
+            completions = listOf(
+                CompletionRecord(
+                    instanceId = "keep@1", questId = "keep", category = QuestCategory.WORK_STUDY,
+                    difficulty = Difficulty.MEDIUM, priority = Priority.NORMAL,
+                    result = CompletionResult.COMPLETED, epochDay = 1, xpAwarded = 20,
+                ),
+                CompletionRecord(
+                    instanceId = "ghost@1", questId = "ghost", category = QuestCategory.WORK_STUDY,
+                    difficulty = Difficulty.EPIC, priority = Priority.NORMAL,
+                    result = CompletionResult.COMPLETED, epochDay = 1, xpAwarded = 9999,
+                ),
+            ),
+            profile = UserProfile(),
+        )
+        val json = Json.encodeToString(ExportSnapshot.serializer(), snapshot)
+        val result = repo.importJson(json)
+        assertEquals(1, result.completions)
+        assertEquals(1, result.skipped)
+        assertEquals(20L, repo.totalXp()) // the 9999 phantom row was dropped
+    }
+
+    @Test
+    fun `import rejects a newer-version snapshot`() = runTest {
+        val snapshot = ExportSnapshot(
+            version = ExportSnapshot.CURRENT_VERSION + 1,
+            quests = emptyList(), completions = emptyList(), profile = UserProfile(),
+        )
+        val json = Json.encodeToString(ExportSnapshot.serializer(), snapshot)
+        val result = repo.importJson(json)
+        assertTrue(result.error != null)
+        assertEquals(0, result.quests)
+    }
+
+    @Test
+    fun `archived quests survive an export-import round-trip`() = runTest {
+        repo.addQuest(quest("archived"))
+        repo.archiveQuest("archived")
+        repo.addQuest(quest("active"))
+        val json = repo.exportJson()
+        repo.deleteAllData()
+
+        repo.importJson(json)
+        val active = repo.activeQuestIds()
+        assertTrue(active.contains("active"))
+        assertFalse(active.contains("archived")) // re-archived, not lost
     }
 
     @Test
