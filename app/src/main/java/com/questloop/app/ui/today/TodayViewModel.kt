@@ -8,6 +8,7 @@ import com.questloop.core.QuestLoopEngine
 import com.questloop.core.generation.QuestGenerator
 import com.questloop.core.model.CompletionRecord
 import com.questloop.core.model.CompletionResult
+import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.EnergyCheckIn
 import com.questloop.core.model.Quest
 import com.questloop.core.reward.Achievement
@@ -16,7 +17,6 @@ import com.questloop.core.safety.SafetyGuard
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -71,11 +71,22 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
             // navigation and process death.
             val checkIn = repository.todayCheckIn(today)
             val plan = repository.todayPlan(today, AppClock.currentDayPart(), checkIn)
-            val available = checkIn?.availableMinutes
-                ?: repository.profile.first().preferences.defaultAvailableMinutes
             val signals = repository.safetySignals(today)
             val achievements = repository.unlockedAchievements()
             val todayProgress = repository.todayProgress(today)
+            // The time budget is only real when the user did an energy check-in; otherwise
+            // available stays 0 and the budget bar is hidden (don't assert a guessed limit).
+            val available = checkIn?.availableMinutes ?: 0
+            // Minutes still to do: discount logged time on partially-done timed quests so
+            // the bar doesn't overstate remaining load.
+            val planned = plan.quests.sumOf { qi ->
+                val q = qi.quest
+                if (q.completionStyle == CompletionStyle.DURATION) {
+                    (q.estimatedMinutes - (todayProgress[q.id] ?: 0)).coerceAtLeast(0)
+                } else {
+                    q.estimatedMinutes
+                }
+            }
             // Total XP is sourced from the completion ledger.
             val xp = repository.totalXp()
             val progress = LevelSystem.progress(xp)
@@ -92,7 +103,7 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
                     achievements = achievements,
                     todayProgress = todayProgress,
                     energy = checkIn?.energy,
-                    plannedMinutes = plan.totalEstimatedMinutes,
+                    plannedMinutes = planned,
                     availableMinutes = available,
                 )
             }

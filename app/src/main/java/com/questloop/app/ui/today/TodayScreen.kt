@@ -38,6 +38,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -220,9 +222,14 @@ private fun EnergyBudgetBar(plannedMinutes: Int, availableMinutes: Int) {
     val fraction = if (availableMinutes <= 0) 0f else (plannedMinutes.toFloat() / availableMinutes).coerceIn(0f, 1f)
     val over = availableMinutes in 1 until plannedMinutes
     val accent = if (over) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-    Column(Modifier.fillMaxWidth()) {
+    val spoken = "Time planned: about $plannedMinutes of $availableMinutes minutes" +
+        if (over) ", more than today's time." else "."
+    Column(
+        // One spoken summary instead of three disconnected fragments + a raw percentage.
+        Modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = spoken },
+    ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Today's load", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text("Time planned", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
             Text(
                 "≈ $plannedMinutes / $availableMinutes min",
                 style = MaterialTheme.typography.bodySmall,
@@ -236,7 +243,7 @@ private fun EnergyBudgetBar(plannedMinutes: Int, availableMinutes: Int) {
         )
         if (over) {
             Text(
-                "Over today's time — defer anything that can wait.",
+                "More than today's time.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 2.dp),
