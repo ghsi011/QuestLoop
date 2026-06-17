@@ -57,41 +57,45 @@ private fun ReviewCard(review: ReviewGenerator.Review, summary: String?) {
                     modifier = Modifier.padding(top = 6.dp),
                 )
             }
-            Text(
-                "${review.totalCompleted}/${review.totalAttempted} completed · ${review.activeDays} active days · +${review.xpEarned} XP",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 6.dp),
-            )
-            LinearProgressIndicator(
-                progress = { review.completionRate.toFloat() },
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            )
+            // A zero-activity period would otherwise show a bleak "0/0 · 0 days · +0 XP"
+            // row and an empty bar; the summary line alone is enough.
+            if (review.totalAttempted > 0) {
+                Text(
+                    "${review.totalCompleted}/${review.totalAttempted} completed · ${review.activeDays} active days · +${review.xpEarned} XP",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+                LinearProgressIndicator(
+                    progress = { review.completionRate.toFloat() },
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                )
 
-            if (review.byCategory.isNotEmpty()) {
-                Text("By category", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
-                review.byCategory.forEach { stat ->
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(stat.category.pretty(), style = MaterialTheme.typography.bodySmall)
-                        Text(
-                            "${stat.completed}/${stat.attempted} (${(stat.completionRate * 100).roundToInt()}%)",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
+                if (review.byCategory.isNotEmpty()) {
+                    Text("By category", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+                    review.byCategory.forEach { stat ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(stat.category.pretty(), style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                "${stat.completed}/${stat.attempted} (${(stat.completionRate * 100).roundToInt()}%)",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                     }
                 }
-            }
 
-            if (review.highlights.isNotEmpty()) {
-                Text("Highlights", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
-                review.highlights.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
-            }
-            if (review.suggestions.isNotEmpty()) {
-                Text("Suggestions", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
-                review.suggestions.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
+                if (review.highlights.isNotEmpty()) {
+                    Text("Highlights", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+                    review.highlights.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
+                }
+                if (review.suggestions.isNotEmpty()) {
+                    Text("Suggestions", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+                    review.suggestions.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
+                }
             }
         }
     }

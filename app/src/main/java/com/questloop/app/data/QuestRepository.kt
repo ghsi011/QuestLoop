@@ -485,7 +485,7 @@ class QuestRepository(
                 AiQuestService(OpenRouterClient(config.apiKey, config.model)).suggest(input)
             }
             // Record real failures so the user can export them for troubleshooting.
-            suggestion.error?.let { aiDiagnostics.record(config.model, it) }
+            suggestion.error?.let { recordAiError(config.model, it) }
             suggestion
         } else {
             // No AI configured: deterministic, always-safe suggestions.
@@ -509,7 +509,7 @@ class QuestRepository(
         val result = aiCallGuard.keepAwake {
             AiQuestService(OpenRouterClient(config.apiKey, config.model)).refine(quest, instruction)
         }
-        result.error?.let { aiDiagnostics.record(config.model, it) }
+        result.error?.let { recordAiError(config.model, it) }
         return result
     }
 
@@ -525,9 +525,9 @@ class QuestRepository(
             AiNarrator(OpenRouterClient(config.apiKey, config.model))
                 .narrateReview(review, sanitize = config.filterWording)
         }
-        if (!result.fromAi && result.note?.startsWith("request:") == true) {
-            aiDiagnostics.record(config.model, "review narration: ${result.note}")
-        }
+        // Record any AI miss (transport, style reject, or empty) so misbehaviour is
+        // visible in the exportable log — not just transport failures.
+        if (!result.fromAi && result.note != null) recordAiError(config.model, "review narration: ${result.note}")
         return result
     }
 
@@ -549,11 +549,13 @@ class QuestRepository(
             AiNarrator(OpenRouterClient(config.apiKey, config.model))
                 .rationale(facts, sanitize = config.filterWording)
         }
-        if (!result.fromAi && result.note?.startsWith("request:") == true) {
-            aiDiagnostics.record(config.model, "plan rationale: ${result.note}")
-        }
+        if (!result.fromAi && result.note != null) recordAiError(config.model, "plan rationale: ${result.note}")
         return result
     }
+
+    /** AI errors are logged off the main thread (the diagnostics file is read+rewritten). */
+    private suspend fun recordAiError(model: String, message: String) =
+        withContext(Dispatchers.IO) { aiDiagnostics.record(model, message) }
 
     /** Erases all on-device data (SPEC §9: users can delete their data). */
     suspend fun deleteAllData() {

@@ -32,6 +32,8 @@ class AiNarrator(private val client: LlmClient) {
         val deferredCount: Int,
         val categoryMix: String,
         val due: String,
+        // MUST stay engine-generated only (e.g. "Low-energy day detected"). Never route
+        // user-authored text into plan.notes — it is forwarded to the model verbatim.
         val firstNote: String?,
     ) {
         companion object {

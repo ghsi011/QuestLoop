@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -40,6 +41,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -317,7 +319,11 @@ private fun AiSection(
                 }
             }
             Row(
-                Modifier.fillMaxWidth(),
+                // Toggleable on the whole row so the label is the switch's accessible
+                // name (TalkBack reads "Keep AI wording plain, switch, on").
+                Modifier
+                    .fillMaxWidth()
+                    .toggleable(value = filterWording, role = Role.Switch) { filterWording = it },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -328,7 +334,7 @@ private fun AiSection(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                Switch(checked = filterWording, onCheckedChange = { filterWording = it })
+                Switch(checked = filterWording, onCheckedChange = null)
             }
             Button(
                 onClick = { onSave(enabled, key, model, filterWording) },
