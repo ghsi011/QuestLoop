@@ -16,6 +16,7 @@ import com.questloop.core.safety.SafetyGuard
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -29,6 +30,9 @@ data class TodayUiState(
     val signals: List<SafetyGuard.Signal> = emptyList(),
     val achievements: List<Achievement> = emptyList(),
     val energy: Int? = null,
+    /** Estimated minutes in today's plan vs. the day's available time (energy budget). */
+    val plannedMinutes: Int = 0,
+    val availableMinutes: Int = 0,
     /** One line on why today's plan has this shape (AI when on, else terse). */
     val planRationale: String? = null,
     /** Today's logged progress per quest id (count or minutes) for non-binary quests. */
@@ -67,6 +71,8 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
             // navigation and process death.
             val checkIn = repository.todayCheckIn(today)
             val plan = repository.todayPlan(today, AppClock.currentDayPart(), checkIn)
+            val available = checkIn?.availableMinutes
+                ?: repository.profile.first().preferences.defaultAvailableMinutes
             val signals = repository.safetySignals(today)
             val achievements = repository.unlockedAchievements()
             val todayProgress = repository.todayProgress(today)
@@ -86,6 +92,8 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
                     achievements = achievements,
                     todayProgress = todayProgress,
                     energy = checkIn?.energy,
+                    plannedMinutes = plan.totalEstimatedMinutes,
+                    availableMinutes = available,
                 )
             }
             val key = plan.quests.joinToString("|") { it.quest.id } + "#${checkIn?.energy ?: -1}"

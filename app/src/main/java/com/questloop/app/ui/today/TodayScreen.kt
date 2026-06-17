@@ -19,6 +19,7 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarDuration
@@ -138,6 +139,9 @@ fun TodayContent(state: TodayUiState, actions: TodayActions, onOpenAchievements:
         item { EnergyCheckInRow(selectedEnergy = state.energy, onSelect = actions.onCheckIn) }
 
         val quests = state.plan?.quests.orEmpty()
+        if (quests.isNotEmpty() && state.availableMinutes > 0) {
+            item { EnergyBudgetBar(plannedMinutes = state.plannedMinutes, availableMinutes = state.availableMinutes) }
+        }
         if (quests.isNotEmpty()) {
             state.planRationale?.let { rationale ->
                 item {
@@ -203,6 +207,41 @@ fun TodayContent(state: TodayUiState, actions: TodayActions, onOpenAchievements:
         }
 
         item { Spacer(Modifier.padding(24.dp)) }
+    }
+}
+
+/**
+ * The day's time budget: estimated minutes planned vs. available (from the energy
+ * check-in, or the default). Makes the energy-budgeting that already shapes the
+ * plan visible — over budget is stated plainly, never as a scolding.
+ */
+@Composable
+private fun EnergyBudgetBar(plannedMinutes: Int, availableMinutes: Int) {
+    val fraction = if (availableMinutes <= 0) 0f else (plannedMinutes.toFloat() / availableMinutes).coerceIn(0f, 1f)
+    val over = availableMinutes in 1 until plannedMinutes
+    val accent = if (over) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    Column(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Today's load", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                "≈ $plannedMinutes / $availableMinutes min",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (over) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        LinearProgressIndicator(
+            progress = { fraction },
+            color = accent,
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        )
+        if (over) {
+            Text(
+                "Over today's time — defer anything that can wait.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
     }
 }
 
