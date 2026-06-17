@@ -36,8 +36,8 @@ fun ReviewScreen(viewModel: ReviewViewModel) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item { SectionHeader("Reviews") }
-        state.weekly?.let { item { ReviewCard(it) } }
-        state.monthly?.let { item { ReviewCard(it) } }
+        state.weekly?.let { item { ReviewCard(it, state.weeklySummary) } }
+        state.monthly?.let { item { ReviewCard(it, state.monthlySummary) } }
         if (state.weekly == null && state.monthly == null && !state.loading) {
             item { Text("No activity yet — complete a few quests to see your review.") }
         }
@@ -46,14 +46,22 @@ fun ReviewScreen(viewModel: ReviewViewModel) {
 }
 
 @Composable
-private fun ReviewCard(review: ReviewGenerator.Review) {
+private fun ReviewCard(review: ReviewGenerator.Review, summary: String?) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text(review.periodLabel, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            summary?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
             Text(
                 "${review.totalCompleted}/${review.totalAttempted} completed · ${review.activeDays} active days · +${review.xpEarned} XP",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 4.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp),
             )
             LinearProgressIndicator(
                 progress = { review.completionRate.toFloat() },

@@ -3,6 +3,7 @@ package com.questloop.app.data
 import com.questloop.app.data.local.CompletionDao
 import com.questloop.app.data.local.QuestDao
 import com.questloop.core.QuestLoopEngine
+import com.questloop.core.ai.AiNarrator
 import com.questloop.core.ai.AiQuestService
 import com.questloop.core.completion.CompletionPolicy
 import com.questloop.core.completion.CompletionScaling
@@ -509,6 +510,46 @@ class QuestRepository(
             AiQuestService(OpenRouterClient(config.apiKey, config.model)).refine(quest, instruction)
         }
         result.error?.let { aiDiagnostics.record(config.model, it) }
+        return result
+    }
+
+    /**
+     * A short, human summary of a period — AI-narrated when AI is configured,
+     * otherwise a terse factual line. AI output is gated by [NarrationSanitizer]
+     * (no slop), and only aggregates leave the device (no quest titles).
+     */
+    suspend fun narrateReview(review: ReviewGenerator.Review): AiNarrator.Narration {
+        val config = profileStore.getAiConfig()
+        if (!config.usable) return AiNarrator.Narration(AiNarrator.reviewFallback(review), fromAi = false)
+        val result = aiCallGuard.keepAwake {
+            AiNarrator(OpenRouterClient(config.apiKey, config.model)).narrateReview(review)
+        }
+        if (!result.fromAi && result.note?.startsWith("request:") == true) {
+            aiDiagnostics.record(config.model, "review narration: ${result.note}")
+        }
+        return result
+    }
+
+    /**
+     * One line explaining the shape of today's plan (energy/time/deadlines),
+     * AI-narrated when AI is on, otherwise a terse factual line.
+     */
+    suspend fun planRationale(
+        plan: QuestGenerator.DailyPlan,
+        checkIn: EnergyCheckIn?,
+        epochDay: Long,
+    ): AiNarrator.Narration {
+        val profile = profileStore.profile.first()
+        val availableMinutes = checkIn?.availableMinutes ?: profile.preferences.defaultAvailableMinutes
+        val facts = AiNarrator.PlanFacts.from(plan, checkIn, availableMinutes, epochDay)
+        val config = profileStore.getAiConfig()
+        if (!config.usable) return AiNarrator.Narration(AiNarrator.planFallback(facts), fromAi = false)
+        val result = aiCallGuard.keepAwake {
+            AiNarrator(OpenRouterClient(config.apiKey, config.model)).rationale(facts)
+        }
+        if (!result.fromAi && result.note?.startsWith("request:") == true) {
+            aiDiagnostics.record(config.model, "plan rationale: ${result.note}")
+        }
         return result
     }
 

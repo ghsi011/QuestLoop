@@ -15,6 +15,9 @@ data class ReviewUiState(
     val loading: Boolean = true,
     val weekly: ReviewGenerator.Review? = null,
     val monthly: ReviewGenerator.Review? = null,
+    /** Short human summary per period; fills in shortly after the cards (AI when on). */
+    val weeklySummary: String? = null,
+    val monthlySummary: String? = null,
 )
 
 class ReviewViewModel(private val repository: QuestRepository) : ViewModel() {
@@ -30,7 +33,12 @@ class ReviewViewModel(private val repository: QuestRepository) : ViewModel() {
             val today = AppClock.todayEpochDay()
             val weekly = repository.review("This week", AppClock.startOfWeek(today), today)
             val monthly = repository.review("This month", AppClock.startOfMonth(today), today)
+            // Show the cards immediately; the summaries (which may hit the network
+            // when AI is on) fill in right after.
             _state.update { it.copy(loading = false, weekly = weekly, monthly = monthly) }
+            val weeklySummary = repository.narrateReview(weekly).text
+            val monthlySummary = repository.narrateReview(monthly).text
+            _state.update { it.copy(weeklySummary = weeklySummary, monthlySummary = monthlySummary) }
         }
     }
 }

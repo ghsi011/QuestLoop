@@ -138,6 +138,17 @@ fun TodayContent(state: TodayUiState, actions: TodayActions, onOpenAchievements:
         item { EnergyCheckInRow(selectedEnergy = state.energy, onSelect = actions.onCheckIn) }
 
         val quests = state.plan?.quests.orEmpty()
+        if (quests.isNotEmpty()) {
+            state.planRationale?.let { rationale ->
+                item {
+                    Text(
+                        rationale,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
         if (quests.isEmpty()) {
             item {
                 InfoCard(

@@ -29,6 +29,8 @@ data class TodayUiState(
     val signals: List<SafetyGuard.Signal> = emptyList(),
     val achievements: List<Achievement> = emptyList(),
     val energy: Int? = null,
+    /** One line on why today's plan has this shape (AI when on, else terse). */
+    val planRationale: String? = null,
     /** Today's logged progress per quest id (count or minutes) for non-binary quests. */
     val todayProgress: Map<String, Int> = emptyMap(),
     val lastEffect: QuestLoopEngine.CompletionEffect? = null,
@@ -45,6 +47,11 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
     private val _state = MutableStateFlow(TodayUiState())
     val state: StateFlow<TodayUiState> = _state.asStateFlow()
 
+    // The plan shape the rationale was last written for, so we only re-narrate
+    // (and possibly hit the network) when the plan or energy actually changes —
+    // not on every post-completion refresh.
+    private var lastRationaleKey: String? = null
+
     init {
         viewModelScope.launch {
             repository.seedIfEmpty()
@@ -52,7 +59,7 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
         }
     }
 
-    fun refresh() {
+    fun refresh(narrate: Boolean = true) {
         viewModelScope.launch {
             _state.update { it.copy(loading = true) }
             val today = AppClock.todayEpochDay()
@@ -80,6 +87,14 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
                     todayProgress = todayProgress,
                     energy = checkIn?.energy,
                 )
+            }
+            if (narrate) {
+                val key = plan.quests.joinToString("|") { it.quest.id } + "#${checkIn?.energy ?: -1}"
+                if (key != lastRationaleKey) {
+                    lastRationaleKey = key
+                    val line = repository.planRationale(plan, checkIn, today).text
+                    _state.update { it.copy(planRationale = line) }
+                }
             }
         }
     }
@@ -136,7 +151,9 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
                 pendingUndo = PendingUndo(outcome.instanceId, outcome.previousRecord),
             )
         }
-        refresh()
+        // Don't re-narrate on every completion (avoids a network call per tap);
+        // the rationale refreshes on next load or energy change.
+        refresh(narrate = false)
     }
 
     fun undoLast() {
