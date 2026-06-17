@@ -15,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -273,7 +274,11 @@ private fun QuestRow(instance: QuestInstance, actions: TodayActions, progress: I
                         if (showWhy) "Hide" else "Why?",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.clickable { showWhy = !showWhy },
+                        // Reserve a 48dp touch target so this small label meets the
+                        // Material accessibility minimum.
+                        modifier = Modifier
+                            .clickable { showWhy = !showWhy }
+                            .minimumInteractiveComponentSize(),
                     )
                 }
             }

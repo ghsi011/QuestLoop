@@ -59,9 +59,9 @@ fun QuestCompletionControls(
             var count by remember(quest.id, progress) { mutableIntStateOf(progress.coerceIn(0, target)) }
             Column(Modifier.padding(top = 8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { if (count > 0) count-- }) { Text("−") }
+                    OutlinedButton(onClick = { if (count > 0) count-- }, enabled = enabled) { Text("−") }
                     Text("$count / $target ${quest.unit.orEmpty()}".trim(), style = MaterialTheme.typography.bodyMedium)
-                    OutlinedButton(onClick = { if (count < target) count++ }) { Text("+") }
+                    OutlinedButton(onClick = { if (count < target) count++ }, enabled = enabled) { Text("+") }
                 }
                 Button(onClick = { onMeasured(count) }, enabled = enabled, modifier = Modifier.padding(top = 8.dp)) {
                     Text("Log progress")
@@ -74,9 +74,9 @@ fun QuestCompletionControls(
             var minutes by remember(quest.id, progress) { mutableIntStateOf(if (progress > 0) progress else target) }
             Column(Modifier.padding(top = 8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { if (minutes >= 5) minutes -= 5 }) { Text("−5") }
+                    OutlinedButton(onClick = { if (minutes >= 5) minutes -= 5 }, enabled = enabled) { Text("−5") }
                     Text("$minutes / $target min", style = MaterialTheme.typography.bodyMedium)
-                    OutlinedButton(onClick = { minutes = (minutes + 5).coerceAtMost(1440) }) { Text("+5") }
+                    OutlinedButton(onClick = { minutes = (minutes + 5).coerceAtMost(1440) }, enabled = enabled) { Text("+5") }
                 }
                 Button(onClick = { onMeasured(minutes) }, enabled = enabled, modifier = Modifier.padding(top = 8.dp)) {
                     Text("Log time")

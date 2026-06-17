@@ -18,6 +18,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.questloop.core.model.Difficulty
@@ -107,19 +109,33 @@ fun QuestCategory.color(): Color = when (this) {
     QuestCategory.META_MAINTENANCE -> Color(0xFF64748B)
 }
 
-/** Small colored dot used as a category marker. */
+/** Small colored dot used as a category marker. Colour alone isn't accessible,
+ *  so it carries the category name as a content description for screen readers. */
 @Composable
 fun CategoryDot(category: QuestCategory, modifier: Modifier = Modifier) {
+    val label = category.pretty()
     androidx.compose.foundation.layout.Box(
-        modifier.size(10.dp).clip(CircleShape).background(category.color()),
+        modifier
+            .size(10.dp)
+            .clip(CircleShape)
+            .background(category.color())
+            .semantics { contentDescription = label },
     )
 }
 
-/** Difficulty shown as filled pips (e.g. ●●●○○) instead of a word. */
+/** Pretty, human label for a difficulty (e.g. "Medium"). */
+fun Difficulty.pretty(): String = name.lowercase().replaceFirstChar { it.uppercase() }
+
+/** Difficulty shown as filled pips (e.g. ●●●○○) instead of a word. The pip count
+ *  is visual-only, so the tier is exposed as a content description for TalkBack. */
 @Composable
 fun DifficultyPips(difficulty: Difficulty, modifier: Modifier = Modifier) {
     val filled = difficulty.ordinal + 1
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+    val label = "${difficulty.pretty()} difficulty"
+    Row(
+        modifier.semantics { contentDescription = label },
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
         repeat(Difficulty.entries.size) { i ->
             val on = i < filled
             androidx.compose.foundation.layout.Box(
