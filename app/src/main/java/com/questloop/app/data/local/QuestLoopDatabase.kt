@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [QuestEntity::class, CompletionEntity::class],
-    version = 2,
+    version = QuestLoopDatabase.SCHEMA_VERSION,
     // Export the schema so future versions can be migrated (and migrations tested)
     // rather than guessed at.
     exportSchema = true,
@@ -18,12 +18,20 @@ abstract class QuestLoopDatabase : RoomDatabase() {
 
     companion object {
         /**
+         * Current schema version. Bump this in lockstep with adding a [Migration]
+         * below and committing the exported `schemas/<n>.json`; the migration test
+         * walks every version up to here, so a forgotten migration fails in CI.
+         */
+        const val SCHEMA_VERSION = 2
+
+        /**
          * Migrations between schema versions. Add a [Migration] for every version
          * bump from v2 onward; the builder no longer wipes data on a missing
          * migration, so a forgotten one fails loudly instead of silently erasing
-         * the user's quests, XP and history.
+         * the user's quests, XP and history. Visible to the androidTest migration
+         * guard so the test exercises exactly what ships.
          */
-        private val MIGRATIONS: Array<androidx.room.migration.Migration> = arrayOf()
+        internal val MIGRATIONS: Array<androidx.room.migration.Migration> = arrayOf()
 
         @Volatile
         private var instance: QuestLoopDatabase? = null

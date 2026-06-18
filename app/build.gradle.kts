@@ -53,6 +53,11 @@ android {
             isIncludeAndroidResources = true
         }
     }
+
+    // Make the exported Room schemas available to instrumented tests so
+    // MigrationTestHelper can open each historical version and validate the
+    // migrations against the real schema JSON that ships in the repo.
+    sourceSets.getByName("androidTest").assets.srcDirs("$projectDir/schemas")
 }
 
 // Where Room writes exported schemas (for migrations and migration tests).
@@ -103,6 +108,7 @@ dependencies {
     androidTestImplementation(libs.androidx.test.rules)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.room.testing)
     // Test Storage service: collects screenshots written during instrumented tests.
     androidTestUtil(libs.androidx.test.services)
 }
