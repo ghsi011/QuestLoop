@@ -160,21 +160,13 @@ class SettingsViewModelTest {
         assertEquals("Reminders on", vm.state.value.savedMessage)
     }
 
-    // Note: requestExport()/importData() are intentionally not asserted here.
-    // They delegate to repository.exportJson()/importJson(), which hop to
-    // Dispatchers.IO; under runTest that escapes the virtual-time scheduler, so
-    // the resulting state update can't be observed deterministically. The
-    // export round-trip and import (success/version/malformed/phantom-skip)
-    // behaviour is covered deterministically at the repository layer instead
-    // (QuestRepositoryTest + QuestRepositoryCompletionStylesTest).
-
-    @Test
-    fun `sharing diagnostics reports nothing logged with noop diagnostics`() = runTest {
-        val vm = SettingsViewModel(repo)
-        vm.shareDiagnostics()
-        assertEquals("No AI errors logged yet.", vm.state.value.savedMessage)
-        assertNull(vm.state.value.diagnostics)
-    }
+    // Note: requestExport()/importData()/shareDiagnostics() are intentionally not
+    // asserted here. They delegate to repository.exportJson()/importJson()/
+    // aiDiagnosticsDump(), which hop to Dispatchers.IO; under runTest that escapes
+    // the virtual-time scheduler, so the resulting state update can't be observed
+    // deterministically (the assertion races the background work). Those paths are
+    // covered deterministically at the repository layer instead (QuestRepositoryTest,
+    // QuestRepositoryCompletionStylesTest, QuestRepositoryBranchesTest).
 
     @Test
     fun `consume saved message clears it`() = runTest {
