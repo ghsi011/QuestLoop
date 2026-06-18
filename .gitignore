@@ -11,6 +11,12 @@ local.properties
 captures/
 .cxx/
 
+# Release signing — never commit keystores or their passwords. Signing material
+# comes from CI secrets or a local (untracked) keystore.properties.
+*.jks
+*.keystore
+keystore.properties
+
 # OS
 .DS_Store
 

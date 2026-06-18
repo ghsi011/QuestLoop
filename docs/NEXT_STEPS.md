@@ -3,13 +3,15 @@
 Recorded backlog from the roadmap and review cycles. Not yet started — pick up here.
 
 ## Horizon 1 — trust & a real release (highest priority)
-- **Release signing + run `assembleRelease`** — `release` build type has ProGuard but
-  no signingConfig; `release.yml` ships `assembleDebug`. Biggest Play-store blocker.
-  Flush out R8/ProGuard issues against Room / kotlinx-serialization / Glance early.
-- **Room migration-discipline CI test** — `MIGRATIONS` is empty at `version = 2` with
-  `fallbackToDestructiveMigrationFrom(1)`. Add a MigrationTestHelper test that boots
-  each shipped schema and asserts a real `Migration` exists per bump (schemas are
-  exported by `export-room-schema.yml`). Fiddly setup — do it deliberately.
+- ~~**Release signing + run `assembleRelease`**~~ — DONE. `release` build type signs
+  with a self-managed keystore (material from CI secrets or a git-ignored
+  `keystore.properties`); `release.yml` builds `assembleRelease`, with a debug
+  fallback when no keystore secret is set. See `docs/RELEASE_SIGNING.md`. R8/ProGuard
+  against Room / kotlinx-serialization / Glance is now exercised by the signed build.
+- ~~**Room migration-discipline CI test**~~ — DONE. `QuestLoopMigrationTest`
+  (MigrationTestHelper) opens the DB at `SCHEMA_VERSION` from the exported schema and
+  replays `MIGRATIONS`; runs in the `[uitest]` emulator workflow. Any future version
+  bump without a matching migration + exported schema now fails CI.
 - **Play listing + privacy policy + Data Safety form** — must disclose the OpenRouter
   call (data leaves device only when AI is on). Store copy/positioning already in
   `external_research/QuestLoop_Competitive_Landscape.md`.

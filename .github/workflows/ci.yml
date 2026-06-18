@@ -45,6 +45,11 @@ jobs:
         run: ./gradlew :app:testDebugUnitTest --console=plain
       - name: Assemble debug APK
         run: ./gradlew :app:assembleDebug --console=plain
+      # Exercise R8/minify on the release build (no signing secret on CI, so the
+      # APK comes out unsigned — that's fine; the point is to catch ProGuard
+      # breakage against Room / kotlinx-serialization / Glance before a release.
+      - name: Assemble release APK (R8 check, unsigned)
+        run: ./gradlew :app:assembleRelease --console=plain
       - name: Lint
         run: ./gradlew :app:lintDebug --console=plain
       - name: Upload APK

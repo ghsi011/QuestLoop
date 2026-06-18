@@ -55,17 +55,70 @@ jobs:
       - name: Core tests
         run: ./gradlew :core:test --console=plain
 
-      # Debug-signed APK: installable for sideloading without release signing
-      # secrets. This is an EXPERIMENTAL build, clearly marked as such.
-      - name: Build debug APK
+      # Decode the release keystore from secrets when present. The build signs
+      # with it; without the secret we fall back to a debug-signed APK so the
+      # workflow still produces an installable artifact.
+      - name: Decode release keystore
+        id: keystore
+        env:
+          KS_B64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+            echo "path=$RUNNER_TEMP/release.jks" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::RELEASE_KEYSTORE_BASE64 not set — building an unsigned debug APK."
+          fi
+
+      - name: Build signed release APK
+        if: steps.keystore.outputs.signed == 'true'
+        env:
+          RELEASE_KEYSTORE_FILE: ${{ steps.keystore.outputs.path }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease --console=plain
+
+      - name: Build debug APK (no signing secret)
+        if: steps.keystore.outputs.signed != 'true'
         run: ./gradlew :app:assembleDebug --console=plain
 
-      - name: Stage APK
+      - name: Stage APK and release notes
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk \
-             "dist/questloop-${{ steps.tag.outputs.value }}.apk"
+          if [ "${{ steps.keystore.outputs.signed }}" = "true" ]; then
+            cp app/build/outputs/apk/release/app-release.apk \
+               "dist/questloop-${{ steps.tag.outputs.value }}.apk"
+            SIGNING="release-signed"
+            SIGN_NOTE="Release-signed with QuestLoop's own key (not Play App Signing); you may still see an \"unknown app\" warning when sideloading."
+          else
+            cp app/build/outputs/apk/debug/app-debug.apk \
+               "dist/questloop-${{ steps.tag.outputs.value }}.apk"
+            SIGNING="debug-signed"
+            SIGN_NOTE="Debug-signed (no release keystore was configured); you may see an \"unknown app\" warning."
+          fi
           ls -lh dist
+          cat > "$RUNNER_TEMP/notes.md" <<EOF
+          ## QuestLoop — experimental build
+
+          A downloadable, **$SIGNING** APK for sideloading and trying the app.
+          This is an early experimental build, not a production release.
+
+          ### Install
+          1. Download the \`.apk\` below to your Android device (Android 8.0 / API 26+).
+          2. Allow installing from unknown sources for your browser/files app.
+          3. Open the APK to install.
+
+          ### Notes
+          - $SIGN_NOTE
+          - Switching signing keys means an existing install signed with a
+            different key must be uninstalled before this one will install.
+          - All data is stored locally on your device.
+          - QuestLoop never holds, moves, or invests money — see the in-app
+            Rewards screen and the docs for details.
+          EOF
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -74,20 +127,5 @@ jobs:
           name: QuestLoop ${{ steps.tag.outputs.value }} (experimental)
           prerelease: true
           generate_release_notes: false
-          body: |
-            ## QuestLoop — experimental build
-
-            A downloadable, **debug-signed** APK for sideloading and trying the app.
-            This is an early experimental build, not a production release.
-
-            ### Install
-            1. Download the `.apk` below to your Android device (Android 8.0 / API 26+).
-            2. Allow installing from unknown sources for your browser/files app.
-            3. Open the APK to install.
-
-            ### Notes
-            - Debug-signed (not Play-store signed); you may see an "unknown app" warning.
-            - All data is stored locally on your device.
-            - QuestLoop never holds, moves, or invests money — see the in-app
-              Rewards screen and the docs for details.
+          body_path: ${{ runner.temp }}/notes.md
           files: dist/*.apk

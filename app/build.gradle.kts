@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +7,17 @@ plugins {
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.ksp)
 }
+
+// Release-signing material is resolved (in priority order) from a local,
+// git-ignored keystore.properties or from environment variables (CI secrets).
+// Nothing is hard-coded or committed; when none is present the release build is
+// simply left unsigned so a secret-less checkout still builds.
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
+}
+fun signingValue(key: String): String? =
+    (keystoreProps.getProperty(key) ?: System.getenv(key))?.takeIf { it.isNotBlank() }
 
 android {
     namespace = "com.questloop.app"
@@ -14,13 +27,27 @@ android {
         applicationId = "com.questloop.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Route instrumented-test output (screenshots) through Test Storage so AGP
         // pulls it into build/outputs/connected_android_test_additional_output.
         testInstrumentationRunnerArguments["useTestStorageService"] = "true"
         vectorDrawables { useSupportLibrary = true }
+    }
+
+    signingConfigs {
+        // Only register a "release" config when a keystore is actually present;
+        // buildTypes.release picks it up via findByName, falling back to unsigned.
+        val storeFilePath = signingValue("RELEASE_KEYSTORE_FILE")
+        if (storeFilePath != null && file(storeFilePath).exists()) {
+            create("release") {
+                storeFile = file(storeFilePath)
+                storePassword = signingValue("RELEASE_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("RELEASE_KEY_ALIAS")
+                keyPassword = signingValue("RELEASE_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -30,6 +57,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            // Sign with the release key when its material is available (CI secrets
+            // or a local keystore.properties); otherwise leave unsigned so a
+            // secret-less build still completes. See signingConfigs below.
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 
