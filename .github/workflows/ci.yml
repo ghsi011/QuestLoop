@@ -60,9 +60,23 @@ jobs:
         run: ./gradlew :app:assembleRelease --console=plain
       - name: Lint
         run: ./gradlew :app:lintDebug --console=plain
+      - name: App coverage report
+        if: always()
+        run: ./gradlew :app:jacocoTestReport --console=plain
+      - name: Upload app coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-coverage-report
+          path: app/build/reports/jacoco/jacocoTestReport
       - name: Upload APK
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: questloop-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+      # Coverage gate last, so the APK/lint/report artifacts are produced even if
+      # coverage is short. Fails the job if app instruction coverage < 90%
+      # (over logic classes; framework glue is excluded in app/build.gradle.kts).
+      - name: App coverage gate (>= 90%)
+        run: ./gradlew :app:jacocoCoverageVerification --console=plain

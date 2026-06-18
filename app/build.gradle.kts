@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.ksp)
+    jacoco
 }
 
 // Release-signing material is resolved (in priority order) from a local,
@@ -51,6 +52,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Produce JaCoCo execution data from JVM unit tests for the coverage report.
+            enableUnitTestCoverage = true
+        }
         release {
             isMinifyEnabled = true
             proguardFiles(
@@ -94,6 +99,68 @@ android {
 // Where Room writes exported schemas (for migrations and migration tests).
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
+}
+
+jacoco {
+    toolVersion = "0.8.12"
+}
+
+// Coverage for the app module from JVM/Robolectric unit tests. Generated code
+// (Room/Compose/serializers/manifest) and pure framework glue that can't be
+// exercised without an emulator (Application, DI wiring, theme, the Glance
+// widget, and boot/notification BroadcastReceivers) are excluded so the metric
+// reflects logic we can actually unit-test: ViewModels, data, and screens.
+private val appCoverageExclusions = listOf(
+    "**/R.class", "**/R\$*.class", "**/BuildConfig.*", "**/Manifest*.*",
+    "**/*Test*.*", "**/databinding/**",
+    "**/*_Impl*.*", "**/*\$serializer.*", "**/ComposableSingletons*.*",
+    "**/*_Factory*.*", "**/*_MembersInjector*.*",
+    // Framework glue not exercised by JVM unit tests:
+    "**/MainActivity*.*", "**/QuestLoopApplication*.*",
+    "**/di/**", "**/ui/theme/**", "**/widget/**",
+    "**/reminders/BootReceiver*.*", "**/reminders/ReminderActionReceiver*.*",
+)
+
+private fun coverageClassDirs() = files(
+    fileTree(layout.buildDirectory.dir("tmp/kotlin-classes/debug").get().asFile) { exclude(appCoverageExclusions) },
+    fileTree(layout.buildDirectory.dir("intermediates/javac/debug/classes").get().asFile) { exclude(appCoverageExclusions) },
+)
+
+private fun coverageExecData() = fileTree(layout.buildDirectory.get().asFile) {
+    include(
+        "outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec",
+        "jacoco/testDebugUnitTest.exec",
+        "**/testDebugUnitTest.exec",
+    )
+}
+
+tasks.register<JacocoReport>("jacocoTestReport") {
+    group = "verification"
+    dependsOn("testDebugUnitTest")
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+    classDirectories.setFrom(coverageClassDirs())
+    sourceDirectories.setFrom(files("src/main/java", "src/main/kotlin"))
+    executionData.setFrom(coverageExecData())
+}
+
+tasks.register<JacocoCoverageVerification>("jacocoCoverageVerification") {
+    group = "verification"
+    dependsOn("testDebugUnitTest")
+    classDirectories.setFrom(coverageClassDirs())
+    sourceDirectories.setFrom(files("src/main/java", "src/main/kotlin"))
+    executionData.setFrom(coverageExecData())
+    violationRules {
+        rule {
+            limit {
+                counter = "INSTRUCTION"
+                value = "COVEREDRATIO"
+                minimum = "0.90".toBigDecimal()
+            }
+        }
+    }
 }
 
 dependencies {
