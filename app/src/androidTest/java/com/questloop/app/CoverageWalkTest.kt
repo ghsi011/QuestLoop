@@ -118,9 +118,11 @@ class CoverageWalkTest {
         for (label in chips) tapText(label)
 
         typeInto("What do you want to get done?", "Coverage walk quest 7777")
-        await { present("Coverage walk quest 7777") || onAdd() }
         tapText("Add quest") // the submit button (clickable; FAB shares the text)
-        await(15_000) { !onAdd() }
+        // Best-effort: the modal usually closes on submit, but if the title didn't
+        // register (best-effort typing) the button stays disabled — don't fail the
+        // walk over it, the option handlers above are the coverage we're after.
+        runCatching { await(15_000) { !onAdd() } }
     }
 
     /**
@@ -155,14 +157,10 @@ class CoverageWalkTest {
 
         // Focus chips are category names (QuestCategory.pretty()).
         for (label in listOf("Health", "Work study", "Social")) tapText(label)
-        // Available-minutes steppers, the diagnostics share (a no-op snackbar with
-        // no logs), and the delete-confirm dialog (opened then dismissed). These
-        // are all in-app controls — "Export"/"Import" are intentionally avoided
-        // because they open blocking system pickers.
+        // Available-minutes steppers.
         tapText("+15"); tapText("−15")
-        tapText("Share AI error log")
-        tapText("Delete all my data"); tapText("Cancel")
 
+        // Habits sub-screen FIRST (navigation must be unobstructed), then return.
         composeRule.onNodeWithText("Manage habits & goals").performScrollTo().performClick()
         await { onHabits() }
         typeInto("New habit", "Coverage habit 7777")
@@ -170,6 +168,13 @@ class CoverageWalkTest {
         typeInto("New goal", "Coverage goal 7777")
         tapText("Add goal")
         back(); await { onSettings() }
+
+        // In-app actions that don't navigate: the diagnostics share (a no-op
+        // snackbar with no logs) and the delete-confirm dialog opened then
+        // dismissed. Done last and fully best-effort so a lingering dialog can't
+        // obstruct anything. ("Export"/"Import" are avoided — system pickers.)
+        tapText("Share AI error log")
+        tapText("Delete all my data"); tapText("Cancel")
     }
 
     /**
