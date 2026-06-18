@@ -21,14 +21,22 @@ jobs:
           java-version: "17"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-      - name: Run :core unit tests
-        run: ./gradlew :core:test --console=plain
+      - name: Run :core tests + coverage gate
+        # jacocoTestCoverageVerification depends on test, so this runs the suite
+        # and then fails if instruction coverage drops below the floor (0.80).
+        run: ./gradlew :core:jacocoTestCoverageVerification :core:jacocoTestReport --console=plain
       - name: Upload core test report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: core-test-report
           path: core/build/reports/tests/test
+      - name: Upload core coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-coverage-report
+          path: core/build/reports/jacoco/test
 
   android-build:
     name: Android build + lint
