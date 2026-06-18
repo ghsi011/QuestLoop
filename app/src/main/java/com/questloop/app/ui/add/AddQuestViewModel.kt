@@ -2,6 +2,7 @@ package com.questloop.app.ui.add
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.questloop.app.util.launchSafely
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.data.SampleData
 import com.questloop.app.ui.AppClock
@@ -14,7 +15,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import java.util.UUID
 
 data class AddUiState(
@@ -78,7 +78,7 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
             targetCount = if (isQuantitative) d.targetCount else null,
             unit = if (isQuantitative) d.unit.ifBlank { null } else null,
         )
-        viewModelScope.launch {
+        launchSafely {
             repository.addQuest(quest)
             repository.completeOnboardingQuest(SampleData.ONBOARDING_CREATE, AppClock.todayEpochDay())
             // Reset the manual form (keep any AI brain-dump / goal text).
@@ -95,7 +95,7 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
     fun generate(text: String) {
         val lines = text.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
         if (lines.isEmpty()) return
-        viewModelScope.launch {
+        launchSafely {
             _state.update { it.copy(generating = true, message = null) }
             val suggestion = repository.suggestQuests(lines)
             val n = suggestion.quests.size
@@ -122,7 +122,7 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
      */
     fun decomposeGoal(goal: String) {
         if (goal.isBlank()) return
-        viewModelScope.launch {
+        launchSafely {
             _state.update { it.copy(generating = true, message = null) }
             val suggestion = repository.decomposeGoal(goal)
             val n = suggestion.quests.size
@@ -155,7 +155,7 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
     /** Asks the AI to revise one suggestion per a free-text instruction. */
     fun refineSuggestion(id: String, instruction: String) {
         val target = _state.value.suggestions.firstOrNull { it.id == id } ?: return
-        viewModelScope.launch {
+        launchSafely {
             _state.update { it.copy(refiningId = id, message = null) }
             val result = repository.refineQuest(target, instruction)
             val revised = result.quest // local val so it smart-casts inside the lambda
@@ -178,7 +178,7 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
         if (_state.value.saving) return
         val quest = _state.value.suggestions.firstOrNull { it.id == id } ?: return
         _state.update { it.copy(saving = true) }
-        viewModelScope.launch {
+        launchSafely {
             repository.addQuest(quest.copy(id = "user-${UUID.randomUUID()}", title = quest.title.trim()))
             repository.completeOnboardingQuest(SampleData.ONBOARDING_CREATE, AppClock.todayEpochDay())
             _state.update {
@@ -197,7 +197,7 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
         val all = _state.value.suggestions.filter { it.title.isBlank().not() }
         if (all.isEmpty()) return
         _state.update { it.copy(saving = true) }
-        viewModelScope.launch {
+        launchSafely {
             all.forEach { repository.addQuest(it.copy(id = "user-${UUID.randomUUID()}", title = it.title.trim())) }
             repository.completeOnboardingQuest(SampleData.ONBOARDING_CREATE, AppClock.todayEpochDay())
             val plural = if (all.size == 1) "" else "s"

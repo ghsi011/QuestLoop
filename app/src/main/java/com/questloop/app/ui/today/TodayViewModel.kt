@@ -2,6 +2,7 @@ package com.questloop.app.ui.today
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.questloop.app.util.launchSafely
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.ui.AppClock
 import com.questloop.core.QuestLoopEngine
@@ -20,7 +21,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 data class TodayUiState(
     val loading: Boolean = true,
@@ -54,14 +54,14 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
     val state: StateFlow<TodayUiState> = _state.asStateFlow()
 
     init {
-        viewModelScope.launch {
+        launchSafely {
             repository.seedIfEmpty()
             refresh()
         }
     }
 
     fun refresh() {
-        viewModelScope.launch {
+        launchSafely {
             _state.update { it.copy(loading = true) }
             val today = AppClock.todayEpochDay()
             // Restore today's persisted check-in so the plan and chips survive
@@ -116,14 +116,14 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
 
     /** Permanently removes a first-run guide quest (no XP, no penalty). */
     fun dismissGuide(quest: Quest) {
-        viewModelScope.launch {
+        launchSafely {
             repository.archiveQuest(quest.id)
             refresh()
         }
     }
 
     fun setCheckIn(energy: Int) {
-        viewModelScope.launch {
+        launchSafely {
             // Energy only. The time budget comes from the user's Settings
             // "Time/day" (defaultAvailableMinutes) so picking an energy level
             // never silently overrides the configured budget.
@@ -146,7 +146,7 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
     private fun runCompletion(block: suspend () -> QuestRepository.CompleteOutcome) {
         if (_state.value.completing) return
         _state.update { it.copy(completing = true) }
-        viewModelScope.launch {
+        launchSafely {
             try {
                 applyOutcome(block())
             } finally {
@@ -175,7 +175,7 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
 
     fun undoLast() {
         val undo = _state.value.pendingUndo ?: return
-        viewModelScope.launch {
+        launchSafely {
             repository.undoCompletion(undo.instanceId, undo.previous)
             _state.update { it.copy(toast = null, pendingUndo = null) }
             refresh()

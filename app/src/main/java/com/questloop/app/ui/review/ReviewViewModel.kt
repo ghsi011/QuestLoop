@@ -2,6 +2,7 @@ package com.questloop.app.ui.review
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.questloop.app.util.launchSafely
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.ui.AppClock
 import com.questloop.core.ai.AiNarrator
@@ -10,7 +11,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 data class ReviewUiState(
     val loading: Boolean = true,
@@ -31,7 +31,7 @@ class ReviewViewModel(private val repository: QuestRepository) : ViewModel() {
     val state: StateFlow<ReviewUiState> = _state.asStateFlow()
 
     fun load() {
-        viewModelScope.launch {
+        launchSafely {
             _state.update { it.copy(loading = true) }
             val today = AppClock.todayEpochDay()
             val weekly = repository.review("This week", AppClock.startOfWeek(today), today)
@@ -55,7 +55,7 @@ class ReviewViewModel(private val repository: QuestRepository) : ViewModel() {
         val weekly = _state.value.weekly ?: return
         val monthly = _state.value.monthly ?: return
         if (_state.value.summarizing) return
-        viewModelScope.launch {
+        launchSafely {
             _state.update { it.copy(summarizing = true) }
             val weeklySummary = repository.narrateReview(weekly).text
             val monthlySummary = repository.narrateReview(monthly).text

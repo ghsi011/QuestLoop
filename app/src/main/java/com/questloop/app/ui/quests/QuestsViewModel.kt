@@ -2,6 +2,7 @@ package com.questloop.app.ui.quests
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.questloop.app.util.launchSafely
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.ui.AppClock
 import com.questloop.app.ui.today.PendingUndo
@@ -13,7 +14,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 data class QuestsUiState(
     val loading: Boolean = true,
@@ -45,7 +45,7 @@ class QuestsViewModel(private val repository: QuestRepository) : ViewModel() {
     init {
         // Recompute whenever the active quest set changes (e.g. AI quick-add adds
         // quests on another screen), so the backlog is always current.
-        viewModelScope.launch {
+        launchSafely {
             repository.quests.collectLatest { recompute() }
         }
     }
@@ -73,7 +73,7 @@ class QuestsViewModel(private val repository: QuestRepository) : ViewModel() {
     private fun completeWithUndo(toast: String, block: suspend () -> QuestRepository.CompleteOutcome) {
         if (_state.value.completing) return
         _state.update { it.copy(completing = true) }
-        viewModelScope.launch {
+        launchSafely {
             try {
                 val outcome = block()
                 _state.update {
@@ -92,7 +92,7 @@ class QuestsViewModel(private val repository: QuestRepository) : ViewModel() {
 
     fun undoLast() {
         val undo = _state.value.pendingUndo ?: return
-        viewModelScope.launch {
+        launchSafely {
             repository.undoCompletion(undo.instanceId, undo.previous)
             _state.update { it.copy(toast = null, pendingUndo = null) }
             recompute()
@@ -100,7 +100,7 @@ class QuestsViewModel(private val repository: QuestRepository) : ViewModel() {
     }
 
     fun delete(quest: Quest) {
-        viewModelScope.launch {
+        launchSafely {
             repository.archiveQuest(quest.id)
             _state.update { it.copy(toast = "Deleted \"${quest.title}\".", toastId = it.toastId + 1, pendingUndo = null) }
             recompute()

@@ -297,7 +297,12 @@ class QuestRepository(
 
         val sameDay = completionDao.between(epochDay, epochDay).map { it.toModel() }
         val activeDays = completionDao.activeDays().toSet()
-        val context = engine.contextFrom(record, sameDay, activeDays)
+        // Score the streak bonus with the user's configured grace days, so the
+        // streak driving the reward matches the one shown in the UI (which also
+        // reads preferences.streakGraceDays); otherwise the engine's default of 1
+        // would silently diverge from a user who set a longer grace window.
+        val grace = profileStore.profile.first().preferences.streakGraceDays
+        val context = engine.contextFrom(record, sameDay, activeDays, grace)
 
         val before = progressStats(ledgerSum, activeDays)
         val effect = engine.recordCompletion(baseline, record, context)
@@ -477,50 +482,57 @@ class QuestRepository(
             )
         }
 
-        // Merge profile first so derived (habit/goal) quest ids are known. Hold
-        // profileMutex for the read-modify-write so a concurrent habit/goal edit
-        // can't clobber (or be clobbered by) the import on a stale snapshot. This
-        // section is sequential with — never nested inside — the completionMutex
-        // block below, so there's no lock-ordering hazard.
-        val (habits, badHabits, goals) = profileMutex.withLock {
-            val current = profileStore.profile.first()
-            val prefs = snapshot.profile.preferences
-            val h = mergeById(current.habits, snapshot.profile.habits) { it.id }
-            val b = mergeById(current.badHabits, snapshot.profile.badHabits) { it.id }
-            val g = mergeById(current.goals, snapshot.profile.goals) { it.id }
-            profileStore.setHabits(h)
-            profileStore.setBadHabits(b)
-            profileStore.setGoals(g)
-            profileStore.setMaxDaily(prefs.maxDailyQuests)
-            profileStore.setAvailableMinutes(prefs.defaultAvailableMinutes)
-            profileStore.setBudgetCap(prefs.monthlyRewardBudgetCap)
-            profileStore.setFocusCategories(prefs.focusCategories)
-            profileStore.setStreakGraceDays(prefs.streakGraceDays)
-            profileStore.setSensitiveOptIn(prefs.sensitiveNotificationsOptIn)
-            Triple(h, b, g)
-        }
+        // Everything past validation is wrapped so a mid-import store failure
+        // (a DataStore/Room write throwing) surfaces as a clean error result
+        // rather than an uncaught exception that crashes the app.
+        runCatching {
+            // Merge profile first so derived (habit/goal) quest ids are known. Hold
+            // profileMutex for the read-modify-write so a concurrent habit/goal edit
+            // can't clobber (or be clobbered by) the import on a stale snapshot. This
+            // section is sequential with — never nested inside — the completionMutex
+            // block below, so there's no lock-ordering hazard.
+            val (habits, badHabits, goals) = profileMutex.withLock {
+                val current = profileStore.profile.first()
+                val prefs = snapshot.profile.preferences
+                val h = mergeById(current.habits, snapshot.profile.habits) { it.id }
+                val b = mergeById(current.badHabits, snapshot.profile.badHabits) { it.id }
+                val g = mergeById(current.goals, snapshot.profile.goals) { it.id }
+                profileStore.setHabits(h)
+                profileStore.setBadHabits(b)
+                profileStore.setGoals(g)
+                profileStore.setMaxDaily(prefs.maxDailyQuests)
+                profileStore.setAvailableMinutes(prefs.defaultAvailableMinutes)
+                profileStore.setBudgetCap(prefs.monthlyRewardBudgetCap)
+                profileStore.setFocusCategories(prefs.focusCategories)
+                profileStore.setStreakGraceDays(prefs.streakGraceDays)
+                profileStore.setSensitiveOptIn(prefs.sensitiveNotificationsOptIn)
+                Triple(h, b, g)
+            }
 
-        // The set of quest ids a completion may legitimately reference.
-        val derivedIds = HabitQuestFactory.deriveAll(habits, badHabits, goals).map { it.id }
-        val routineIds = RoutineQuestFactory.all().map { it.id }
-        val existingIds = questDao.getAll().map { it.id }
-        val validQuestIds = (snapshot.quests.map { it.id } + existingIds + derivedIds + routineIds).toSet()
+            // The set of quest ids a completion may legitimately reference.
+            val derivedIds = HabitQuestFactory.deriveAll(habits, badHabits, goals).map { it.id }
+            val routineIds = RoutineQuestFactory.all().map { it.id }
+            val existingIds = questDao.getAll().map { it.id }
+            val validQuestIds = (snapshot.quests.map { it.id } + existingIds + derivedIds + routineIds).toSet()
 
-        var imported = 0
-        var skipped = 0
-        completionMutex.withLock {
-            snapshot.quests.forEach { questDao.upsert(it.toEntity()) }
-            snapshot.archivedIds.forEach { questDao.archive(it) }
-            snapshot.completions.forEach { record ->
-                if (record.questId in validQuestIds) {
-                    completionDao.upsert(record.toEntity())
-                    imported++
-                } else {
-                    skipped++
+            var imported = 0
+            var skipped = 0
+            completionMutex.withLock {
+                snapshot.quests.forEach { questDao.upsert(it.toEntity()) }
+                snapshot.archivedIds.forEach { questDao.archive(it) }
+                snapshot.completions.forEach { record ->
+                    if (record.questId in validQuestIds) {
+                        completionDao.upsert(record.toEntity())
+                        imported++
+                    } else {
+                        skipped++
+                    }
                 }
             }
+            ImportResult(quests = snapshot.quests.size, completions = imported, skipped = skipped)
+        }.getOrElse {
+            ImportResult(0, 0, error = "Couldn't finish importing that backup. Your existing data is unchanged where possible.")
         }
-        ImportResult(quests = snapshot.quests.size, completions = imported, skipped = skipped)
     }
 
     /** Union by stable id; the incoming (imported) item wins on a collision. */

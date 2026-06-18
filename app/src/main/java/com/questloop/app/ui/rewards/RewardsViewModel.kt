@@ -2,6 +2,7 @@ package com.questloop.app.ui.rewards
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.questloop.app.util.launchSafely
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.ui.AppClock
 import com.questloop.core.reward.RewardAllowanceCalculator
@@ -10,7 +11,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 data class RewardsUiState(
     val loading: Boolean = true,
@@ -34,7 +34,7 @@ class RewardsViewModel(private val repository: QuestRepository) : ViewModel() {
     init { load() }
 
     fun load() {
-        viewModelScope.launch {
+        launchSafely {
             _state.update { it.copy(loading = true) }
             val today = AppClock.todayEpochDay()
             val cap = repository.profile.first().preferences.monthlyRewardBudgetCap
@@ -44,7 +44,7 @@ class RewardsViewModel(private val repository: QuestRepository) : ViewModel() {
     }
 
     fun setBudgetCap(value: Double) {
-        viewModelScope.launch {
+        launchSafely {
             repository.setBudgetCap(value)
             load()
             val msg = if (value > 0) "Budget saved: ${"%.2f".format(value)}." else "Budget cleared."

@@ -2,6 +2,7 @@ package com.questloop.app.ui.quests
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.questloop.app.util.launchSafely
 import com.questloop.app.data.QuestBank
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.ui.AppClock
@@ -11,7 +12,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 data class QuestBankUiState(
     /** Catalog grouped by cadence for display. */
@@ -35,7 +35,7 @@ class QuestBankViewModel(private val repository: QuestRepository) : ViewModel() 
 
     init {
         // Track which catalog quests are already added so the UI reflects it live.
-        viewModelScope.launch {
+        launchSafely {
             repository.quests.collectLatest { active ->
                 val activeIds = active.map { it.id }.toSet()
                 val added = QuestBank.catalog.map { q -> q.id }.filter { id -> id in activeIds }.toSet()
@@ -52,7 +52,7 @@ class QuestBankViewModel(private val repository: QuestRepository) : ViewModel() 
         val s = _state.value
         if (quest.id in s.addedIds || quest.id in s.adding) return
         _state.update { it.copy(adding = it.adding + quest.id) }
-        viewModelScope.launch {
+        launchSafely {
             repository.addFromBank(quest, AppClock.todayEpochDay())
             // Intentionally do NOT clear `adding` here — the quests collector
             // clears it when the new quest appears in addedIds, so the button

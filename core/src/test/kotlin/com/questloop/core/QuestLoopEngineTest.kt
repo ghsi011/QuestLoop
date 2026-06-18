@@ -171,4 +171,19 @@ class QuestLoopEngineTest {
         assertTrue(total <= 30, "meta total should be capped at 30, was $total")
         assertTrue(capHit, "cap reason should have been surfaced")
     }
+
+    @Test
+    fun `contextFrom honours an explicit graceDays for the streak`() {
+        // Active on 97 and 98, then a gap (99 and today 100 not yet active).
+        val record = rec("q1", 100)
+        val activeDays = setOf(97L, 98L)
+
+        // grace 0: the gap at 99/100 breaks the streak immediately.
+        val strict = engine.contextFrom(record, emptyList(), activeDays, graceDays = 0)
+        assertEquals(0, strict.currentStreakDays)
+
+        // grace 2: the two missed days are tolerated, so 97+98 still count.
+        val lenient = engine.contextFrom(record, emptyList(), activeDays, graceDays = 2)
+        assertEquals(2, lenient.currentStreakDays)
+    }
 }

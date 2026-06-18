@@ -2,6 +2,7 @@ package com.questloop.app.ui.habits
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.questloop.app.util.launchSafely
 import com.questloop.app.data.QuestRepository
 import com.questloop.core.model.BadHabit
 import com.questloop.core.model.Difficulty
@@ -13,7 +14,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import java.util.UUID
 
 data class HabitsUiState(
@@ -31,7 +31,7 @@ class HabitsViewModel(private val repository: QuestRepository) : ViewModel() {
     init { load() }
 
     fun load() {
-        viewModelScope.launch {
+        launchSafely {
             _state.update { it.copy(loading = true) }
             val profile = repository.profile.first()
             _state.update {
@@ -85,7 +85,7 @@ class HabitsViewModel(private val repository: QuestRepository) : ViewModel() {
     fun removeGoal(id: String) = mutate { repository.removeGoal(id) }
 
     private fun mutate(action: suspend () -> Unit) {
-        viewModelScope.launch {
+        launchSafely {
             action()
             load()
         }

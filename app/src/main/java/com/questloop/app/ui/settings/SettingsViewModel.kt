@@ -2,6 +2,7 @@ package com.questloop.app.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.questloop.app.util.launchSafely
 import com.questloop.app.data.AiConfig
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.data.ReminderConfig
@@ -12,7 +13,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 data class SettingsUiState(
     val loading: Boolean = true,
@@ -41,7 +41,7 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
     init { load() }
 
     fun load() {
-        viewModelScope.launch {
+        launchSafely {
             _state.update { it.copy(loading = true) }
             reload()
         }
@@ -63,7 +63,7 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
      * failure surfaces to the user instead of falsely reporting success.
      */
     fun saveAi(enabled: Boolean, apiKey: String, model: String, filterWording: Boolean) {
-        viewModelScope.launch {
+        launchSafely {
             val trimmedKey = apiKey.trim()
             // setAiConfig can now throw if the secure key store rejects the write
             // (corrupt/unavailable Keystore); catch it so we report the failure
@@ -92,7 +92,7 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
     fun consumeSavedMessage() = _state.update { it.copy(savedMessage = null) }
 
     fun requestExport() {
-        viewModelScope.launch {
+        launchSafely {
             val json = repository.exportJson()
             _state.update { it.copy(exportJson = json) }
         }
@@ -102,7 +102,7 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
 
     /** Restores a backup the user picked; reports counts or a plain error. */
     fun importData(json: String) {
-        viewModelScope.launch {
+        launchSafely {
             val result = repository.importJson(json)
             reload()
             emitMessage(
@@ -116,7 +116,7 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
 
     /** Loads the AI error log to share; tells the user when there's nothing logged. */
     fun shareDiagnostics() {
-        viewModelScope.launch {
+        launchSafely {
             val dump = repository.aiDiagnosticsDump()
             if (dump.isBlank()) {
                 emitMessage("No AI errors logged yet.")
@@ -129,7 +129,7 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
     fun consumeDiagnostics() = _state.update { it.copy(diagnostics = null) }
 
     fun deleteAllData(onDone: () -> Unit) {
-        viewModelScope.launch {
+        launchSafely {
             repository.deleteAllData()
             // Also drop the process-scoped Add-screen draft so a half-typed quest
             // doesn't survive an explicit "delete everything".
@@ -141,7 +141,7 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
     }
 
     private fun update(message: String, action: suspend () -> Unit) {
-        viewModelScope.launch {
+        launchSafely {
             action()
             reload()
             emitMessage(message)

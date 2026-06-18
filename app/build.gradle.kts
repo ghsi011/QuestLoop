@@ -108,16 +108,23 @@ jacoco {
 }
 
 // Coverage for the app module, combining JVM unit tests (.exec) and
-// instrumented/emulator tests (.ec). Generated code (Room/Compose/serializers/
-// manifest) is excluded; UI/framework code is NOT excluded here because the
-// emulator tests cover it, and the merged 90% gate (run in the [uitest]
-// workflow, where both data sources exist) measures the whole module. The
-// normal CI job only has unit data, so it produces the report but does not gate.
+// instrumented/emulator tests (.ec). The merged 90% gate runs in the [uitest]
+// workflow (where both data sources exist) and measures the "testable surface":
+// ViewModels, data, and Compose screens — all driven by the emulator + unit
+// tests. Excluded are generated code (Room/Compose/serializers/manifest) and the
+// handful of framework entry points that can't realistically be driven in tests
+// (Application, MainActivity, DI wiring, theme, the Glance widget, and the
+// boot/notification BroadcastReceivers). The normal CI job has only unit data,
+// so it produces the report but does not gate.
 private val appCoverageExclusions = listOf(
     "**/R.class", "**/R\$*.class", "**/BuildConfig.*", "**/Manifest*.*",
     "**/*Test*.*", "**/databinding/**",
     "**/*_Impl*.*", "**/*\$serializer.*", "**/ComposableSingletons*.*",
     "**/*_Factory*.*", "**/*_MembersInjector*.*",
+    // Framework entry points not realistically exercised even on the emulator:
+    "**/MainActivity*.*", "**/QuestLoopApplication*.*",
+    "**/di/**", "**/ui/theme/**", "**/widget/**",
+    "**/reminders/BootReceiver*.*", "**/reminders/ReminderActionReceiver*.*",
 )
 
 private fun coverageClassDirs() = files(

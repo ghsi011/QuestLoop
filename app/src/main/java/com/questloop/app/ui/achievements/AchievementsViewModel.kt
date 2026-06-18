@@ -2,12 +2,12 @@ package com.questloop.app.ui.achievements
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.questloop.app.util.launchSafely
 import com.questloop.app.data.QuestRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 data class AchievementsUiState(
     val loading: Boolean = true,
@@ -21,7 +21,7 @@ class AchievementsViewModel(private val repository: QuestRepository) : ViewModel
     val state: StateFlow<AchievementsUiState> = _state.asStateFlow()
 
     init {
-        viewModelScope.launch {
+        launchSafely {
             val items = repository.achievementStatuses()
             _state.update {
                 it.copy(loading = false, items = items, unlockedCount = items.count { s -> s.unlocked })

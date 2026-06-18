@@ -78,6 +78,7 @@ class QuestLoopEngine(
         record: CompletionRecord,
         sameDayRecords: List<CompletionRecord>,
         activeEpochDays: Set<Long>,
+        graceDays: Int = streakGraceDays,
     ): RewardContext {
         val others = sameDayRecords.filter { it.instanceId != record.instanceId }
         val priorSame = others.count { it.questId == record.questId && it.countsAsActivity }
@@ -103,7 +104,7 @@ class QuestLoopEngine(
         val streak = StreakTracker.currentStreak(
             activeEpochDays - record.epochDay,
             record.epochDay,
-            streakGraceDays,
+            graceDays,
         )
         return RewardContext(
             priorSameQuestCompletions = priorSame,
