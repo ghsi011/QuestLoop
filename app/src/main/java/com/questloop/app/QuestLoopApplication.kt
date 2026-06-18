@@ -1,14 +1,15 @@
 package com.questloop.app
 
 import android.app.Application
+import androidx.glance.appwidget.updateAll
 import com.questloop.app.di.AppContainer
 import com.questloop.app.widget.QuestWidget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onEach
 
 class QuestLoopApplication : Application() {
@@ -32,9 +33,13 @@ class QuestLoopApplication : Application() {
      */
     private fun keepWidgetFresh() {
         val repo = container.repository
-        combine(repo.quests, repo.completions, repo.profile) { _, _, _ -> }
-            .drop(1) // skip the initial replay; the OS already draws the first frame
-            .onEach { runCatching { QuestWidget().updateAll(this) } }
+        // Map each source to Unit and merge, so any change triggers one refresh.
+        merge(
+            repo.quests.map { },
+            repo.completions.map { },
+            repo.profile.map { },
+        )
+            .onEach { runCatching { QuestWidget().updateAll(this@QuestLoopApplication) } }
             .launchIn(appScope)
     }
 }
