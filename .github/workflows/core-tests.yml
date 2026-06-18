@@ -1,0 +1,38 @@
+name: Core tests
+
+# Reusable building block: the fast, Android-free core logic suite + its
+# coverage gate. Called by smoke.yml (every push/PR) and full-tests.yml
+# (manual / nightly / release) so the job is defined exactly once.
+on:
+  workflow_call:
+
+jobs:
+  core:
+    name: Core logic tests (JVM)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run :core tests + coverage gate
+        # jacocoTestCoverageVerification depends on test, so this runs the suite
+        # and then fails if instruction coverage drops below the floor.
+        run: ./gradlew :core:jacocoTestCoverageVerification :core:jacocoTestReport --console=plain
+      - name: Upload core test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-test-report
+          path: core/build/reports/tests/test
+          if-no-files-found: warn
+      - name: Upload core coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-coverage-report
+          path: core/build/reports/jacoco/test
+          if-no-files-found: warn

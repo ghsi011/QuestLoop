@@ -1,5 +1,14 @@
 # QuestLoop
 
+[![Smoke](https://github.com/ghsi011/QuestLoop/actions/workflows/smoke.yml/badge.svg)](https://github.com/ghsi011/QuestLoop/actions/workflows/smoke.yml)
+[![Full tests](https://github.com/ghsi011/QuestLoop/actions/workflows/full-tests.yml/badge.svg)](https://github.com/ghsi011/QuestLoop/actions/workflows/full-tests.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ghsi011/QuestLoop/badges/coverage.json)](https://github.com/ghsi011/QuestLoop/actions/workflows/full-tests.yml)
+
+> **Smoke** runs `:core` tests on every push/PR. **Full tests** (app build + lint,
+> instrumented UI on an emulator, and the merged unit+UI coverage gate) runs
+> manually, nightly, and on release; the **Coverage** badge tracks its merged
+> instruction coverage.
+
 A gamified, quest-based todo & habit system for Android that turns real-life
 tasks, habits, goals and behaviour change into a personalised quest system —
 motivating without being manipulative, punishing, or financially pressuring.
@@ -37,8 +46,9 @@ suite with a plain JDK — no emulator, no SDK.
 ./gradlew :core:test
 ```
 
-This runs the full economy / generation / safety suite (63 tests) on a plain
-JVM. It is the primary correctness gate and is what the `core-tests` CI job runs.
+This runs the full economy / generation / safety suite on a plain JVM. It is the
+primary correctness gate and is what the **Smoke** pipeline runs on every
+push/PR (see [CI pipelines](#ci-pipelines)).
 
 ### Build the Android app
 
@@ -48,13 +58,30 @@ JVM. It is the primary correctness gate and is what the `core-tests` CI job runs
 
 Requires the Android SDK and access to Google's Maven repository
 (`dl.google.com`) for the Android Gradle Plugin and AndroidX. CI does this in
-the `android-build` job on a standard GitHub-hosted runner.
+the **Full tests** pipeline on a standard GitHub-hosted runner.
 
 > **Note on the development sandbox:** the environment this MVP was authored in
 > had no Android SDK and blocked `dl.google.com`, so only `:core` is compiled
 > and tested locally there. The `:app` module is written to standard AGP 8.5 /
 > Compose conventions and builds in CI / any normal Android dev environment.
 > Configuration-on-demand keeps `:core:test` from ever needing Google Maven.
+
+### CI pipelines
+
+Two GitHub Actions pipelines, split by cost so every push gets fast feedback
+while the slow/expensive checks run only when they're worth it:
+
+| Pipeline | Workflow | Triggers | What it runs |
+|----------|----------|----------|--------------|
+| **Smoke** | `smoke.yml` | every push + pull request | `:core` tests + coverage gate only — a ~1-minute green/red. |
+| **Full tests** | `full-tests.yml` | manual (Actions → *Run workflow*), nightly (06:00 UTC), and on published release | core tests **+** app build/lint/unit (incl. an R8 release build) **+** instrumented UI tests on an emulator **+** the merged unit+UI coverage gate, and it refreshes the coverage badge. |
+
+Both reuse one `core-tests.yml` (`workflow_call`) so the core job is defined
+once. To run the full suite on demand during dev, open the **Actions** tab,
+pick **Full tests**, and **Run workflow** (or `gh workflow run full-tests.yml`).
+The merged coverage floor is enforced in `app/build.gradle.kts`
+(`jacocoCoverageVerification`); the `coverage` badge above is published by the
+Full tests run to the `badges` branch as a shields endpoint.
 
 ## What's implemented (MVP scope, SPEC §10)
 

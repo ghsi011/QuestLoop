@@ -1,0 +1,212 @@
+name: Full tests
+
+# The complete suite: core logic, app build + lint + unit, instrumented UI on
+# an emulator, and the MERGED (unit + instrumented) coverage gate + badge.
+# Intentionally NOT run on normal pushes — too slow for a per-commit gate.
+# Trigger it:
+#   • manually from the Actions tab ("Run workflow") — for dev/on-demand,
+#   • nightly on a schedule,
+#   • automatically when a GitHub release is published.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * *" # nightly at 06:00 UTC
+  release:
+    types: [published]
+
+concurrency:
+  group: full-tests-${{ github.ref }}
+  cancel-in-progress: false # don't abort a nightly/release run mid-flight
+
+permissions:
+  contents: write # the coverage-badge job pushes coverage.json to the badges branch
+
+jobs:
+  # Same fast core suite the smoke pipeline runs, included here so nightly /
+  # release / manual runs are a complete picture on their own.
+  core:
+    uses: ./.github/workflows/core-tests.yml
+
+  android:
+    name: App build + lint + unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: App unit tests
+        run: ./gradlew :app:testDebugUnitTest --console=plain
+      - name: Assemble debug APK
+        run: ./gradlew :app:assembleDebug --console=plain
+      # Exercise R8/minify on release so ProGuard breakage against Room /
+      # kotlinx-serialization / Glance is caught before shipping (unsigned on CI).
+      - name: Assemble release APK (R8 check, unsigned)
+        run: ./gradlew :app:assembleRelease --console=plain
+      - name: Lint
+        run: ./gradlew :app:lintDebug --console=plain
+      - name: Upload APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: questloop-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+
+  instrumented:
+    name: Instrumented UI + merged coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # Hardware acceleration so the emulator boots fast enough.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run instrumented tests on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: ./gradlew :app:connectedDebugAndroidTest --console=plain
+
+      # Combine instrumented (.ec) + unit (.exec) coverage into one report and
+      # enforce the merged floor (set in app/build.gradle.kts). Steps run even if
+      # the instrumented run had a failure, so we still publish coverage + report.
+      - name: Unit tests (for merged coverage)
+        if: always()
+        run: ./gradlew :app:testDebugUnitTest --console=plain
+      - name: Merged coverage report
+        if: always()
+        run: ./gradlew :app:jacocoTestReport --console=plain
+      - name: Coverage summary (execution data + per-package)
+        if: always()
+        run: |
+          echo "== execution data files on disk =="
+          find app/build -name '*.ec' 2>/dev/null | sort
+          find app/build -name 'testDebugUnitTest.exec' 2>/dev/null | sort
+          echo "== JaCoCo totals + per-package (INSTRUCTION) =="
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET, glob
+          xmls = glob.glob('app/build/reports/jacoco/**/*.xml', recursive=True)
+          if not xmls:
+              print("no jacoco xml found")
+          for f in xmls:
+              root = ET.parse(f).getroot()
+              print("report:", f)
+              for c in root.findall('counter'):
+                  cov, miss = int(c.get('covered')), int(c.get('missed'))
+                  tot = cov + miss
+                  print(f"  {c.get('type'):12} {100.0*cov/tot if tot else 0:5.1f}%  ({cov}/{tot})")
+              print("  -- per package (INSTRUCTION), lowest first --")
+              rows = []
+              for p in root.findall('package'):
+                  ic = p.find("counter[@type='INSTRUCTION']")
+                  if ic is None:
+                      continue
+                  cov, miss = int(ic.get('covered')), int(ic.get('missed'))
+                  tot = cov + miss
+                  rows.append((100.0*cov/tot if tot else 0, tot, p.get('name')))
+              for pct, tot, name in sorted(rows):
+                  print(f"    {pct:5.1f}%  ({tot:5d} instr)  {name}")
+          PY
+      - name: Merged coverage gate (enforced floor)
+        if: always()
+        run: ./gradlew :app:jacocoCoverageVerification --console=plain
+      - name: Upload merged coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-merged-coverage-report
+          path: app/build/reports/jacoco/jacocoTestReport
+          if-no-files-found: warn
+
+      # Screenshots written to Test Storage are pulled here by AGP.
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-screenshots
+          path: app/build/outputs/connected_android_test_additional_output/**
+          if-no-files-found: warn
+
+      - name: Upload instrumented test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: instrumented-test-report
+          path: app/build/reports/androidTests/connected/**
+          if-no-files-found: warn
+
+  # Publish a shields.io endpoint badge (coverage.json on the orphan `badges`
+  # branch) reflecting the merged instruction coverage. Best-effort: it never
+  # fails the pipeline, and only updates from main so dev dispatches don't clobber
+  # the published number.
+  coverage-badge:
+    name: Coverage badge
+    needs: instrumented
+    # Publish from nightly, release, and manual-from-main runs; skip dev-branch
+    # dispatches so they can't clobber the published number.
+    if: ${{ always() && (github.event_name == 'schedule' || github.event_name == 'release' || github.ref == 'refs/heads/main') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download merged coverage report
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: app-merged-coverage-report
+          path: merged-coverage
+      - name: Publish coverage badge to the badges branch
+        continue-on-error: true
+        run: |
+          set -e
+          xml=$(find merged-coverage -name '*.xml' 2>/dev/null | head -n1)
+          if [ -z "$xml" ]; then echo "no coverage xml; skipping badge"; exit 0; fi
+          pct=$(python3 - "$xml" <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          root = ET.parse(sys.argv[1]).getroot()
+          c = next(x for x in root.findall('counter') if x.get('type') == 'INSTRUCTION')
+          cov, miss = int(c.get('covered')), int(c.get('missed'))
+          tot = cov + miss
+          print(f"{100.0*cov/tot:.1f}" if tot else "0.0")
+          PY
+          )
+          whole=${pct%.*}
+          if   [ "$whole" -ge 80 ]; then color=brightgreen
+          elif [ "$whole" -ge 65 ]; then color=green
+          elif [ "$whole" -ge 55 ]; then color=yellowgreen
+          elif [ "$whole" -ge 40 ]; then color=yellow
+          else color=orange; fi
+          printf '{"schemaVersion":1,"label":"coverage","message":"%s%%","color":"%s"}\n' "$pct" "$color" > /tmp/coverage.json
+          echo "coverage = ${pct}% (${color})"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin badges || true
+          if git ls-remote --exit-code --heads origin badges >/dev/null 2>&1; then
+            git worktree add -B badges /tmp/badges origin/badges
+          else
+            git worktree add --orphan -b badges /tmp/badges
+          fi
+          cp /tmp/coverage.json /tmp/badges/coverage.json
+          git -C /tmp/badges add coverage.json
+          git -C /tmp/badges commit -m "Update coverage badge to ${pct}% [skip ci]" || { echo "no change"; exit 0; }
+          git -C /tmp/badges push origin badges
