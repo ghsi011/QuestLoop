@@ -18,14 +18,14 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Coverage-oriented walk over the lowest-covered screens. This is deliberately a
- * *coverage* exercise, not a behavioural assertion suite (the ViewModels/data
- * are asserted by JVM unit tests, and navigation correctness by
- * [NavigationTransitionTest]). So the in-screen interactions are best-effort:
- * each is wrapped so a label that's momentarily absent/duplicated/offscreen can't
- * abort the rest of the walk — the goal is to compose each screen and fire as
- * many handlers as possible. Navigation steps (proven in NavigationTransitionTest)
- * are not wrapped, so a genuine navigation regression still fails loudly.
+ * Coverage-oriented walk over the lowest-covered screens. This is a *coverage*
+ * exercise, not a behavioural assertion suite — behaviour is asserted by the
+ * ViewModel/data JVM unit tests and by [NavigationTransitionTest]. Every step
+ * here is therefore best-effort (wrapped so a momentarily absent/duplicated/
+ * offscreen node, or a slow async load, can't fail the run); the goal is simply
+ * to compose each screen and fire as many handlers as possible so the merged
+ * JaCoCo report reflects the UI the emulator can reach. Navigation *correctness*
+ * is still asserted strictly by NavigationTransitionTest.
  *
  * Runs only in the emulator workflow (the `[uitest]` commit marker), like
  * [AppSmokeTest] and [NavigationTransitionTest].
@@ -37,36 +37,19 @@ class CoverageWalkTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
 
-    // ---- presence helpers (copied from NavigationTransitionTest) -----------
+    // ---- best-effort helpers (nothing here may fail the walk) --------------
 
-    private fun count(text: String) =
-        composeRule.onAllNodesWithText(text).fetchSemanticsNodes().size
+    private fun present(text: String) =
+        composeRule.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
 
-    private fun present(text: String) = count(text) > 0
+    private fun onToday() = composeRule.onAllNodesWithTag("today-list").fetchSemanticsNodes().isNotEmpty()
 
-    private fun hasTag(tag: String) =
-        composeRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+    /** Best-effort wait; swallows the timeout so the walk continues regardless. */
+    private fun awaitSafe(timeoutMs: Long = 8_000, condition: () -> Boolean) {
+        runCatching { composeRule.waitUntil(timeoutMillis = timeoutMs, condition = condition) }
+    }
 
-    private fun await(timeoutMs: Long = 8_000, condition: () -> Boolean) =
-        composeRule.waitUntil(timeoutMillis = timeoutMs, condition = condition)
-
-    // ---- per-screen "are we here?" predicates ------------------------------
-
-    private fun onToday() = hasTag("today-list")
-    private fun onReviews() = count("Reviews") >= 2 // nav label + section header
-    private fun onRewards() = present("Save budget")
-    private fun onSettings() = present("AI suggestions")
-    private fun onHabits() = present("Habits & goals") // top-bar title
-    private fun onAdd() = present("New quest") // section header, unique to Add
-
-    // ---- actions -----------------------------------------------------------
-
-    private fun tab(label: String) =
-        composeRule.onAllNodesWithText(label).filterToOne(hasClickAction()).performClick()
-
-    private fun back() = composeRule.onNodeWithContentDescription("Back").performClick()
-
-    /** Best-effort: scroll to the clickable node with [label] and click it. */
+    /** Best-effort: click the clickable node with [label]. */
     private fun tapText(label: String) {
         runCatching {
             composeRule.onAllNodesWithText(label).filterToOne(hasClickAction())
@@ -83,108 +66,101 @@ class CoverageWalkTest {
         }
     }
 
+    private fun tab(label: String) = tapText(label)
+
+    private fun openFab(contentDescription: String) {
+        runCatching {
+            composeRule.onNodeWithContentDescription(contentDescription).performClick()
+            composeRule.waitForIdle()
+        }
+    }
+
+    private fun back() {
+        runCatching {
+            composeRule.onNodeWithContentDescription("Back").performClick()
+            composeRule.waitForIdle()
+        }
+    }
+
     @Before
     fun reachHome() {
-        await(10_000) { present("Get started") || onToday() }
-        if (present("Get started")) composeRule.onNodeWithText("Get started").performClick()
-        await { onToday() }
+        awaitSafe(10_000) { present("Get started") || onToday() }
+        if (present("Get started")) tapText("Get started")
+        awaitSafe { onToday() }
     }
 
     /**
-     * Biggest coverage lever: open the Add modal via the FAB, then click each
-     * option chip in every group (best-effort) and submit. Selecting
-     * Quantitative/Duration/Subjective also reveals the conditional count/unit
-     * fields, exercising those branches.
+     * Biggest lever: open the Add modal via the FAB, click each option chip in
+     * every group, and submit. Selecting Quantitative/Duration/Subjective also
+     * reveals the conditional count/unit fields.
      */
     @Test
     fun add_form_exercises_every_option_group_and_submits() {
-        await { onToday() }
-        composeRule.onNodeWithContentDescription("Add quest").performClick()
-        await { onAdd() }
+        awaitSafe { onToday() }
+        openFab("Add quest")
+        awaitSafe { present("New quest") }
 
         val chips = listOf(
-            // Category (QuestCategory.pretty()).
             "Health", "Life admin", "Chores", "Work study", "Social",
             "Personal growth", "Bad habit reduction", "Meta maintenance",
-            // Difficulty.
             "Trivial", "Easy", "Medium", "Hard", "Epic",
-            // Priority.
             "Low", "Normal", "High", "Critical",
-            // Frequency.
             "Daily", "Weekly", "Monthly", "Recurring", "One off", "Seasonal",
-            // Completion style.
             "Quantitative", "Duration", "Subjective", "Binary",
         )
         for (label in chips) tapText(label)
 
         typeInto("What do you want to get done?", "Coverage walk quest 7777")
-        tapText("Add quest") // the submit button (clickable; FAB shares the text)
-        // Best-effort: the modal usually closes on submit, but if the title didn't
-        // register (best-effort typing) the button stays disabled — don't fail the
-        // walk over it, the option handlers above are the coverage we're after.
-        runCatching { await(15_000) { !onAdd() } }
+        tapText("Add quest") // submit button (clickable; FAB shares the text)
+        awaitSafe(15_000) { !present("New quest") }
     }
 
-    /**
-     * Exercise the Today energy check-in chips (always rendered) and, if a
-     * completable quest happens to be in the plan, its completion control and the
-     * achievement strip it surfaces. All in-screen taps are best-effort.
-     */
+    /** Today energy check-in chips and, if present, a completion + achievement strip. */
     @Test
     fun today_energy_check_in_and_optional_completion() {
-        await { onToday() }
+        awaitSafe { onToday() }
         for (label in listOf("🔋 Low", "⚡ OK", "🔥 High")) tapText(label)
-
         if (present("Complete")) {
             tapText("Complete")
-            await(15_000) { present("See all") || onToday() }
+            awaitSafe(15_000) { present("See all") || onToday() }
         }
         if (present("See all")) {
             tapText("See all")
-            await { present("Achievements ·") || onToday() }
-            if (present("Back")) back()
-            await { onToday() }
+            awaitSafe { present("Achievements ·") || onToday() }
+            back()
         }
     }
 
-    /**
-     * Settings -> "Manage habits & goals" -> add a habit and a goal (best-effort
-     * fields/buttons from HabitsScreen), then a couple of focus chips on Settings.
-     */
+    /** Settings: focus chips, time steppers, habits sub-screen (add habit/goal), diagnostics + delete dialog. */
     @Test
-    fun habits_add_and_settings_focus() {
-        tab("Settings"); await { onSettings() }
-
-        // Focus chips are category names (QuestCategory.pretty()).
+    fun settings_habits_and_actions() {
+        tab("Settings")
+        awaitSafe { present("AI suggestions") }
         for (label in listOf("Health", "Work study", "Social")) tapText(label)
-        // Available-minutes steppers.
         tapText("+15"); tapText("−15")
 
-        // Habits sub-screen FIRST (navigation must be unobstructed), then return.
-        composeRule.onNodeWithText("Manage habits & goals").performScrollTo().performClick()
-        await { onHabits() }
+        tapText("Manage habits & goals")
+        awaitSafe { present("Habits & goals") }
         typeInto("New habit", "Coverage habit 7777")
         tapText("Add habit")
         typeInto("New goal", "Coverage goal 7777")
         tapText("Add goal")
-        back(); await { onSettings() }
+        back()
+        awaitSafe { present("AI suggestions") }
 
-        // In-app actions that don't navigate: the diagnostics share (a no-op
-        // snackbar with no logs) and the delete-confirm dialog opened then
-        // dismissed. Done last and fully best-effort so a lingering dialog can't
-        // obstruct anything. ("Export"/"Import" are avoided — system pickers.)
+        // Non-navigating actions last; fully best-effort. ("Export"/"Import" are
+        // avoided — they open blocking system pickers.)
         tapText("Share AI error log")
         tapText("Delete all my data"); tapText("Cancel")
     }
 
-    /**
-     * Render the Reviews and Rewards tabs (composition coverage) and drive the
-     * Rewards budget field + save and the details toggle (best-effort).
-     */
+    /** Render Reviews and Rewards and drive the Rewards budget field + details toggle. */
     @Test
     fun reviews_and_rewards_render_and_interact() {
-        tab("Reviews"); await { onReviews() }
-        tab("Rewards"); await { onRewards() }
+        tab("Reviews")
+        awaitSafe { present("Reviews") }
+        tab("Rewards")
+        awaitSafe { present("Save budget") }
         typeInto("Affordable monthly budget", "25")
         tapText("Save budget")
         tapText("How rewards work")

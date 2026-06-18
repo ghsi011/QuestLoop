@@ -45,8 +45,8 @@ jobs:
           script: ./gradlew :app:connectedDebugAndroidTest --console=plain
 
       # Combine instrumented (.ec) + unit (.exec) coverage into one report and
-      # gate it at 90%. The gate is non-blocking for now while we climb to 90%
-      # with added tests; flip off continue-on-error once the baseline clears it.
+      # enforce the merged floor (0.58, set in app/build.gradle.kts). Blocking:
+      # a drop below the floor fails this workflow. 0.70/0.90 remain stretch goals.
       - name: Unit tests (for merged coverage)
         if: always()
         run: ./gradlew :app:testDebugUnitTest --console=plain
@@ -84,9 +84,8 @@ jobs:
               for pct, tot, name in sorted(rows):
                   print(f"    {pct:5.1f}%  ({tot:5d} instr)  {name}")
           PY
-      - name: Merged coverage gate (>= 90%)
+      - name: Merged coverage gate (enforced floor)
         if: always()
-        continue-on-error: true
         run: ./gradlew :app:jacocoCoverageVerification --console=plain
       - name: Upload merged coverage report
         if: always()
