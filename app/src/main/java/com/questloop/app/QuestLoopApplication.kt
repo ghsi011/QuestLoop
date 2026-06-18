@@ -7,6 +7,8 @@ import com.questloop.app.widget.QuestWidget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
@@ -34,11 +36,16 @@ class QuestLoopApplication : Application() {
     private fun keepWidgetFresh() {
         val repo = container.repository
         // Map each source to Unit and merge, so any change triggers one refresh.
+        // debounce() coalesces bursts (e.g. an import upserting many completions)
+        // into a single widget update; catch() keeps a source error from
+        // permanently killing the collector (the widget just stops updating).
         merge(
             repo.quests.map { },
             repo.completions.map { },
             repo.profile.map { },
         )
+            .debounce(500)
+            .catch { /* a backing-store hiccup shouldn't kill widget refresh */ }
             .onEach { runCatching { QuestWidget().updateAll(this@QuestLoopApplication) } }
             .launchIn(appScope)
     }

@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -295,8 +294,10 @@ private fun SafetyBanner(signals: List<SafetyGuard.Signal>) {
 @Composable
 private fun EnergyCheckInRow(selectedEnergy: Int?, onSelect: (energy: Int) -> Unit) {
     Row(
-        // Group the chips so a screen reader announces them as one energy selector.
-        Modifier.fillMaxWidth().selectableGroup(),
+        // FilterChips already expose their own selected (toggle) state to
+        // accessibility services, so no selectableGroup() (which models
+        // single-choice radio semantics and would mismatch here).
+        Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

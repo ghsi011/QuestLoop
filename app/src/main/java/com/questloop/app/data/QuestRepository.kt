@@ -477,21 +477,28 @@ class QuestRepository(
             )
         }
 
-        // Merge profile first so derived (habit/goal) quest ids are known.
-        val current = profileStore.profile.first()
-        val prefs = snapshot.profile.preferences
-        val habits = mergeById(current.habits, snapshot.profile.habits) { it.id }
-        val badHabits = mergeById(current.badHabits, snapshot.profile.badHabits) { it.id }
-        val goals = mergeById(current.goals, snapshot.profile.goals) { it.id }
-        profileStore.setHabits(habits)
-        profileStore.setBadHabits(badHabits)
-        profileStore.setGoals(goals)
-        profileStore.setMaxDaily(prefs.maxDailyQuests)
-        profileStore.setAvailableMinutes(prefs.defaultAvailableMinutes)
-        profileStore.setBudgetCap(prefs.monthlyRewardBudgetCap)
-        profileStore.setFocusCategories(prefs.focusCategories)
-        profileStore.setStreakGraceDays(prefs.streakGraceDays)
-        profileStore.setSensitiveOptIn(prefs.sensitiveNotificationsOptIn)
+        // Merge profile first so derived (habit/goal) quest ids are known. Hold
+        // profileMutex for the read-modify-write so a concurrent habit/goal edit
+        // can't clobber (or be clobbered by) the import on a stale snapshot. This
+        // section is sequential with — never nested inside — the completionMutex
+        // block below, so there's no lock-ordering hazard.
+        val (habits, badHabits, goals) = profileMutex.withLock {
+            val current = profileStore.profile.first()
+            val prefs = snapshot.profile.preferences
+            val h = mergeById(current.habits, snapshot.profile.habits) { it.id }
+            val b = mergeById(current.badHabits, snapshot.profile.badHabits) { it.id }
+            val g = mergeById(current.goals, snapshot.profile.goals) { it.id }
+            profileStore.setHabits(h)
+            profileStore.setBadHabits(b)
+            profileStore.setGoals(g)
+            profileStore.setMaxDaily(prefs.maxDailyQuests)
+            profileStore.setAvailableMinutes(prefs.defaultAvailableMinutes)
+            profileStore.setBudgetCap(prefs.monthlyRewardBudgetCap)
+            profileStore.setFocusCategories(prefs.focusCategories)
+            profileStore.setStreakGraceDays(prefs.streakGraceDays)
+            profileStore.setSensitiveOptIn(prefs.sensitiveNotificationsOptIn)
+            Triple(h, b, g)
+        }
 
         // The set of quest ids a completion may legitimately reference.
         val derivedIds = HabitQuestFactory.deriveAll(habits, badHabits, goals).map { it.id }
