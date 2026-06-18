@@ -37,16 +37,18 @@ class QuestLoopApplication : Application() {
         val repo = container.repository
         // Map each source to Unit and merge, so any change triggers one refresh.
         // debounce() coalesces bursts (e.g. an import upserting many completions)
-        // into a single widget update; catch() keeps a source error from
-        // permanently killing the collector (the widget just stops updating).
+        // into a single widget update. catch() is a crash-guard: if a source flow
+        // throws (a backing-store hiccup), it's swallowed so it can't take down
+        // appScope — the collector then ends quietly and the widget simply stops
+        // refreshing until the next app start, rather than crashing the process.
         merge(
             repo.quests.map { },
             repo.completions.map { },
             repo.profile.map { },
         )
             .debounce(500)
-            .catch { /* a backing-store hiccup shouldn't kill widget refresh */ }
             .onEach { runCatching { QuestWidget().updateAll(this@QuestLoopApplication) } }
+            .catch { /* crash-guard only; see above — does not resume the collector */ }
             .launchIn(appScope)
     }
 }
