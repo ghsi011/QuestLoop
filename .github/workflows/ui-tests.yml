@@ -44,6 +44,27 @@ jobs:
           disable-animations: true
           script: ./gradlew :app:connectedDebugAndroidTest --console=plain
 
+      # Combine instrumented (.ec) + unit (.exec) coverage into one report and
+      # gate it at 90%. The gate is non-blocking for now while we climb to 90%
+      # with added tests; flip off continue-on-error once the baseline clears it.
+      - name: Unit tests (for merged coverage)
+        if: always()
+        run: ./gradlew :app:testDebugUnitTest --console=plain
+      - name: Merged coverage report
+        if: always()
+        run: ./gradlew :app:jacocoTestReport --console=plain
+      - name: Merged coverage gate (>= 90%)
+        if: always()
+        continue-on-error: true
+        run: ./gradlew :app:jacocoCoverageVerification --console=plain
+      - name: Upload merged coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-merged-coverage-report
+          path: app/build/reports/jacoco/jacocoTestReport
+          if-no-files-found: warn
+
       # Screenshots written to Test Storage are pulled here by AGP.
       - name: Upload screenshots
         if: always()

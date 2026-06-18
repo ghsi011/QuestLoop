@@ -53,8 +53,10 @@ android {
 
     buildTypes {
         debug {
-            // Produce JaCoCo execution data from JVM unit tests for the coverage report.
+            // Produce JaCoCo execution data from both JVM unit tests (.exec) and
+            // instrumented/emulator tests (.ec); the merged report combines them.
             enableUnitTestCoverage = true
+            enableAndroidTestCoverage = true
         }
         release {
             isMinifyEnabled = true
@@ -105,20 +107,17 @@ jacoco {
     toolVersion = "0.8.12"
 }
 
-// Coverage for the app module from JVM/Robolectric unit tests. Generated code
-// (Room/Compose/serializers/manifest) and pure framework glue that can't be
-// exercised without an emulator (Application, DI wiring, theme, the Glance
-// widget, and boot/notification BroadcastReceivers) are excluded so the metric
-// reflects logic we can actually unit-test: ViewModels, data, and screens.
+// Coverage for the app module, combining JVM unit tests (.exec) and
+// instrumented/emulator tests (.ec). Generated code (Room/Compose/serializers/
+// manifest) is excluded; UI/framework code is NOT excluded here because the
+// emulator tests cover it, and the merged 90% gate (run in the [uitest]
+// workflow, where both data sources exist) measures the whole module. The
+// normal CI job only has unit data, so it produces the report but does not gate.
 private val appCoverageExclusions = listOf(
     "**/R.class", "**/R\$*.class", "**/BuildConfig.*", "**/Manifest*.*",
     "**/*Test*.*", "**/databinding/**",
     "**/*_Impl*.*", "**/*\$serializer.*", "**/ComposableSingletons*.*",
     "**/*_Factory*.*", "**/*_MembersInjector*.*",
-    // Framework glue not exercised by JVM unit tests:
-    "**/MainActivity*.*", "**/QuestLoopApplication*.*",
-    "**/di/**", "**/ui/theme/**", "**/widget/**",
-    "**/reminders/BootReceiver*.*", "**/reminders/ReminderActionReceiver*.*",
 )
 
 private fun coverageClassDirs() = files(
@@ -126,11 +125,16 @@ private fun coverageClassDirs() = files(
     fileTree(layout.buildDirectory.dir("intermediates/javac/debug/classes").get().asFile) { exclude(appCoverageExclusions) },
 )
 
+// Both unit-test (.exec) and instrumented-test (.ec) execution data; whichever
+// is present on disk is included, so the same tasks work in CI (unit only) and
+// in the emulator workflow (unit + instrumented).
 private fun coverageExecData() = fileTree(layout.buildDirectory.get().asFile) {
     include(
         "outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec",
         "jacoco/testDebugUnitTest.exec",
         "**/testDebugUnitTest.exec",
+        "outputs/code_coverage/debugAndroidTest/connected/**/*.ec",
+        "**/*.ec",
     )
 }
 
