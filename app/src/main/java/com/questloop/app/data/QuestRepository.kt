@@ -62,6 +62,11 @@ class QuestRepository(
     // taps, quest + measured log) can't read the same XP snapshot and mis-count.
     private val completionMutex = Mutex()
 
+    // Serialises profile-list read-modify-writes (habits/bad-habits/goals) and the
+    // import merge so a concurrent edit + import can't clobber one another on a
+    // stale snapshot (DataStore writes are atomic, but our read-then-write isn't).
+    private val profileMutex = Mutex()
+
     /** Days of history considered for safety signals. */
     private val safetyWindowDays = 30L
 
@@ -405,35 +410,35 @@ class QuestRepository(
     suspend fun setFocusCategories(cats: Set<com.questloop.core.model.QuestCategory>) =
         profileStore.setFocusCategories(cats)
 
-    suspend fun addHabit(habit: Habit) {
+    suspend fun addHabit(habit: Habit) = profileMutex.withLock {
         val current = profileStore.profile.first().habits
         profileStore.setHabits(current.filterNot { it.id == habit.id } + habit)
     }
 
-    suspend fun removeHabit(id: String) {
+    suspend fun removeHabit(id: String) = profileMutex.withLock {
         profileStore.setHabits(profileStore.profile.first().habits.filterNot { it.id == id })
     }
 
-    suspend fun addBadHabit(badHabit: BadHabit) {
+    suspend fun addBadHabit(badHabit: BadHabit) = profileMutex.withLock {
         val current = profileStore.profile.first().badHabits
         profileStore.setBadHabits(current.filterNot { it.id == badHabit.id } + badHabit)
     }
 
-    suspend fun removeBadHabit(id: String) {
+    suspend fun removeBadHabit(id: String) = profileMutex.withLock {
         profileStore.setBadHabits(profileStore.profile.first().badHabits.filterNot { it.id == id })
     }
 
-    suspend fun addGoal(goal: com.questloop.core.model.Goal) {
+    suspend fun addGoal(goal: com.questloop.core.model.Goal) = profileMutex.withLock {
         val current = profileStore.profile.first().goals
         profileStore.setGoals(current.filterNot { it.id == goal.id } + goal)
     }
 
-    suspend fun removeGoal(id: String) {
+    suspend fun removeGoal(id: String) = profileMutex.withLock {
         profileStore.setGoals(profileStore.profile.first().goals.filterNot { it.id == id })
     }
 
     /** Serialises all on-device data to JSON for export (SPEC §9 portability). */
-    suspend fun exportJson(): String {
+    suspend fun exportJson(): String = withContext(Dispatchers.IO) {
         // Include archived quests so export is a complete backup, not just active data.
         val all = questDao.getAll().map { it.toModel() to it.archived }
         val snapshot = ExportSnapshot(
@@ -442,7 +447,9 @@ class QuestRepository(
             profile = profileStore.profile.first(),
             archivedIds = all.filter { it.second }.map { it.first.id },
         )
-        return exportJson.encodeToString(ExportSnapshot.serializer(), snapshot)
+        // Encoding the full ledger can be heavy; keep it off the main thread
+        // (matches importJson, which already does this).
+        exportJson.encodeToString(ExportSnapshot.serializer(), snapshot)
     }
 
     data class ImportResult(val quests: Int, val completions: Int, val skipped: Int = 0, val error: String? = null)

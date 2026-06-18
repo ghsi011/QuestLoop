@@ -205,9 +205,15 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
         }
     }
 
-    private companion object {
+    companion object {
         // Process-scoped so a half-typed quest survives leaving the Add screen
         // (whose nav entry is popped) and coming back. Lost only on process death.
-        var savedDraft = QuestDraft()
+        private var savedDraft = QuestDraft()
+
+        /** Clears the cached draft — e.g. after the user wipes all their data, so
+         *  a half-typed quest doesn't linger past an explicit "delete everything". */
+        fun resetDraftCache() {
+            savedDraft = QuestDraft()
+        }
     }
 }

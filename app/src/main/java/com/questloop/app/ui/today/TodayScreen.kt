@@ -59,7 +59,7 @@ data class TodayActions(
     val onComplete: (Quest) -> Unit,
     val onSkip: (Quest) -> Unit,
     val onCompleteMeasured: (Quest, Int) -> Unit,
-    val onCheckIn: (energy: Int, minutes: Int) -> Unit,
+    val onCheckIn: (energy: Int) -> Unit,
     val onOpenQuestBank: () -> Unit = {},
     val onOpenAddQuest: () -> Unit = {},
     /** Permanently dismiss a first-run guide quest. */
@@ -293,7 +293,7 @@ private fun SafetyBanner(signals: List<SafetyGuard.Signal>) {
 
 /** Compact emoji segmented control; no question text. */
 @Composable
-private fun EnergyCheckInRow(selectedEnergy: Int?, onSelect: (energy: Int, minutes: Int) -> Unit) {
+private fun EnergyCheckInRow(selectedEnergy: Int?, onSelect: (energy: Int) -> Unit) {
     Row(
         // Group the chips so a screen reader announces them as one energy selector.
         Modifier.fillMaxWidth().selectableGroup(),
@@ -301,15 +301,15 @@ private fun EnergyCheckInRow(selectedEnergy: Int?, onSelect: (energy: Int, minut
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("Energy", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        EnergyOption("🔋 Low", 2, 60, selectedEnergy, onSelect)
-        EnergyOption("⚡ OK", 3, 120, selectedEnergy, onSelect)
-        EnergyOption("🔥 High", 5, 240, selectedEnergy, onSelect)
+        EnergyOption("🔋 Low", 2, selectedEnergy, onSelect)
+        EnergyOption("⚡ OK", 3, selectedEnergy, onSelect)
+        EnergyOption("🔥 High", 5, selectedEnergy, onSelect)
     }
 }
 
 @Composable
-private fun EnergyOption(label: String, energy: Int, minutes: Int, selected: Int?, onSelect: (Int, Int) -> Unit) {
-    FilterChip(selected = selected == energy, onClick = { onSelect(energy, minutes) }, label = { Text(label) })
+private fun EnergyOption(label: String, energy: Int, selected: Int?, onSelect: (Int) -> Unit) {
+    FilterChip(selected = selected == energy, onClick = { onSelect(energy) }, label = { Text(label) })
 }
 
 @Composable

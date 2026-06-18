@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationManagerCompat
+import com.questloop.app.MainActivity
 import com.questloop.app.QuestLoopApplication
 import com.questloop.core.generation.RoutineQuestFactory
 import com.questloop.core.model.CompletionResult
@@ -36,11 +37,21 @@ class ReminderActionReceiver : BroadcastReceiver() {
                     // instead of hand-wiring a divergent one.
                     val repo = (context.applicationContext as QuestLoopApplication).container.repository
                     val dayPart = if (slot == ReminderSlot.MORNING) DayPart.MORNING else DayPart.EVENING
-                    val quest = RoutineQuestFactory.routinesFor(dayPart).firstOrNull()
-                    if (quest != null) {
-                        repo.completeQuest(quest, epochDay, CompletionResult.COMPLETED)
-                    }
                     NotificationManagerCompat.from(context).cancel(slot.notificationId)
+                    // Only complete a routine that's actually in today's plan — never
+                    // credit XP to a synthetic quest the user can't see. If the slot's
+                    // routine isn't planned today (e.g. dismissed), open the app instead.
+                    val routineIds = RoutineQuestFactory.routinesFor(dayPart).map { it.id }.toSet()
+                    val planned = repo.todayPlan(epochDay, dayPart).quests
+                        .map { it.quest }
+                        .firstOrNull { it.id in routineIds }
+                    if (planned != null) {
+                        repo.completeQuest(planned, epochDay, CompletionResult.COMPLETED)
+                    } else {
+                        val open = Intent(context, MainActivity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(open)
+                    }
                 }
             } finally {
                 pending.finish()

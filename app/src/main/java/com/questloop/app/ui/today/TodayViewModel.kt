@@ -18,6 +18,7 @@ import com.questloop.core.safety.SafetyGuard
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -121,9 +122,13 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
         }
     }
 
-    fun setCheckIn(energy: Int, availableMinutes: Int) {
+    fun setCheckIn(energy: Int) {
         viewModelScope.launch {
-            repository.setCheckIn(EnergyCheckIn(AppClock.todayEpochDay(), energy, availableMinutes))
+            // Energy only. The time budget comes from the user's Settings
+            // "Time/day" (defaultAvailableMinutes) so picking an energy level
+            // never silently overrides the configured budget.
+            val minutes = repository.profile.first().preferences.defaultAvailableMinutes
+            repository.setCheckIn(EnergyCheckIn(AppClock.todayEpochDay(), energy, minutes))
             refresh()
         }
     }

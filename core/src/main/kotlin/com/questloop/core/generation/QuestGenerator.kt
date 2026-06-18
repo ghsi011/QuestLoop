@@ -4,7 +4,6 @@ import com.questloop.core.model.CompletionRecord
 import com.questloop.core.model.CompletionResult
 import com.questloop.core.model.Difficulty
 import com.questloop.core.model.Quest
-import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.QuestInstance
 import com.questloop.core.model.UserProfile
 import com.questloop.core.model.EnergyCheckIn

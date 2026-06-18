@@ -75,7 +75,7 @@ class TodayContentTest {
         onComplete: (Quest) -> Unit = {},
         onSkip: (Quest) -> Unit = {},
         onCompleteMeasured: (Quest, Int) -> Unit = { _, _ -> },
-        onCheckIn: (Int, Int) -> Unit = { _, _ -> },
+        onCheckIn: (Int) -> Unit = {},
     ) = TodayActions(onComplete, onSkip, onCompleteMeasured, onCheckIn)
 
     @Test
@@ -212,7 +212,7 @@ class TodayContentTest {
                     onComplete = {},
                     onSkip = {},
                     onCompleteMeasured = { _, _ -> },
-                    onCheckIn = { _, _ -> },
+                    onCheckIn = {},
                     onOpenQuestBank = { openedBank = true },
                 ),
             )
@@ -223,15 +223,14 @@ class TodayContentTest {
 
     @Test
     fun `energy check-in fires callback`() {
-        var picked: Pair<Int, Int>? = null
+        var picked: Int? = null
         composeRule.setContent {
             TodayContent(
                 state = stateWith(quest("q1", "Anything")),
-                actions = noopActions(onCheckIn = { e, m -> picked = e to m }),
+                actions = noopActions(onCheckIn = { e -> picked = e }),
             )
         }
         composeRule.onNodeWithText("🔋 Low").performClick()
-        assertTrue(picked != null)
-        assertEquals(2, picked?.first)
+        assertEquals(2, picked)
     }
 }

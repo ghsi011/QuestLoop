@@ -38,7 +38,12 @@ class QuestBankViewModel(private val repository: QuestRepository) : ViewModel() 
         viewModelScope.launch {
             repository.quests.collectLatest { active ->
                 val activeIds = active.map { it.id }.toSet()
-                _state.update { it.copy(addedIds = QuestBank.catalog.map { q -> q.id }.filter { id -> id in activeIds }.toSet()) }
+                val added = QuestBank.catalog.map { q -> q.id }.filter { id -> id in activeIds }.toSet()
+                // Clear the in-flight marker only once the quest actually shows up
+                // in the active set, so there's never a window where an id is in
+                // neither `adding` nor `addedIds` (which would let a fast second
+                // tap re-add it). See add() below.
+                _state.update { it.copy(addedIds = added, adding = it.adding - added) }
             }
         }
     }
@@ -49,9 +54,10 @@ class QuestBankViewModel(private val repository: QuestRepository) : ViewModel() 
         _state.update { it.copy(adding = it.adding + quest.id) }
         viewModelScope.launch {
             repository.addFromBank(quest, AppClock.todayEpochDay())
-            _state.update {
-                it.copy(toast = "Added \"${quest.title}\".", toastId = it.toastId + 1, adding = it.adding - quest.id)
-            }
+            // Intentionally do NOT clear `adding` here — the quests collector
+            // clears it when the new quest appears in addedIds, so the button
+            // goes in-flight -> added with no gap a double-tap could exploit.
+            _state.update { it.copy(toast = "Added \"${quest.title}\".", toastId = it.toastId + 1) }
         }
     }
 

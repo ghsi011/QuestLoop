@@ -118,31 +118,9 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
-        SectionHeader("Quick add with AI")
-        Text(
-            "Type a list or just brain-dump what's on your plate. We'll turn it into quests for you to review.",
-            style = MaterialTheme.typography.bodySmall,
-        )
-        OutlinedTextField(
-            value = draft.quickText,
-            onValueChange = { v -> viewModel.updateDraft { it.copy(quickText = v) } },
-            label = { Text("What's on your mind?") },
-            modifier = Modifier.fillMaxWidth(),
-            minLines = 4,
-        )
-        OutlinedButton(
-            onClick = { if (draft.quickText.isNotBlank()) viewModel.generate(draft.quickText) },
-            enabled = draft.quickText.isNotBlank() && !state.generating,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            if (state.generating) {
-                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-            } else {
-                Text(if (state.suggestions.isEmpty()) "Suggest quests ✨" else "Regenerate ✨")
-            }
-        }
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-
+        // Both AI tools below feed the shared "Review suggestions" list, so they're
+        // grouped together above it — the brain-dump generator sits directly next to
+        // its results, with the goal breakdown alongside rather than wedged between.
         SectionHeader("Break down a goal")
         Text(
             "Name one bigger goal and get a short ladder of steps to review.",
@@ -165,6 +143,31 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
                 CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
             } else {
                 Text("Break into steps ✨")
+            }
+        }
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+        SectionHeader("Quick add with AI")
+        Text(
+            "Type a list or just brain-dump what's on your plate. We'll turn it into quests for you to review.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        OutlinedTextField(
+            value = draft.quickText,
+            onValueChange = { v -> viewModel.updateDraft { it.copy(quickText = v) } },
+            label = { Text("What's on your mind?") },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 4,
+        )
+        OutlinedButton(
+            onClick = { if (draft.quickText.isNotBlank()) viewModel.generate(draft.quickText) },
+            enabled = draft.quickText.isNotBlank() && !state.generating,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            if (state.generating) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+            } else {
+                Text(if (state.suggestions.isEmpty()) "Suggest quests ✨" else "Regenerate ✨")
             }
         }
 

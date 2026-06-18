@@ -59,16 +59,23 @@ class EncryptedKeyStore(context: Context) : SecureKeyStore {
         )
     }
 
+    // A read failure (e.g. a corrupt/reset keystore) degrades gracefully to "no
+    // key" — AI simply turns off. But write failures MUST propagate: silently
+    // swallowing them lets the key "save" while persisting nothing, so the user
+    // re-enters it and it keeps vanishing with no error. Let setApiKey/clear throw
+    // so the caller (SettingsViewModel) can tell the user it couldn't be saved.
     override suspend fun getApiKey(): String = withContext(Dispatchers.IO) {
         runCatching { prefs.getString(KEY, "").orEmpty() }.getOrDefault("")
     }
 
     override suspend fun setApiKey(value: String) = withContext(Dispatchers.IO) {
-        runCatching { prefs.edit().putString(KEY, value).apply() }.let {}
+        // commit() (synchronous) so a failure surfaces here rather than later on
+        // a background apply() that we couldn't observe.
+        check(prefs.edit().putString(KEY, value).commit()) { "Could not save the API key securely." }
     }
 
     override suspend fun clear() = withContext(Dispatchers.IO) {
-        runCatching { prefs.edit().remove(KEY).apply() }.let {}
+        check(prefs.edit().remove(KEY).commit()) { "Could not clear the stored API key." }
     }
 
     private companion object {

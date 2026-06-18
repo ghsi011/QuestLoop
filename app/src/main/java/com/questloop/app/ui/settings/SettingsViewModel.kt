@@ -65,11 +65,16 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
     fun saveAi(enabled: Boolean, apiKey: String, model: String, filterWording: Boolean) {
         viewModelScope.launch {
             val trimmedKey = apiKey.trim()
-            repository.setAiConfig(
-                AiConfig(enabled = enabled, apiKey = trimmedKey, model = model.trim(), filterWording = filterWording),
-            )
+            // setAiConfig can now throw if the secure key store rejects the write
+            // (corrupt/unavailable Keystore); catch it so we report the failure
+            // instead of crashing or falsely claiming success.
+            val wrote = runCatching {
+                repository.setAiConfig(
+                    AiConfig(enabled = enabled, apiKey = trimmedKey, model = model.trim(), filterWording = filterWording),
+                )
+            }.isSuccess
             reload()
-            val persisted = _state.value.ai.apiKey == trimmedKey
+            val persisted = wrote && _state.value.ai.apiKey == trimmedKey
             emitMessage(if (persisted) "AI settings saved" else "Couldn't save your key — please try again.")
         }
     }
@@ -126,6 +131,9 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
     fun deleteAllData(onDone: () -> Unit) {
         viewModelScope.launch {
             repository.deleteAllData()
+            // Also drop the process-scoped Add-screen draft so a half-typed quest
+            // doesn't survive an explicit "delete everything".
+            com.questloop.app.ui.add.AddQuestViewModel.resetDraftCache()
             reload()
             emitMessage("Your data has been deleted.")
             onDone()

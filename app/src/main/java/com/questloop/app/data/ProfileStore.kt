@@ -191,9 +191,16 @@ class ProfileStore(
         // secure key store, then scrub it from the plaintext prefs.
         val legacy = prefs[Keys.AI_KEY]
         if (apiKey.isBlank() && !legacy.isNullOrBlank()) {
-            keyStore.setApiKey(legacy)
-            dataStore.edit { it.remove(Keys.AI_KEY) }
             apiKey = legacy
+            // Scrub the plaintext copy ONLY after the secure write is confirmed.
+            // If the secure store rejects the write (or the process dies first),
+            // the plaintext stays so the key is never lost; the migration is
+            // idempotent and simply retries on the next read.
+            val migrated = runCatching {
+                keyStore.setApiKey(legacy)
+                keyStore.getApiKey() == legacy
+            }.getOrDefault(false)
+            if (migrated) dataStore.edit { it.remove(Keys.AI_KEY) }
         }
         return AiConfig(
             enabled = (prefs[Keys.AI_ENABLED] ?: 0) == 1,
