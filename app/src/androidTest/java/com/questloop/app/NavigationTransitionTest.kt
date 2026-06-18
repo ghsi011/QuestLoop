@@ -160,18 +160,14 @@ class NavigationTransitionTest {
     }
 
     @Test
-    fun quests_tab_restores_its_open_subscreen_then_pops_to_root() {
+    fun tab_always_resets_to_its_root_screen() {
         tab("Quests"); await { onQuests() }
         composeRule.onNodeWithText("Browse quest bank").performClick()
         await { onQuestBank() }
 
-        // The Quest Bank belongs to the Quests tab. Switching away and back via the
-        // tab bar restores that tab's stack — we return to the bank, not some other
-        // screen and not a blank Quests list.
+        // Switching away and back to a tab lands on its ROOT, never the buried
+        // sub-screen — re-selecting a tab is a clean reset.
         tab("Settings"); await { onSettings() }
-        tab("Quests"); await { onQuestBank() }
-
-        // Re-tapping the now-active Quests tab pops the bank, landing on the root.
         tab("Quests"); await { onQuests() }
         composeRule.onNodeWithText("Quest bank").assertDoesNotExist()
     }

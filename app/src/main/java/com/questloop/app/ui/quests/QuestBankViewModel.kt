@@ -18,6 +18,8 @@ data class QuestBankUiState(
     val groups: List<BankGroup> = emptyList(),
     /** Ids of catalog quests already on the user's active list. */
     val addedIds: Set<String> = emptySet(),
+    /** Ids with an add in flight, so a fast double-tap can't re-fire. */
+    val adding: Set<String> = emptySet(),
     val toast: String? = null,
     /** Bumped on every toast so identical consecutive messages still re-fire. */
     val toastId: Long = 0,
@@ -42,9 +44,14 @@ class QuestBankViewModel(private val repository: QuestRepository) : ViewModel() 
     }
 
     fun add(quest: Quest) {
+        val s = _state.value
+        if (quest.id in s.addedIds || quest.id in s.adding) return
+        _state.update { it.copy(adding = it.adding + quest.id) }
         viewModelScope.launch {
             repository.addFromBank(quest, AppClock.todayEpochDay())
-            _state.update { it.copy(toast = "Added \"${quest.title}\".", toastId = it.toastId + 1) }
+            _state.update {
+                it.copy(toast = "Added \"${quest.title}\".", toastId = it.toastId + 1, adding = it.adding - quest.id)
+            }
         }
     }
 

@@ -126,7 +126,8 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
     fun deleteAllData(onDone: () -> Unit) {
         viewModelScope.launch {
             repository.deleteAllData()
-            load()
+            reload()
+            emitMessage("Your data has been deleted.")
             onDone()
         }
     }

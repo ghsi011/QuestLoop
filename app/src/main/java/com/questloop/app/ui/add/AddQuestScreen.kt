@@ -25,8 +25,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.Saver
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,21 +43,10 @@ import com.questloop.core.model.QuestFrequency
 
 @Composable
 fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
-    // Everything is saveable so a half-built quest (text AND the chosen category /
-    // difficulty / frequency / style / counts) survives rotation and process death.
-    // Enums need a stateSaver storing their stable name; Ints save fine as values.
-    var title by rememberSaveable { mutableStateOf("") }
-    var category by rememberSaveable(stateSaver = enumSaver<QuestCategory>()) { mutableStateOf(QuestCategory.LIFE_ADMIN) }
-    var difficulty by rememberSaveable(stateSaver = enumSaver<Difficulty>()) { mutableStateOf(Difficulty.MEDIUM) }
-    var priority by rememberSaveable(stateSaver = enumSaver<Priority>()) { mutableStateOf(Priority.NORMAL) }
-    var frequency by rememberSaveable(stateSaver = enumSaver<QuestFrequency>()) { mutableStateOf(QuestFrequency.ONE_OFF) }
-    var minutes by rememberSaveable { mutableStateOf(25) }
-    var completionStyle by rememberSaveable(stateSaver = enumSaver<CompletionStyle>()) { mutableStateOf(CompletionStyle.BINARY) }
-    var targetCount by rememberSaveable { mutableStateOf(8) }
-    var unit by rememberSaveable { mutableStateOf("") }
-    var quickText by rememberSaveable { mutableStateOf("") }
-    var goalText by rememberSaveable { mutableStateOf("") }
-
+    // The draft lives in the ViewModel (process-scoped), so a half-typed quest
+    // survives leaving the Add screen — whose nav entry is popped on a tab switch —
+    // and coming back.
+    val draft by viewModel.draft.collectAsStateWithLifecycle()
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     Column(
@@ -68,74 +55,64 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
     ) {
         SectionHeader("New quest")
         OutlinedTextField(
-            value = title,
-            onValueChange = { title = it },
+            value = draft.title,
+            onValueChange = { v -> viewModel.updateDraft { it.copy(title = v) } },
             label = { Text("What do you want to get done?") },
             modifier = Modifier.fillMaxWidth(),
         )
 
         Text("Category", fontWeight = FontWeight.SemiBold)
-        ChipGroup(QuestCategory.entries, category) { category = it }
+        ChipGroup(QuestCategory.entries, draft.category) { sel -> viewModel.updateDraft { it.copy(category = sel) } }
 
         Text("Difficulty", fontWeight = FontWeight.SemiBold)
-        ChipGroup(Difficulty.entries, difficulty) {
-            difficulty = it
-            minutes = Quest.defaultMinutes(it)
+        ChipGroup(Difficulty.entries, draft.difficulty) { sel ->
+            viewModel.updateDraft { it.copy(difficulty = sel, minutes = Quest.defaultMinutes(sel)) }
         }
 
         Text("Priority", fontWeight = FontWeight.SemiBold)
-        ChipGroup(Priority.entries, priority) { priority = it }
+        ChipGroup(Priority.entries, draft.priority) { sel -> viewModel.updateDraft { it.copy(priority = sel) } }
 
         Text("Frequency", fontWeight = FontWeight.SemiBold)
-        ChipGroup(QuestFrequency.entries, frequency) { frequency = it }
+        ChipGroup(QuestFrequency.entries, draft.frequency) { sel -> viewModel.updateDraft { it.copy(frequency = sel) } }
 
         Text("How is it completed?", fontWeight = FontWeight.SemiBold)
-        ChipGroup(CompletionStyle.entries, completionStyle) { completionStyle = it }
+        ChipGroup(CompletionStyle.entries, draft.completionStyle) { sel ->
+            viewModel.updateDraft { it.copy(completionStyle = sel) }
+        }
 
-        if (completionStyle == CompletionStyle.QUANTITATIVE) {
+        if (draft.completionStyle == CompletionStyle.QUANTITATIVE) {
             OutlinedTextField(
-                value = targetCount.toString(),
-                onValueChange = { v -> targetCount = v.toIntOrNull()?.coerceIn(1, 1000) ?: targetCount },
+                value = draft.targetCount.toString(),
+                onValueChange = { v ->
+                    v.toIntOrNull()?.coerceIn(1, 1000)?.let { n -> viewModel.updateDraft { it.copy(targetCount = n) } }
+                },
                 label = { Text("Target count") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
-                value = unit,
-                onValueChange = { unit = it },
+                value = draft.unit,
+                onValueChange = { v -> viewModel.updateDraft { it.copy(unit = v) } },
                 label = { Text("Unit (e.g. glasses, pages)") },
                 modifier = Modifier.fillMaxWidth(),
             )
         }
 
         OutlinedTextField(
-            value = minutes.toString(),
-            onValueChange = { v -> minutes = v.toIntOrNull()?.coerceIn(1, 1440) ?: minutes },
-            label = { Text(if (completionStyle == CompletionStyle.DURATION) "Target minutes" else "Estimated minutes") },
+            value = draft.minutes.toString(),
+            onValueChange = { v ->
+                v.toIntOrNull()?.coerceIn(1, 1440)?.let { n -> viewModel.updateDraft { it.copy(minutes = n) } }
+            },
+            label = { Text(if (draft.completionStyle == CompletionStyle.DURATION) "Target minutes" else "Estimated minutes") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
 
         Button(
-            onClick = {
-                if (title.isNotBlank()) {
-                    viewModel.addQuest(
-                        title = title,
-                        category = category,
-                        difficulty = difficulty,
-                        priority = priority,
-                        frequency = frequency,
-                        estimatedMinutes = minutes,
-                        completionStyle = completionStyle,
-                        targetCount = if (completionStyle == CompletionStyle.QUANTITATIVE) targetCount else null,
-                        unit = if (completionStyle == CompletionStyle.QUANTITATIVE) unit.ifBlank { null } else null,
-                        onDone = onDone,
-                    )
-                }
-            },
-            enabled = title.isNotBlank(),
+            onClick = { viewModel.addQuest(onDone) },
+            enabled = draft.title.isNotBlank(),
             modifier = Modifier.fillMaxWidth(),
         ) { Text("Add quest") }
 
@@ -147,22 +124,21 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
             style = MaterialTheme.typography.bodySmall,
         )
         OutlinedTextField(
-            value = quickText,
-            onValueChange = { quickText = it },
+            value = draft.quickText,
+            onValueChange = { v -> viewModel.updateDraft { it.copy(quickText = v) } },
             label = { Text("What's on your mind?") },
             modifier = Modifier.fillMaxWidth(),
             minLines = 4,
         )
         OutlinedButton(
-            onClick = { if (quickText.isNotBlank()) viewModel.generate(quickText) },
-            enabled = quickText.isNotBlank() && !state.generating,
+            onClick = { if (draft.quickText.isNotBlank()) viewModel.generate(draft.quickText) },
+            enabled = draft.quickText.isNotBlank() && !state.generating,
             modifier = Modifier.fillMaxWidth(),
         ) {
             if (state.generating) {
                 CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
             } else {
-                // Make it explicit that re-running replaces the suggestions below.
-                Text(if (state.suggestions.isEmpty()) "Suggest quests ✨" else "Regenerate (replaces below) ✨")
+                Text(if (state.suggestions.isEmpty()) "Suggest quests ✨" else "Regenerate ✨")
             }
         }
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
@@ -173,23 +149,22 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
             style = MaterialTheme.typography.bodySmall,
         )
         OutlinedTextField(
-            value = goalText,
-            onValueChange = { goalText = it },
+            value = draft.goalText,
+            onValueChange = { v -> viewModel.updateDraft { it.copy(goalText = v) } },
             label = { Text("What's the goal?") },
             placeholder = { Text("e.g. run a 10k") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
         OutlinedButton(
-            onClick = { if (goalText.isNotBlank()) viewModel.decomposeGoal(goalText) },
-            enabled = goalText.isNotBlank() && !state.generating,
+            onClick = { if (draft.goalText.isNotBlank()) viewModel.decomposeGoal(draft.goalText) },
+            enabled = draft.goalText.isNotBlank() && !state.generating,
             modifier = Modifier.fillMaxWidth(),
         ) {
             if (state.generating) {
                 CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
             } else {
-                // Warn that this replaces any suggestions already under review.
-                Text(if (state.suggestions.isEmpty()) "Break into steps ✨" else "Break into steps (replaces below) ✨")
+                Text("Break into steps ✨")
             }
         }
 
@@ -334,10 +309,6 @@ private fun <T> ChipGroup(options: List<T>, selected: T, label: (T) -> String = 
         }
     }
 }
-
-/** Saves an enum by its stable name so picks survive process death (AGENTS.md gotcha). */
-private inline fun <reified T : Enum<T>> enumSaver(): Saver<T, String> =
-    Saver(save = { it.name }, restore = { enumValueOf<T>(it) })
 
 private fun <T> prettyOf(value: T): String = when (value) {
     is QuestCategory -> value.pretty()

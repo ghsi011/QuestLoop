@@ -7,9 +7,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,6 +39,22 @@ fun ReviewScreen(viewModel: ReviewViewModel) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item { SectionHeader("Reviews") }
+        // AI summaries are opt-in: only offered when a key is set, and only on tap.
+        if (state.aiAvailable && (state.weekly != null || state.monthly != null)) {
+            item {
+                OutlinedButton(
+                    onClick = { viewModel.summarizeWithAi() },
+                    enabled = !state.summarizing,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (state.summarizing) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Summarize with AI ✨")
+                    }
+                }
+            }
+        }
         state.weekly?.let { item { ReviewCard(it, state.weeklySummary) } }
         state.monthly?.let { item { ReviewCard(it, state.monthlySummary) } }
         if (state.weekly == null && state.monthly == null && !state.loading) {

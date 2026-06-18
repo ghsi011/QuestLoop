@@ -30,39 +30,59 @@ data class AddUiState(
     val message: String? = null,
 )
 
+/** The in-progress new-quest form. Held in the ViewModel (and a process-scoped
+ *  cache) so a half-typed quest survives leaving the Add screen and coming back. */
+data class QuestDraft(
+    val title: String = "",
+    val category: QuestCategory = QuestCategory.LIFE_ADMIN,
+    val difficulty: Difficulty = Difficulty.MEDIUM,
+    val priority: Priority = Priority.NORMAL,
+    val frequency: QuestFrequency = QuestFrequency.ONE_OFF,
+    val minutes: Int = 25,
+    val completionStyle: com.questloop.core.model.CompletionStyle = com.questloop.core.model.CompletionStyle.BINARY,
+    val targetCount: Int = 8,
+    val unit: String = "",
+    val quickText: String = "",
+    val goalText: String = "",
+)
+
 class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
 
     private val _state = MutableStateFlow(AddUiState())
     val state: StateFlow<AddUiState> = _state.asStateFlow()
 
-    fun addQuest(
-        title: String,
-        category: QuestCategory,
-        difficulty: Difficulty,
-        priority: Priority,
-        frequency: QuestFrequency,
-        estimatedMinutes: Int,
-        completionStyle: com.questloop.core.model.CompletionStyle = com.questloop.core.model.CompletionStyle.BINARY,
-        targetCount: Int? = null,
-        unit: String? = null,
-        onDone: () -> Unit,
-    ) {
+    // Restore the draft left from a previous visit (e.g. before navigating away).
+    private val _draft = MutableStateFlow(savedDraft)
+    val draft: StateFlow<QuestDraft> = _draft.asStateFlow()
+
+    fun updateDraft(transform: (QuestDraft) -> QuestDraft) {
+        _draft.update(transform)
+        savedDraft = _draft.value
+    }
+
+    /** Adds the quest built from the current draft, then clears the manual form. */
+    fun addQuest(onDone: () -> Unit) {
+        val d = _draft.value
+        if (d.title.isBlank()) return
+        val isQuantitative = d.completionStyle == com.questloop.core.model.CompletionStyle.QUANTITATIVE
         val quest = Quest(
             id = "user-${UUID.randomUUID()}",
-            title = title.trim(),
-            category = category,
-            frequency = frequency,
-            difficulty = difficulty,
-            priority = priority,
-            estimatedMinutes = estimatedMinutes,
-            isReductionQuest = category == QuestCategory.BAD_HABIT_REDUCTION,
-            completionStyle = completionStyle,
-            targetCount = targetCount,
-            unit = unit,
+            title = d.title.trim(),
+            category = d.category,
+            frequency = d.frequency,
+            difficulty = d.difficulty,
+            priority = d.priority,
+            estimatedMinutes = d.minutes,
+            isReductionQuest = d.category == QuestCategory.BAD_HABIT_REDUCTION,
+            completionStyle = d.completionStyle,
+            targetCount = if (isQuantitative) d.targetCount else null,
+            unit = if (isQuantitative) d.unit.ifBlank { null } else null,
         )
         viewModelScope.launch {
             repository.addQuest(quest)
             repository.completeOnboardingQuest(SampleData.ONBOARDING_CREATE, AppClock.todayEpochDay())
+            // Reset the manual form (keep any AI brain-dump / goal text).
+            updateDraft { QuestDraft(quickText = it.quickText, goalText = it.goalText) }
             onDone()
         }
     }
@@ -185,4 +205,9 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
         }
     }
 
+    private companion object {
+        // Process-scoped so a half-typed quest survives leaving the Add screen
+        // (whose nav entry is popped) and coming back. Lost only on process death.
+        var savedDraft = QuestDraft()
+    }
 }

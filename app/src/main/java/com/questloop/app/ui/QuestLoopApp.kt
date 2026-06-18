@@ -77,12 +77,18 @@ private fun tabForRoute(route: String?): Dest? = when (route) {
     else -> null // "add" is a modal with no owning tab
 }
 
-/** Switch tabs, saving the outgoing tab's stack and restoring the target's. */
+/**
+ * Switch tabs, always landing on the tab's ROOT screen. Any sub-screen open under
+ * a tab (quest bank, add, habits, …) is popped and is NOT restored when you come
+ * back — re-selecting a tab is a clean reset to its main view. (Draft input that
+ * should survive, e.g. a half-typed quest, is persisted in its ViewModel, not the
+ * back stack.)
+ */
 private fun NavController.switchTab(route: String) {
     navigate(route) {
-        popUpTo(graph.findStartDestination().id) { saveState = true }
+        popUpTo(graph.findStartDestination().id) { saveState = false }
         launchSingleTop = true
-        restoreState = true
+        restoreState = false
     }
 }
 
@@ -167,16 +173,8 @@ private fun QuestLoopMain(repository: QuestRepository) {
                 Dest.entries.forEach { dest ->
                     NavigationBarItem(
                         selected = activeTab == dest,
-                        onClick = {
-                            if (activeTab == dest) {
-                                // Re-tap the current tab: return to its root view (e.g.
-                                // Quests -> pop the Quest Bank). No-op if already there.
-                                val popped = navController.popBackStack(dest.route, inclusive = false)
-                                if (!popped) navController.switchTab(dest.route)
-                            } else {
-                                navController.switchTab(dest.route)
-                            }
-                        },
+                        // Always go to the tab's root, whether or not it's the active tab.
+                        onClick = { navController.switchTab(dest.route) },
                         icon = { Icon(dest.icon, contentDescription = dest.label) },
                         label = { Text(dest.label) },
                     )
@@ -200,9 +198,10 @@ private fun QuestLoopMain(repository: QuestRepository) {
                     vm,
                     snackbarHostState,
                     onOpenAchievements = { navController.openOnce("achievements") },
-                    // Enter the Quests tab first so the Bank lives under that tab
-                    // (correct tab highlight + re-tap returns to the Quests list).
-                    onOpenQuestBank = { navController.switchTab(Dest.QUESTS.route); navController.openOnce("quest-bank") },
+                    // Open the Bank in one navigation (no tab-switch underneath, so
+                    // back returns to Today). tabForRoute lights the Quests tab; a
+                    // tab tap still resets cleanly to the Quests root.
+                    onOpenQuestBank = { navController.openOnce("quest-bank") },
                     onOpenAddQuest = { navController.openOnce("add") },
                 )
             }

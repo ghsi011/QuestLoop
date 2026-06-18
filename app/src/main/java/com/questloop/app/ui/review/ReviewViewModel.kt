@@ -16,9 +16,13 @@ data class ReviewUiState(
     val loading: Boolean = true,
     val weekly: ReviewGenerator.Review? = null,
     val monthly: ReviewGenerator.Review? = null,
-    /** Short human summary per period; fills in shortly after the cards (AI when on). */
+    /** Per-period summary: a terse deterministic line by default, replaced by AI on request. */
     val weeklySummary: String? = null,
     val monthlySummary: String? = null,
+    /** Whether the "Summarize with AI" action is available (a key is configured). */
+    val aiAvailable: Boolean = false,
+    /** True while the user-triggered AI summary is in flight. */
+    val summarizing: Boolean = false,
 )
 
 class ReviewViewModel(private val repository: QuestRepository) : ViewModel() {
@@ -26,44 +30,38 @@ class ReviewViewModel(private val repository: QuestRepository) : ViewModel() {
     private val _state = MutableStateFlow(ReviewUiState())
     val state: StateFlow<ReviewUiState> = _state.asStateFlow()
 
-    // The review stats the AI summary was last written for, so re-entering the
-    // screen doesn't fire fresh network calls when nothing changed.
-    private var lastNarrationKey: String? = null
-
     fun load() {
         viewModelScope.launch {
             _state.update { it.copy(loading = true) }
             val today = AppClock.todayEpochDay()
             val weekly = repository.review("This week", AppClock.startOfWeek(today), today)
             val monthly = repository.review("This month", AppClock.startOfMonth(today), today)
-            // Seed the instant deterministic summary so the card never jumps; AI
-            // refines it in place when it's on (keeps an existing AI line on reload).
+            // Always show the instant, factual summary; AI is opt-in via the button.
             _state.update {
                 it.copy(
                     loading = false,
                     weekly = weekly,
                     monthly = monthly,
-                    weeklySummary = it.weeklySummary ?: AiNarrator.reviewFallback(weekly),
-                    monthlySummary = it.monthlySummary ?: AiNarrator.reviewFallback(monthly),
+                    weeklySummary = AiNarrator.reviewFallback(weekly),
+                    monthlySummary = AiNarrator.reviewFallback(monthly),
+                    aiAvailable = repository.aiConfig().usable,
                 )
-            }
-            val key = signature(weekly) + "|" + signature(monthly)
-            if (key != lastNarrationKey) {
-                lastNarrationKey = key
-                // Refresh the deterministic line for the current numbers, then narrate.
-                _state.update {
-                    it.copy(
-                        weeklySummary = AiNarrator.reviewFallback(weekly),
-                        monthlySummary = AiNarrator.reviewFallback(monthly),
-                    )
-                }
-                val weeklySummary = repository.narrateReview(weekly).text
-                val monthlySummary = repository.narrateReview(monthly).text
-                _state.update { it.copy(weeklySummary = weeklySummary, monthlySummary = monthlySummary) }
             }
         }
     }
 
-    private fun signature(r: ReviewGenerator.Review): String =
-        "${r.totalCompleted}/${r.totalAttempted}/${r.activeDays}/${r.xpEarned}"
+    /** User-triggered: replace the factual summaries with AI-written ones. */
+    fun summarizeWithAi() {
+        val weekly = _state.value.weekly ?: return
+        val monthly = _state.value.monthly ?: return
+        if (_state.value.summarizing) return
+        viewModelScope.launch {
+            _state.update { it.copy(summarizing = true) }
+            val weeklySummary = repository.narrateReview(weekly).text
+            val monthlySummary = repository.narrateReview(monthly).text
+            _state.update {
+                it.copy(summarizing = false, weeklySummary = weeklySummary, monthlySummary = monthlySummary)
+            }
+        }
+    }
 }
