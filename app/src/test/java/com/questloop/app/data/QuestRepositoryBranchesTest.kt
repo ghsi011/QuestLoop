@@ -46,6 +46,7 @@ class QuestRepositoryBranchesTest {
 
     private lateinit var db: QuestLoopDatabase
     private lateinit var repo: QuestRepository
+    private lateinit var prefs: FakePrefs
 
     private class FakePrefs(cap: Double = 0.0) : ProfilePreferences {
         private val state = MutableStateFlow(UserProfile(preferences = UserPreferences(monthlyRewardBudgetCap = cap)))
@@ -118,7 +119,8 @@ class QuestRepositoryBranchesTest {
             RuntimeEnvironment.getApplication(),
             QuestLoopDatabase::class.java,
         ).allowMainThreadQueries().build()
-        repo = QuestRepository(db.questDao(), db.completionDao(), FakePrefs())
+        prefs = FakePrefs()
+        repo = QuestRepository(db.questDao(), db.completionDao(), prefs)
     }
 
     @After
@@ -250,8 +252,8 @@ class QuestRepositoryBranchesTest {
 
     @Test
     fun `export includes archived ids and profile fields`() = runTest {
-        repo.setStreakGraceDays(4)
-        repo.setSensitiveOptIn(true)
+        prefs.setStreakGraceDays(4)
+        prefs.setSensitiveOptIn(true)
         repo.addQuest(quest("active"))
         repo.addQuest(quest("gone"))
         repo.archiveQuest("gone")
@@ -274,7 +276,7 @@ class QuestRepositoryBranchesTest {
         repo.addBadHabit(com.questloop.core.model.BadHabit(id = "b1", title = "Snacking", dailyLimit = 2))
         repo.addGoal(Goal(id = "g1", title = "Read more", category = QuestCategory.PERSONAL_GROWTH))
         repo.setBudgetCap(75.0)
-        repo.setStreakGraceDays(2)
+        prefs.setStreakGraceDays(2)
 
         val json = repo.exportJson()
         repo.deleteAllData()
@@ -374,7 +376,7 @@ class QuestRepositoryBranchesTest {
     @Test
     fun `current streak honours a user-configured grace greater than one`() = runTest {
         // Active on days 1 and 4; a 2-day gap. With grace=2 the run survives.
-        repo.setStreakGraceDays(2)
+        prefs.setStreakGraceDays(2)
         repo.addQuest(quest("a"))
         repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)
         repo.completeQuest(quest("a"), epochDay = 4, result = CompletionResult.COMPLETED)
@@ -384,7 +386,7 @@ class QuestRepositoryBranchesTest {
 
     @Test
     fun `current streak breaks when the gap exceeds the configured grace`() = runTest {
-        repo.setStreakGraceDays(2)
+        prefs.setStreakGraceDays(2)
         repo.addQuest(quest("a"))
         repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)
         repo.completeQuest(quest("a"), epochDay = 5, result = CompletionResult.COMPLETED)
