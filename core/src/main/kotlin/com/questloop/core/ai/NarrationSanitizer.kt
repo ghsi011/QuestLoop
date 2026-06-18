@@ -27,9 +27,22 @@ object NarrationSanitizer {
     private val CI = setOf(RegexOption.IGNORE_CASE)
 
     // Cosmetic, leading throat-clear prefixes ("Here's your review:", "Sure —").
-    private val LEADING_PREFIX = Regex(
-        "^(here'?s|here is|here are|sure|certainly|of course|okay|ok|alright|" +
-            "absolutely|got it|no problem|your review|your plan|today'?s review)\\b[^.\\n]{0,40}?[:\\-\\u2014\\u2013]\\s+",
+    // Two tiers, both deliberately conservative so we NEVER delete real content:
+    //  - STRONG openers are unambiguous preambles, so a short lead-in before the
+    //    terminator is allowed ("Here's your plan for today:").
+    //  - WEAK openers can also begin a real sentence ("Sure signs of progress:",
+    //    "Absolutely no progress this week — …"), so they're stripped only when a
+    //    terminator follows immediately (just spaces/commas in between).
+    // A bare hyphen is NOT a terminator — it occurs mid-sentence — only ':' and
+    // the em/en dashes are.
+    private val LEADING_PREFIX_STRONG = Regex(
+        "^(here'?s|here is|here are|your review|your plan|today'?s (review|plan))" +
+            "\\b[^.\\n]{0,40}?[:\\u2014\\u2013]\\s+",
+        CI,
+    )
+    private val LEADING_PREFIX_WEAK = Regex(
+        "^(sure|certainly|of course|okay|ok|alright|absolutely|got it|no problem)" +
+            "[ ,]*[:\\u2014\\u2013]\\s+",
         CI,
     )
     private val LEADING_BULLET = Regex("^\\s*[-*\\u2022]\\s+")
@@ -49,7 +62,10 @@ object NarrationSanitizer {
                 "killing it|crushing it|smashing it|nailing it|on fire)\\b",
             CI,
         ),
-        "FLATTERY" to Regex("\\b(crushing|killing|smashing|nailing) it\\b", CI),
+        "FLATTERY" to Regex(
+            "\\b(crushing|killing|smashing|nailing|crushed|killed|smashed|nailed) it\\b",
+            CI,
+        ),
         "FLATTERY" to Regex(
             "\\b(great|amazing|awesome|fantastic|incredible|excellent|wonderful) (job|work|effort|progress)\\b",
             CI,
@@ -154,11 +170,16 @@ object NarrationSanitizer {
 
     // The "it's not just X, it's Y" construction the product owner specifically dislikes.
     private val EM_DASH_NOT_JUST = Regex("\\bit'?s not (just )?[^.,\\u2014\\u2013-]+[,\\u2014\\u2013]\\s*it'?s\\b", CI)
-    private val EM_EN_DASH = Regex("[\\u2014\\u2013]")
+    // Only the em-dash signals the slop "construct"; the en-dash is the normal
+    // range separator in number-heavy reviews ("9–9 and 4–5"), so it must not
+    // trip the ≥2-dashes rule.
+    private val EM_DASH = Regex("\\u2014")
 
     private val VAGUE_HEDGE = Regex("\\b(perhaps|maybe|possibly|somewhat|kind of|sort of|a bit of)\\b", CI)
+    // Note: "so" is intentionally absent — it's overwhelmingly a conjunction in
+    // this product's own voice ("Energy's low, so it's three small things").
     private val INTENSIFIER = Regex(
-        "\\b(very|really|so|truly|incredibly|amazingly|absolutely|totally|extremely|highly|super|" +
+        "\\b(very|really|truly|incredibly|amazingly|absolutely|totally|extremely|highly|super|" +
             "deeply|wildly|insanely|remarkably|exceptionally|wonderfully|beautifully)\\b",
         CI,
     )
@@ -188,7 +209,7 @@ object NarrationSanitizer {
 
         BLOCKLIST.firstOrNull { it.second.containsMatchIn(text) }?.let { return Result(null, it.first) }
         if (EM_DASH_NOT_JUST.containsMatchIn(text)) return Result(null, "EM_DASH_CONSTRUCT")
-        if (EM_EN_DASH.findAll(text).count() >= 2) return Result(null, "EM_DASH_CONSTRUCT")
+        if (EM_DASH.findAll(text).count() >= 2) return Result(null, "EM_DASH_CONSTRUCT")
 
         if (EXCLAIM.containsMatchIn(text)) return Result(null, "FORMAT")
         if (EMOJI.containsMatchIn(text)) return Result(null, "FORMAT")
@@ -221,7 +242,8 @@ object NarrationSanitizer {
     /** Cosmetic repairs only: drop a leading prefix/bullet, soften "!" to ".", tidy. */
     private fun stripAndKeep(input: String): String {
         var t = input
-        t = LEADING_PREFIX.replaceFirst(t, "")
+        t = LEADING_PREFIX_STRONG.replaceFirst(t, "")
+        t = LEADING_PREFIX_WEAK.replaceFirst(t, "")
         t = LEADING_BULLET.replaceFirst(t, "")
         t = EXCLAIM.replace(t, ".")
         t = t.replace(Regex("\\.{2,}"), ".")

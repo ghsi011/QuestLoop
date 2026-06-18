@@ -90,9 +90,12 @@ class QuestLoopEngine(
                     (it.result == CompletionResult.SKIPPED || it.result == CompletionResult.FAILED)
             }
             .sumOf { it.xpAwarded.coerceAtLeast(0) }
-        // XP from low-effort (trivial/easy) quests already granted today.
+        // XP from low-effort (trivial/easy) quests already granted today. Meta
+        // maintenance is governed by its own daily cap, so exclude it here or it
+        // would double-count against the low-effort allowance and under-reward
+        // genuine easy quests.
         val lowEffortToday = others
-            .filter { it.countsAsActivity && it.difficulty.isLowEffort }
+            .filter { it.countsAsActivity && it.difficulty.isLowEffort && !it.isMeta }
             .sumOf { it.xpAwarded.coerceAtLeast(0) }
         // The streak is the run of active days *leading up to* today; excluding
         // today keeps it stable whether this is the first log or a re-log, so

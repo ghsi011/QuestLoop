@@ -171,4 +171,36 @@ class NarrationSanitizerTest {
 
     @Test fun `allows remember the deadline as a verb`() =
         pass(Mode.RATIONALE, "Remember the dentist call leads today, then the rest.")
+
+    // ---- regression: leading-prefix stripper must never delete real content ----
+
+    @Test fun `weak opener with content is not stripped (hyphen)`() =
+        pass(Mode.REVIEW, "Absolutely no progress this week - skipped all five sessions.")
+
+    @Test fun `weak opener with content is not stripped (colon)`() =
+        pass(Mode.REVIEW, "Sure signs of progress: 4 of 5 done, weekends were the gap.")
+
+    @Test fun `genuine throat-clear is still stripped`() = stripped(
+        Mode.REVIEW,
+        "Okay — 5 of 7 done, the gap was the weekend stretch.",
+        "5 of 7 done, the gap was the weekend stretch.",
+    )
+
+    // ---- regression: en-dash numeric ranges are not the em-dash construct ----
+
+    @Test fun `en-dash ranges pass`() =
+        pass(Mode.REVIEW, "Movement went 9–9 and focus held 4–5 across the week.")
+
+    // ---- regression: "so" is a conjunction, not an intensifier ----
+
+    @Test fun `repeated so conjunction passes`() =
+        pass(Mode.RATIONALE, "Three small things today, so it's easy to start so you keep going.")
+
+    // ---- regression: past-tense flattery is rejected like the present tense ----
+
+    @Test fun `rejects past-tense crushed it`() =
+        reject(Mode.REVIEW, "Four of five workouts logged. You crushed it.")
+
+    @Test fun `rejects past-tense nailed it`() =
+        reject(Mode.RATIONALE, "Start with the run since you nailed it yesterday.")
 }

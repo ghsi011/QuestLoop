@@ -43,12 +43,14 @@ object ReviewGenerator {
         xpByRecord: (CompletionRecord) -> Long = { 0L },
     ): Review {
         val attempted = records.filter { it.result != CompletionResult.RESCHEDULED }
-        val completed = records.filter {
-            it.result == CompletionResult.COMPLETED || it.result == CompletionResult.PARTIAL
-        }
+        // "Completed" / "active" must mean genuine activity: a zero-progress
+        // partial ("0 of 8 glasses") is recorded as PARTIAL but countsAsActivity
+        // is false, so it must not inflate totals, rates, or active days (matches
+        // AchievementEngine, which is the source of truth for what counts).
+        val completed = records.filter { it.countsAsActivity }
         val xpEarned = records.sumOf { xpByRecord(it) }
         val activeDays = records
-            .filter { it.result == CompletionResult.COMPLETED || it.result == CompletionResult.PARTIAL }
+            .filter { it.countsAsActivity }
             .map { it.epochDay }
             .toSet().size
 
@@ -56,9 +58,7 @@ object ReviewGenerator {
             val catRecords = records.filter { it.category == cat }
             CategoryStat(
                 category = cat,
-                completed = catRecords.count {
-                    it.result == CompletionResult.COMPLETED || it.result == CompletionResult.PARTIAL
-                },
+                completed = catRecords.count { it.countsAsActivity },
                 attempted = catRecords.count { it.result != CompletionResult.RESCHEDULED },
                 xp = catRecords.sumOf { xpByRecord(it) },
             )

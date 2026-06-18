@@ -76,16 +76,20 @@ class QuestGenerator(
 
         val selected = mutableListOf<QuestInstance>()
         var usedMinutes = 0
-        val categoryCount = mutableMapOf<QuestCategory, Int>()
-        var metaIncluded = 0
         // Cap any single category to keep the day varied (no chore-only days).
         val perCategoryCap = maxOf(2, kotlin.math.ceil(maxQuests * 0.6).toInt())
 
-        // Hard limits that always apply (count, time, difficulty, meta budget).
+        // Routines are the always-on daily backbone: they're exempt from the
+        // count / meta / variety caps (which govern only the real picks) so they
+        // neither get crowded out nor crowd the real quests out. They still
+        // consume real time, so they count toward the time budget.
+        val routineIds = request.routineQuests.map { it.id }.toSet()
+        fun realPicks() = selected.filter { it.quest.id !in routineIds }
+
         fun canAdd(quest: Quest): Boolean {
-            if (selected.size >= maxQuests) return false
+            if (realPicks().size >= maxQuests) return false
             if (quest.difficulty.ordinal > difficultyCeiling.ordinal) return false
-            if (quest.category.isMeta && metaIncluded >= 1) return false
+            if (quest.category.isMeta && realPicks().any { it.quest.category.isMeta }) return false
             if (enforceTimeBudget && usedMinutes + quest.estimatedMinutes > availableMinutes && selected.isNotEmpty()) {
                 return false
             }
@@ -99,8 +103,6 @@ class QuestGenerator(
                 scheduledEpochDay = request.epochDay,
             )
             usedMinutes += quest.estimatedMinutes
-            categoryCount[quest.category] = categoryCount.getOrDefault(quest.category, 0) + 1
-            if (quest.category.isMeta) metaIncluded++
         }
 
         // Routine quests form the minimal daily loop: always shown first (unless
@@ -123,7 +125,7 @@ class QuestGenerator(
         while (iter.hasNext()) {
             val quest = iter.next()
             if (!canAdd(quest)) continue
-            if (categoryCount.getOrDefault(quest.category, 0) >= perCategoryCap) continue
+            if (realPicks().count { it.quest.category == quest.category } >= perCategoryCap) continue
             add(quest)
             iter.remove()
         }

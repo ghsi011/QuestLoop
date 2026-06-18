@@ -65,6 +65,19 @@ class ReviewGeneratorTest {
     }
 
     @Test
+    fun `zero-progress partial does not inflate completed or active days`() {
+        val records = listOf(
+            rec(100, QuestCategory.HEALTH, id = "a"), // genuine completion
+            // PARTIAL with fraction 0.0 (helper) -> countsAsActivity is false.
+            rec(101, QuestCategory.HEALTH, result = CompletionResult.PARTIAL, id = "b"),
+        )
+        val review = ReviewGenerator.generate("This week", records) { 10 }
+        assertEquals(1, review.totalCompleted)
+        assertEquals(1, review.activeDays)
+        assertEquals(2, review.totalAttempted) // both still count as attempts
+    }
+
+    @Test
     fun `empty period does not crash`() {
         val review = ReviewGenerator.generate("Empty", emptyList())
         assertEquals(0, review.totalCompleted)
