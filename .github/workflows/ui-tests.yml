@@ -53,6 +53,37 @@ jobs:
       - name: Merged coverage report
         if: always()
         run: ./gradlew :app:jacocoTestReport --console=plain
+      - name: Coverage summary (execution data + per-package)
+        if: always()
+        run: |
+          echo "== execution data files on disk =="
+          find app/build -name '*.ec' 2>/dev/null | sort
+          find app/build -name 'testDebugUnitTest.exec' 2>/dev/null | sort
+          echo "== JaCoCo totals + per-package (INSTRUCTION) =="
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET, glob
+          xmls = glob.glob('app/build/reports/jacoco/**/*.xml', recursive=True)
+          if not xmls:
+              print("no jacoco xml found")
+          for f in xmls:
+              root = ET.parse(f).getroot()
+              print("report:", f)
+              for c in root.findall('counter'):
+                  cov, miss = int(c.get('covered')), int(c.get('missed'))
+                  tot = cov + miss
+                  print(f"  {c.get('type'):12} {100.0*cov/tot if tot else 0:5.1f}%  ({cov}/{tot})")
+              print("  -- per package (INSTRUCTION), lowest first --")
+              rows = []
+              for p in root.findall('package'):
+                  ic = p.find("counter[@type='INSTRUCTION']")
+                  if ic is None:
+                      continue
+                  cov, miss = int(ic.get('covered')), int(ic.get('missed'))
+                  tot = cov + miss
+                  rows.append((100.0*cov/tot if tot else 0, tot, p.get('name')))
+              for pct, tot, name in sorted(rows):
+                  print(f"    {pct:5.1f}%  ({tot:5d} instr)  {name}")
+          PY
       - name: Merged coverage gate (>= 90%)
         if: always()
         continue-on-error: true
