@@ -155,10 +155,6 @@ fun SettingsScreen(
                     valueRange = 1f..12f,
                     steps = 10,
                 )
-                Text(
-                    "How many quests QuestLoop puts in your daily plan.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
             }
         }
 

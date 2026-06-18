@@ -629,28 +629,6 @@ class QuestRepository(
         return result
     }
 
-    /**
-     * One line explaining the shape of today's plan (energy/time/deadlines),
-     * AI-narrated when AI is on, otherwise a terse factual line.
-     */
-    suspend fun planRationale(
-        plan: QuestGenerator.DailyPlan,
-        checkIn: EnergyCheckIn?,
-        epochDay: Long,
-    ): AiNarrator.Narration {
-        val profile = profileStore.profile.first()
-        val availableMinutes = checkIn?.availableMinutes ?: profile.preferences.defaultAvailableMinutes
-        val facts = AiNarrator.PlanFacts.from(plan, checkIn, availableMinutes, epochDay)
-        val config = profileStore.getAiConfig()
-        if (!config.usable) return AiNarrator.Narration(AiNarrator.planFallback(facts), fromAi = false)
-        val result = aiCallGuard.keepAwake {
-            AiNarrator(OpenRouterClient(config.apiKey, config.model))
-                .rationale(facts, sanitize = config.filterWording)
-        }
-        if (!result.fromAi && result.note != null) recordAiError(config.model, "plan rationale: ${result.note}")
-        return result
-    }
-
     /** AI errors are logged off the main thread (the diagnostics file is read+rewritten). */
     private suspend fun recordAiError(model: String, message: String) =
         withContext(Dispatchers.IO) { aiDiagnostics.record(model, message) }

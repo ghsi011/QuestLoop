@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -26,6 +27,7 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -134,8 +136,8 @@ fun TodayContent(state: TodayUiState, actions: TodayActions, onOpenAchievements:
             )
         }
 
-        state.signals.firstOrNull()?.let { signal ->
-            item { SafetyBanner(signal = signal, extra = state.signals.size - 1) }
+        if (state.signals.isNotEmpty()) {
+            item { SafetyBanner(state.signals) }
         }
 
         item { EnergyCheckInRow(selectedEnergy = state.energy, onSelect = actions.onCheckIn) }
@@ -254,22 +256,38 @@ private fun EnergyBudgetBar(plannedMinutes: Int, availableMinutes: Int) {
 
 /** One slim banner for the top safety signal (replaces a card per signal). */
 @Composable
-private fun SafetyBanner(signal: SafetyGuard.Signal, extra: Int) {
-    val emoji = when (signal.severity) {
+private fun SafetyBanner(signals: List<SafetyGuard.Signal>) {
+    if (signals.isEmpty()) return
+    // Reset expand/dismiss when the signals themselves change.
+    val key = signals.joinToString("|") { it.message }
+    var expanded by rememberSaveable(key) { mutableStateOf(false) }
+    var dismissed by rememberSaveable(key) { mutableStateOf(false) }
+    if (dismissed) return
+
+    fun emoji(s: SafetyGuard.Signal) = when (s.severity) {
         SafetyGuard.Severity.WARNING -> "⚠️"
         SafetyGuard.Severity.SUGGESTION -> "💡"
         SafetyGuard.Severity.INFO -> "ℹ️"
     }
-    val suffix = if (extra > 0) "  (+$extra)" else ""
+    val shown = if (expanded) signals else signals.take(1)
     Card(
         Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
-        Text(
-            "$emoji ${signal.message}$suffix",
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(12.dp),
-        )
+        Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 4.dp)) {
+            shown.forEach { s ->
+                Text("${emoji(s)} ${s.message}", style = MaterialTheme.typography.bodySmall)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (signals.size > 1) {
+                    TextButton(onClick = { expanded = !expanded }) {
+                        Text(if (expanded) "Show less" else "Show ${signals.size - 1} more")
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = { dismissed = true }) { Text("Dismiss") }
+            }
+        }
     }
 }
 
@@ -277,7 +295,8 @@ private fun SafetyBanner(signal: SafetyGuard.Signal, extra: Int) {
 @Composable
 private fun EnergyCheckInRow(selectedEnergy: Int?, onSelect: (energy: Int, minutes: Int) -> Unit) {
     Row(
-        Modifier.fillMaxWidth(),
+        // Group the chips so a screen reader announces them as one energy selector.
+        Modifier.fillMaxWidth().selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

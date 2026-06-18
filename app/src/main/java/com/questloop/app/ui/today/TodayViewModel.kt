@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.ui.AppClock
 import com.questloop.core.QuestLoopEngine
+import com.questloop.core.ai.AiNarrator
 import com.questloop.core.generation.QuestGenerator
 import com.questloop.core.model.CompletionRecord
 import com.questloop.core.model.CompletionResult
@@ -51,11 +52,6 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
     private val _state = MutableStateFlow(TodayUiState())
     val state: StateFlow<TodayUiState> = _state.asStateFlow()
 
-    // The plan shape the rationale was last written for, so we only re-narrate
-    // (and possibly hit the network) when the plan or energy actually changes —
-    // not on every post-completion refresh.
-    private var lastRationaleKey: String? = null
-
     init {
         viewModelScope.launch {
             repository.seedIfEmpty()
@@ -63,7 +59,7 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
         }
     }
 
-    fun refresh(narrate: Boolean = true) {
+    fun refresh() {
         viewModelScope.launch {
             _state.update { it.copy(loading = true) }
             val today = AppClock.todayEpochDay()
@@ -105,20 +101,14 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
                     energy = checkIn?.energy,
                     plannedMinutes = planned,
                     availableMinutes = available,
+                    // Deterministic, instant line — AI is reserved for the user-triggered
+                    // review summary, so Today never makes a silent network call.
+                    planRationale = if (plan.quests.isEmpty()) {
+                        null
+                    } else {
+                        AiNarrator.planFallback(AiNarrator.PlanFacts.from(plan, checkIn, available, today))
+                    },
                 )
-            }
-            val key = plan.quests.joinToString("|") { it.quest.id } + "#${checkIn?.energy ?: -1}"
-            if (key != lastRationaleKey) {
-                if (narrate) {
-                    lastRationaleKey = key
-                    val line = repository.planRationale(plan, checkIn, today).text
-                    _state.update { it.copy(planRationale = line) }
-                } else {
-                    // Plan changed (e.g. a quest was completed) but we're not re-narrating
-                    // now — hide the now-stale line rather than show a wrong count. Next
-                    // narrating refresh (re-entry / energy change) writes a fresh one.
-                    _state.update { it.copy(planRationale = null) }
-                }
             }
         }
     }
@@ -163,9 +153,9 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
     private fun applyOutcome(outcome: QuestRepository.CompleteOutcome) {
         val effect = outcome.effect
         val toast = buildString {
-            if (effect.leveledUp) append("Level up! You reached level ${effect.newLevel}. ")
+            if (effect.leveledUp) append("Level ${effect.newLevel} reached. ")
             append(effect.outcome.explanation)
-            outcome.newlyUnlocked.firstOrNull()?.let { append(" 🏆 Achievement unlocked: ${it.title}!") }
+            outcome.newlyUnlocked.firstOrNull()?.let { append("  🏆 ${it.title}") }
         }
         _state.update {
             it.copy(
@@ -175,9 +165,7 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
                 pendingUndo = PendingUndo(outcome.instanceId, outcome.previousRecord),
             )
         }
-        // Don't re-narrate on every completion (avoids a network call per tap);
-        // the rationale refreshes on next load or energy change.
-        refresh(narrate = false)
+        refresh()
     }
 
     fun undoLast() {
