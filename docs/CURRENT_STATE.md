@@ -3,9 +3,10 @@
 An honest map of the codebase against the product spec, as of this snapshot.
 Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
 
-> Build caveat: this environment has no Android SDK and blocks Google's Maven,
-> so the **`:app` module is verified only by CI**, while the pure-Kotlin
-> `:core` logic compiles and is unit-tested everywhere.
+> Build note: `:app` builds and is unit-tested locally once
+> [`scripts/setup-android.sh`](../scripts/setup-android.sh) has installed the
+> Android SDK + JDK 17; only the emulator suite is CI-only (no `/dev/kvm` in the
+> sandbox). The pure-Kotlin `:core` logic compiles and is unit-tested everywhere.
 
 ## ✅ Fully implemented
 

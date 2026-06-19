@@ -72,8 +72,10 @@ deferred work. These reflect MVP choices, not permanent commitments.
 
 ## Known limitations & deferred work
 
-- The `:app` module is not compiled in the authoring sandbox (no Android SDK /
-  Google Maven); it is validated by CI's `android-build` job.
+- The `:app` module builds and unit-tests locally after running
+  `scripts/setup-android.sh`; only the emulator suite is CI-only (no `/dev/kvm`).
+  The full app pipeline lives in CI's `full-tests.yml` ("App build + lint + unit"
+  plus the emulator job).
 - Achievements/badges/titles/collections are scaffolded conceptually but not yet
   surfaced as a dedicated screen.
 - AI quest generation currently runs through the deterministic `FallbackSuggester`

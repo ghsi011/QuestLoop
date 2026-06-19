@@ -7,14 +7,15 @@ It's imported below so it loads in Claude Code too:
 
 ## Build & test
 
-Gradle multi-module project. **Only `:core` builds locally** in the agent
-sandbox (no Google Maven access for the Android Gradle Plugin) — validate any
-`:app` / Compose change through CI.
+Gradle multi-module project. **Both modules build locally** once you've run
+`scripts/setup-android.sh` (installs JDK 17 + a minimal Android SDK). The only
+thing that can't run locally is the emulator suite — no `/dev/kvm` in the
+sandbox — so validate Compose/UI behavior through CI's emulator job.
 
-- Core logic (runs locally): `./gradlew :core:test`
-- App unit tests — JUnit + Robolectric + MockWebServer (CI): `./gradlew :app:testDebugUnitTest`
-- Debug APK (CI): `./gradlew :app:assembleDebug`
-- Lint (CI): `./gradlew :app:lintDebug`
+- Core logic: `./gradlew :core:test`
+- App unit tests — JUnit + Robolectric + MockWebServer: `./gradlew :app:testDebugUnitTest`
+- Debug APK: `./gradlew :app:assembleDebug`
+- Lint: `./gradlew :app:lintDebug`
 - Instrumented UI on an emulator (CI only): `./gradlew :app:connectedDebugAndroidTest`
 
 CI layout: **`smoke.yml`** runs the `:core` suite on every push/PR (fast gate,
