@@ -92,7 +92,11 @@ class OpenAiAuthService(
     private fun postForm(form: Map<String, String>, priorRefresh: String): Result<OpenAiOAuth.OpenAiTokens> =
         runCatching {
             val body = FormBody.Builder().apply { form.forEach { (k, v) -> add(k, v) } }.build()
-            val request = Request.Builder().url(tokenEndpoint).post(body).build()
+            val request = Request.Builder()
+                .url(tokenEndpoint)
+                .addHeader("User-Agent", OpenAiOAuth.USER_AGENT)
+                .post(body)
+                .build()
             http.newCall(request).execute().use { response ->
                 val text = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {

@@ -94,6 +94,26 @@ class OpenAiOAuthTest {
     }
 
     @Test
+    fun `parseTokenResponse assumes an hour when expires_in is missing`() {
+        val tokens = OpenAiOAuth.parseTokenResponse("""{"access_token":"a","refresh_token":"r"}""", nowEpochSec = 100)!!
+        assertEquals(100 + 3600, tokens.expiresAtEpochSec)
+    }
+
+    @Test
+    fun `parseTokenResponse reads the account id from the access token when the id_token lacks it`() {
+        val idToken = jwt("""{"sub":"u1"}""") // no account id
+        val accessToken = jwt("""{"https://api.openai.com/auth":{"chatgpt_account_id":"from-access"}}""")
+        val body = """{"access_token":"$accessToken","refresh_token":"r","id_token":"$idToken"}"""
+        assertEquals("from-access", OpenAiOAuth.parseTokenResponse(body, nowEpochSec = 0)!!.accountId)
+    }
+
+    @Test
+    fun `accountId reads the top-level claim and the organizations fallback`() {
+        assertEquals("top", OpenAiOAuth.accountId(jwt("""{"chatgpt_account_id":"top"}""")))
+        assertEquals("org-1", OpenAiOAuth.accountId(jwt("""{"organizations":[{"id":"org-1"},{"id":"org-2"}]}""")))
+    }
+
+    @Test
     fun `parseTokenResponse returns null without an access token or on junk`() {
         assertNull(OpenAiOAuth.parseTokenResponse("""{"refresh_token":"x"}""", nowEpochSec = 0))
         assertNull(OpenAiOAuth.parseTokenResponse("not json", nowEpochSec = 0))

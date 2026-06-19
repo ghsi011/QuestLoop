@@ -51,10 +51,11 @@ class OpenAiClient(
             .addHeader("Authorization", "Bearer ${tokens.accessToken}")
             .addHeader("OpenAI-Beta", OpenAiOAuth.OPENAI_BETA)
             .addHeader("originator", OpenAiOAuth.ORIGINATOR)
-            .addHeader("session_id", UUID.randomUUID().toString())
+            .addHeader("User-Agent", OpenAiOAuth.USER_AGENT)
+            .addHeader("session-id", UUID.randomUUID().toString())
             .addHeader("Accept", "text/event-stream")
             .post(payload.toRequestBody(JSON_MEDIA))
-        if (tokens.accountId.isNotBlank()) builder.addHeader("chatgpt-account-id", tokens.accountId)
+        if (tokens.accountId.isNotBlank()) builder.addHeader("ChatGPT-Account-Id", tokens.accountId)
 
         return try {
             http.newCall(builder.build()).execute().use { response ->

@@ -64,8 +64,8 @@ data class AiConfig(
          */
         const val DEFAULT_MODEL = "openrouter/free"
 
-        /** Default OpenAI model for the Codex/Responses backend. */
-        const val OPENAI_DEFAULT_MODEL = "gpt-5"
+        /** Default OpenAI model for the Codex/Responses backend (current ChatGPT line). */
+        const val OPENAI_DEFAULT_MODEL = "gpt-5.4"
 
         /**
          * Quick-pick free models. The first auto-selects a working free model; the
@@ -80,10 +80,15 @@ data class AiConfig(
             "qwen/qwen3-next-80b-a3b-instruct:free",
         )
 
-        /** Models served by the ChatGPT subscription Codex backend. */
+        /**
+         * Models served by the ChatGPT subscription Codex backend (the line opencode
+         * exposes). These rotate; the field is free-text so any current id can be pasted.
+         */
         val OPENAI_MODEL_PRESETS = listOf(
-            "gpt-5",
-            "gpt-5-codex",
+            "gpt-5.5",
+            "gpt-5.4",
+            "gpt-5.4-mini",
+            "gpt-5.3-codex-spark",
         )
     }
 }

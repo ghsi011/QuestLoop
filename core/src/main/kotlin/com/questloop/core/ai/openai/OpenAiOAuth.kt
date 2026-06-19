@@ -5,6 +5,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.net.URLEncoder
@@ -40,14 +41,26 @@ object OpenAiOAuth {
 
     const val SCOPE = "openid profile email offline_access"
 
-    /** Identifies the caller to OpenAI's backend; mirrors the Codex CLI value. */
-    const val ORIGINATOR = "codex_cli_rs"
+    /**
+     * Identifies the calling app to OpenAI's backend, sent both as an authorize
+     * param and as a request header. Each client uses its own id (the Codex CLI
+     * sends `codex_cli_rs`, opencode `opencode`, Zed `zed`); the backend accepts
+     * arbitrary values, so we send our own. If a future backend ever requires a
+     * known originator, this is the single knob to change.
+     */
+    const val ORIGINATOR = "questloop"
+
+    /** Sent as the User-Agent on every OpenAI call (opencode/Codex send their own). */
+    const val USER_AGENT = "QuestLoop"
 
     /** Codex backend that serves a ChatGPT subscription (not api.openai.com). */
     const val API_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses"
 
     /** Beta header the Responses API requires. */
     const val OPENAI_BETA = "responses=experimental"
+
+    /** Assumed access-token lifetime when the token response omits expires_in. */
+    private const val DEFAULT_EXPIRES_IN_SEC = 3600L
 
     /** Custom claim namespace on the id_token that carries the account id. */
     private const val AUTH_CLAIM = "https://api.openai.com/auth"
@@ -129,12 +142,11 @@ object OpenAiOAuth {
         "code_verifier" to verifier,
     )
 
-    /** Form body for refreshing an expired access token. */
+    /** Form body for refreshing an expired access token (matches opencode/Codex). */
     fun refreshForm(refreshToken: String): Map<String, String> = linkedMapOf(
         "grant_type" to "refresh_token",
         "client_id" to CLIENT_ID,
         "refresh_token" to refreshToken,
-        "scope" to SCOPE,
     )
 
     /**
@@ -153,22 +165,33 @@ object OpenAiOAuth {
         val access = obj["access_token"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: return null
         val refresh = obj["refresh_token"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
             ?: priorRefresh
-        val expiresIn = obj["expires_in"]?.jsonPrimitive?.intOrNull ?: 0
+        val expiresIn = obj["expires_in"]?.jsonPrimitive?.intOrNull?.toLong()?.takeIf { it > 0 }
+            ?: DEFAULT_EXPIRES_IN_SEC
         val idToken = obj["id_token"]?.jsonPrimitive?.contentOrNull.orEmpty()
-        val account = accountId(idToken).orEmpty()
+        // The account id can live in the id_token or, failing that, the access token.
+        val account = (accountId(idToken) ?: accountId(access)).orEmpty()
         return OpenAiTokens(
             accessToken = access,
             refreshToken = refresh,
             accountId = account,
-            expiresAtEpochSec = if (expiresIn > 0) nowEpochSec + expiresIn else 0L,
+            expiresAtEpochSec = nowEpochSec + expiresIn,
         )
     }
 
-    /** Reads the `chatgpt_account_id` claim from a (JWT) id_token, or null. */
-    fun accountId(idToken: String): String? {
-        val claims = decodeJwtPayload(idToken) ?: return null
-        val auth = claims[AUTH_CLAIM]?.jsonObject ?: return null
-        return auth[ACCOUNT_ID_CLAIM]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+    /**
+     * Reads the ChatGPT account id from a JWT, trying (in opencode's order) the
+     * top-level `chatgpt_account_id`, the `https://api.openai.com/auth` claim, then
+     * the first organization id. Returns null when the token isn't a JWT or carries
+     * none of them.
+     */
+    fun accountId(token: String): String? {
+        val claims = decodeJwtPayload(token) ?: return null
+        claims[ACCOUNT_ID_CLAIM]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }?.let { return it }
+        claims[AUTH_CLAIM]?.jsonObject?.get(ACCOUNT_ID_CLAIM)?.jsonPrimitive?.contentOrNull
+            ?.takeIf { it.isNotBlank() }?.let { return it }
+        return claims["organizations"]?.let { runCatching { it.jsonArray }.getOrNull() }
+            ?.firstOrNull()?.let { runCatching { it.jsonObject }.getOrNull() }
+            ?.get("id")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
     }
 
     /** Base64url-decodes the middle segment of a JWT into its claims object. */

@@ -107,8 +107,9 @@ QuestLoop: a gamified quest/habit Android app. Gradle multi-module:
   fallback as if it were AI output. Pass the user's existing quests for dedup.
 - The prompt asks the model to choose difficulty (→ XP), `completionStyle`,
   `frequency`, and `priority`. Default model `openrouter/free` (auto-router)
-  avoids stale-slug 404s; specific free-model slugs go stale often. OpenAI default
-  `gpt-5` (Codex backend).
+  avoids stale-slug 404s; specific free-model slugs go stale often. OpenAI sends our
+  own `originator`/User-Agent (`questloop`/`QuestLoop`, like opencode sends `opencode`),
+  and the Codex model line rotates (default `gpt-5.4`; the field is free-text).
 - Generated quests are reviewed/edited before saving — never auto-persisted.
 
 **Security / privacy**

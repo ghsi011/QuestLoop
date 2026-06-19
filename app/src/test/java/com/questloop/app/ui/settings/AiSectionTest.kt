@@ -31,7 +31,7 @@ class AiSectionTest {
         enabled = true,
         provider = AiProvider.OPENAI,
         openAiTokens = OpenAiOAuth.OpenAiTokens("at", "rt", accountId = "acct"),
-        openAiModel = "gpt-5",
+        openAiModel = "gpt-5.4",
     )
 
     private fun render(
@@ -77,9 +77,9 @@ class AiSectionTest {
         var savedModel: String? = null
         render(connectedOpenAi, onSaveOpenAi = { _, model, _ -> savedModel = model })
         composeRule.onNodeWithText("Signed in to ChatGPT").assertIsDisplayed()
-        composeRule.onNodeWithText("gpt-5-codex").performClick()
+        composeRule.onNodeWithText("gpt-5.4-mini").performClick()
         composeRule.onNodeWithText("Save").performClick()
-        assertEquals("gpt-5-codex", savedModel)
+        assertEquals("gpt-5.4-mini", savedModel)
     }
 
     @Test
