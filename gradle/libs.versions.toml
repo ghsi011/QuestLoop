@@ -18,7 +18,7 @@ espresso = "3.7.0"
 androidxTestCore = "1.7.0"
 androidxTestServices = "1.6.0"
 robolectric = "4.16.1"
-okhttp = "4.12.0"
+okhttp = "5.4.0"
 glance = "1.1.1"
 
 [libraries]
