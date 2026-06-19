@@ -12,9 +12,15 @@ QuestLoop: a gamified quest/habit Android app. Gradle multi-module:
   widget, reminders). Manual DI via `AppContainer` + `appViewModelFactory`.
 
 ## Build & CI workflow (important)
-- **The `:app` module does NOT build locally in the agent environment** (no
-  Google Maven access for the Android Gradle Plugin). Only `./gradlew :core:test`
-  runs locally. Validate all app/Compose changes via CI — review edits carefully.
+- **Both modules build locally** once the Android SDK + JDK 17 are present — run
+  `scripts/setup-android.sh` (installs JDK 17, the Android cmdline-tools, the
+  compileSdk platform + matching build-tools). Then `:core`, `:app`
+  unit/Robolectric tests, `assembleDebug`/`assembleRelease`, and `lintDebug` all
+  run locally. The **only** exception is the emulator suite
+  (`:app:connectedDebugAndroidTest`): it needs hardware virtualization
+  (`/dev/kvm`), absent in these sandboxes, so it stays on CI (the `[uitest]`
+  trigger). CI remains the authoritative gate — still review app/Compose edits
+  carefully, and prefer a `[uitest]` run to validate UI behavior.
 - **Per-push gate = `.github/workflows/smoke.yml`** (every push/PR): runs ONLY the
   `:core` logic suite + its coverage gate (via the reusable `core-tests.yml`), in
   ~1 minute. It does NOT build `:app`, run app unit tests, or lint.

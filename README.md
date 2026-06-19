@@ -57,14 +57,17 @@ push/PR (see [CI pipelines](#ci-pipelines)).
 ```
 
 Requires the Android SDK and access to Google's Maven repository
-(`dl.google.com`) for the Android Gradle Plugin and AndroidX. CI does this in
-the **Full tests** pipeline on a standard GitHub-hosted runner.
+(`dl.google.com`) for the Android Gradle Plugin and AndroidX. Run
+[`scripts/setup-android.sh`](scripts/setup-android.sh) once to install JDK 17 + a
+minimal Android SDK; then `:app` builds, unit/Robolectric tests, and lint all run
+locally. CI runs the same in the **Full tests** pipeline on a standard
+GitHub-hosted runner.
 
-> **Note on the development sandbox:** the environment this MVP was authored in
-> had no Android SDK and blocked `dl.google.com`, so only `:core` is compiled
-> and tested locally there. The `:app` module is written to standard AGP 8.5 /
-> Compose conventions and builds in CI / any normal Android dev environment.
-> Configuration-on-demand keeps `:core:test` from ever needing Google Maven.
+> **Note:** the only check that can't run locally is the emulator suite
+> (`:app:connectedDebugAndroidTest`), which needs hardware virtualization
+> (`/dev/kvm`) — it runs on CI (the `[uitest]` trigger). The `:app` module
+> follows standard AGP 8.13 / Compose conventions. Configuration-on-demand keeps
+> `:core:test` from ever needing Google Maven.
 
 ### CI pipelines
 
