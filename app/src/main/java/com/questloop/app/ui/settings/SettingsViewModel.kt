@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.questloop.app.util.launchSafely
 import com.questloop.app.data.AiConfig
+import com.questloop.app.data.AiProvider
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.data.ReminderConfig
 import com.questloop.core.model.QuestCategory
@@ -31,6 +32,12 @@ data class SettingsUiState(
      * same focus chip twice) both show instead of the second being swallowed.
      */
     val messageId: Long = 0,
+    /** Set to the browser URL the user must open to finish ChatGPT sign-in; consumed by the UI. */
+    val openAuthUrl: String? = null,
+    /** Monotonic id bumped per [openAuthUrl] emit so the launch effect isn't swallowed. */
+    val authId: Long = 0,
+    /** True while a ChatGPT sign-in is in flight (disables the button). */
+    val aiBusy: Boolean = false,
 )
 
 class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
@@ -65,12 +72,20 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
     fun saveAi(enabled: Boolean, apiKey: String, model: String, filterWording: Boolean) {
         launchSafely {
             val trimmedKey = apiKey.trim()
+            // Copy onto the current config so provider/OpenAI fields aren't wiped.
+            val current = repository.aiConfig()
             // setAiConfig can now throw if the secure key store rejects the write
             // (corrupt/unavailable Keystore); catch it so we report the failure
             // instead of crashing or falsely claiming success.
             val wrote = runCatching {
                 repository.setAiConfig(
-                    AiConfig(enabled = enabled, apiKey = trimmedKey, model = model.trim(), filterWording = filterWording),
+                    current.copy(
+                        enabled = enabled,
+                        provider = AiProvider.OPENROUTER,
+                        apiKey = trimmedKey,
+                        model = model.trim(),
+                        filterWording = filterWording,
+                    ),
                 )
             }.isSuccess
             reload()
@@ -78,6 +93,79 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
             emitMessage(if (persisted) "AI settings saved" else "Couldn't save your key — please try again.")
         }
     }
+
+    /** Switches the active AI backend, preserving each provider's saved credentials. */
+    fun setProvider(provider: AiProvider) {
+        launchSafely {
+            val current = repository.aiConfig()
+            if (current.provider == provider) return@launchSafely
+            repository.setAiConfig(current.copy(provider = provider))
+            reload()
+        }
+    }
+
+    /** Saves the OpenAI-specific settings (preserving the linked account + OpenRouter key). */
+    fun saveOpenAi(enabled: Boolean, model: String, filterWording: Boolean) {
+        launchSafely {
+            val current = repository.aiConfig()
+            runCatching {
+                repository.setAiConfig(
+                    current.copy(
+                        enabled = enabled,
+                        provider = AiProvider.OPENAI,
+                        openAiModel = model.trim(),
+                        filterWording = filterWording,
+                    ),
+                )
+            }
+            reload()
+            emitMessage("AI settings saved")
+        }
+    }
+
+    /**
+     * Starts the "Sign in with ChatGPT" OAuth flow. The repository hands back the
+     * browser URL via the callback (surfaced as [SettingsUiState.openAuthUrl] for
+     * the screen to open) and suspends until the loopback callback completes.
+     */
+    fun connectOpenAi() {
+        // Ignore taps while a sign-in is already in flight (the loopback wait can
+        // last minutes); a second flow would fail to bind the same port.
+        if (_state.value.aiBusy) return
+        // Claim the in-flight slot synchronously (before launching/suspending) so a
+        // quick second tap can't start a parallel sign-in that fails to rebind the
+        // loopback port.
+        _state.update { it.copy(aiBusy = true) }
+        launchSafely {
+            try {
+                val result = repository.connectOpenAi { url ->
+                    _state.update { it.copy(openAuthUrl = url, authId = it.authId + 1) }
+                }
+                reload()
+                emitMessage(
+                    result.fold(
+                        onSuccess = { "Connected to ChatGPT" },
+                        // Keep it user-facing: the underlying reason is in the AI error log.
+                        onFailure = { "Couldn't sign in to ChatGPT. Please try again." },
+                    ),
+                )
+            } finally {
+                // Always clear the in-flight flag so the sign-in button can't get stuck
+                // (e.g. if persisting the tokens or the reload throws).
+                _state.update { it.copy(aiBusy = false) }
+            }
+        }
+    }
+
+    fun disconnectOpenAi() {
+        launchSafely {
+            repository.disconnectOpenAi()
+            reload()
+            emitMessage("Disconnected from ChatGPT")
+        }
+    }
+
+    fun consumeOpenAuthUrl() = _state.update { it.copy(openAuthUrl = null) }
 
     fun setMaxDaily(value: Int) = update("Saved · up to $value quests a day") { repository.setMaxDaily(value) }
 

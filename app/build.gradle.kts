@@ -132,6 +132,10 @@ private val appCoverageExclusions = listOf(
     "**/MainActivity*.*", "**/QuestLoopApplication*.*",
     "**/di/**", "**/ui/theme/**", "**/widget/**",
     "**/reminders/BootReceiver*.*", "**/reminders/ReminderActionReceiver*.*",
+    // The production encrypted store is backed by the Android Keystore, which
+    // isn't available under Robolectric or the emulator; DataStoreKeyStore (the
+    // test double's backing) IS covered.
+    "**/EncryptedKeyStore*.*",
 )
 
 private fun coverageClassDirs() = files(
@@ -175,14 +179,18 @@ tasks.register<JacocoCoverageVerification>("jacocoCoverageVerification") {
             limit {
                 counter = "INSTRUCTION"
                 // Enforced floor for merged unit + instrumented (emulator) coverage
-                // of the testable surface. The same emulator suite now measures
-                // ~0.574: the Kotlin 2.3 / Compose compiler emit more bytecode, so
-                // the INSTRUCTION denominator grew while coverage held — a metric
-                // dilution, not a test regression. (JaCoCo can't see Robolectric-
-                // loaded UI classes, so unit tests don't lift this number; it's
-                // emulator-driven.) 0.55 restores the original ~2-3pt non-flaky
-                // margin. Raising it needs more emulator UI-interaction tests
-                // (e.g. walking the Achievements screen) — see docs/NEXT_STEPS.
+                // of the testable surface. Lowered from the original 0.58 by two
+                // compounding effects: (1) the Kotlin 2.3 / Compose compiler emits more
+                // bytecode, growing the INSTRUCTION denominator while coverage held — a
+                // metric dilution (not a regression) that settled the suite at ~0.574;
+                // and (2) the OpenAI ChatGPT-OAuth provider adds surface that can't be
+                // driven in unit OR emulator tests — the loopback browser sign-in and
+                // the auth-only UI effects (EncryptedKeyStore is excluded above). The
+                // testable OAuth parts ARE covered (OpenAiOAuth/codec in :core,
+                // OpenAiClient + OpenAiAuthService loopback + the OAuth repository path
+                // + AiSection). 0.55 keeps a non-flaky margin; raising it needs more
+                // emulator UI-interaction tests (incl. the OAuth settings flow) — see
+                // docs/NEXT_STEPS.
                 value = "COVEREDRATIO"
                 minimum = "0.55".toBigDecimal()
             }

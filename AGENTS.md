@@ -88,20 +88,36 @@ QuestLoop: a gamified quest/habit Android app. Gradle multi-module:
 - Open sub-screens/modals with `launchSingleTop`. If a sub-screen is reachable
   from two tabs, enter the owning tab first so back-stack/highlight stay correct.
 
-**AI (OpenRouter)**
+**AI (provider-pluggable: OpenRouter or OpenAI/ChatGPT)**
+- Two backends, chosen in Settings via `AiConfig.provider` (`AiProvider`):
+  `OPENROUTER` (paste an API key) or `OPENAI` ("Sign in with ChatGPT" OAuth). The
+  repository's `llmClient(config)` picks the `LlmClient` impl per provider; the
+  rest of the AI pipeline (`AiQuestService`/`AiNarrator`) is provider-agnostic.
+- OpenAI uses the Codex OAuth flow (loopback PKCE, client `app_EMoamEEZ…`) like
+  opencode/Codex CLI. Pure protocol bits — PKCE, authorize URL, token + JWT parse,
+  the Responses request/SSE codec — live in `:core` (`com.questloop.core.ai.openai`,
+  fully unit-tested); `:app` owns the loopback `ServerSocket` (127.0.0.1:1455),
+  browser intent, OkHttp, and secure token storage (`OpenAiAuthService`/`OpenAiClient`).
+  The chatgpt.com Codex backend is reverse-engineered and **can't be tested in the
+  sandbox** — validate live changes by hand. Tokens rotate on refresh: serialise
+  refresh+persist (`aiAuthMutex`) so concurrent calls don't burn each other's token.
 - Hold a partial `WAKE_LOCK` around the network call so a slow response survives
   the screen turning off (`AiCallGuard`).
 - Surface the provider's error body; never silently echo the deterministic
   fallback as if it were AI output. Pass the user's existing quests for dedup.
 - The prompt asks the model to choose difficulty (→ XP), `completionStyle`,
   `frequency`, and `priority`. Default model `openrouter/free` (auto-router)
-  avoids stale-slug 404s; specific free-model slugs go stale often.
+  avoids stale-slug 404s; specific free-model slugs go stale often. OpenAI sends our
+  own `originator`/User-Agent (`questloop`/`QuestLoop`, like opencode sends `opencode`),
+  and the Codex model line rotates (default `gpt-5.4`; the field is free-text).
 - Generated quests are reviewed/edited before saving — never auto-persisted.
 
 **Security / privacy**
-- API key: `EncryptedSharedPreferences` (Keystore), never plaintext DataStore;
-  excluded from export (`ExportSnapshot` omits `AiConfig`) and from the
-  diagnostics log. Wrap the encrypted store in `runCatching` to fail safe.
+- Credentials (OpenRouter key + OpenAI OAuth tokens): `EncryptedSharedPreferences`
+  (Keystore) via `SecureKeyStore`, never plaintext DataStore; excluded from export
+  (`ExportSnapshot` omits `AiConfig`) and scrubbed from the diagnostics log
+  (`redactSecrets` strips the key + access/refresh tokens). Wrap the encrypted
+  store in `runCatching` to fail safe.
 - All `PendingIntent`s use `FLAG_IMMUTABLE`; exported receivers validate
   `intent.action`.
 

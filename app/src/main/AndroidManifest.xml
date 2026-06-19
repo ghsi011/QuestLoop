@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Required for AI quest suggestions (OpenRouter). Only used when the user
-         enables AI and provides a key; all other features work offline. -->
+    <!-- Required for AI quest suggestions (OpenRouter API key, or OpenAI via the
+         ChatGPT OAuth login). Only used when the user enables AI and signs in; all
+         other features work offline. The OpenAI login also runs a short-lived
+         loopback server (127.0.0.1:1455) to catch the OAuth redirect — that needs
+         no extra permission. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Daily reminder notifications (opt-in, Android 13+). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

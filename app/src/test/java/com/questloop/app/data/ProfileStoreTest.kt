@@ -74,6 +74,38 @@ class ProfileStoreTest {
     }
 
     @Test
+    fun `openai provider and oauth tokens round-trip`() = runTest {
+        val ds = realDataStore()
+        val store = ProfileStore(ctx, ds)
+        val tokens = com.questloop.core.ai.openai.OpenAiOAuth.OpenAiTokens(
+            accessToken = "at-1",
+            refreshToken = "rt-1",
+            accountId = "acct-1",
+            expiresAtEpochSec = 9_999,
+        )
+        store.setAiConfig(
+            AiConfig(enabled = true, provider = AiProvider.OPENAI, openAiTokens = tokens, openAiModel = "gpt-5-codex"),
+        )
+        val cfg = store.getAiConfig()
+        assertEquals(AiProvider.OPENAI, cfg.provider)
+        assertEquals("gpt-5-codex", cfg.openAiModel)
+        assertEquals(tokens, cfg.openAiTokens)
+        assertEquals(true, cfg.openAiConnected)
+        assertEquals(true, cfg.usable)
+    }
+
+    @Test
+    fun `clearing the openai tokens unlinks the account`() = runTest {
+        val ds = realDataStore()
+        val store = ProfileStore(ctx, ds)
+        val tokens = com.questloop.core.ai.openai.OpenAiOAuth.OpenAiTokens("at", "rt", accountId = "a")
+        store.setAiConfig(AiConfig(enabled = true, provider = AiProvider.OPENAI, openAiTokens = tokens))
+        assertEquals(true, store.getAiConfig().openAiConnected)
+        store.setAiConfig(store.getAiConfig().copy(openAiTokens = null))
+        assertNull(store.getAiConfig().openAiTokens)
+    }
+
+    @Test
     fun `io error on read falls back to defaults without crashing`() = runTest {
         val store = ProfileStore(ctx, throwingDataStore(IOException("corrupt")))
         assertEquals(6, store.profile.first().preferences.maxDailyQuests)

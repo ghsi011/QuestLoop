@@ -55,6 +55,9 @@ class QuestRepository(
     private val safetyGuard: SafetyGuard = SafetyGuard(),
     private val aiDiagnostics: AiDiagnostics = NoopAiDiagnostics,
     private val aiCallGuard: AiCallGuard = NoopAiCallGuard,
+    private val openAiAuth: OpenAiAuth = OpenAiAuthService(),
+    // Injectable so tests can point the OpenAI client at a local MockWebServer.
+    private val openAiResponsesEndpoint: String = com.questloop.core.ai.openai.OpenAiOAuth.API_RESPONSES_URL,
 ) {
     private val exportJson = kotlinx.serialization.json.Json { prettyPrint = true; ignoreUnknownKeys = true }
 
@@ -66,6 +69,10 @@ class QuestRepository(
     // import merge so a concurrent edit + import can't clobber one another on a
     // stale snapshot (DataStore writes are atomic, but our read-then-write isn't).
     private val profileMutex = Mutex()
+
+    // Serialises the OpenAI OAuth refresh + persist so two concurrent AI calls
+    // can't both refresh and invalidate each other's (rotating) refresh token.
+    private val aiAuthMutex = Mutex()
 
     /** Days of history considered for safety signals. */
     private val safetyWindowDays = 30L
@@ -552,6 +559,54 @@ class QuestRepository(
     suspend fun aiConfig(): AiConfig = profileStore.getAiConfig()
     suspend fun setAiConfig(config: AiConfig) = profileStore.setAiConfig(config)
 
+    /**
+     * Runs the "Sign in with ChatGPT" OAuth flow and, on success, links the OpenAI
+     * account: stores the tokens, selects the OpenAI provider, and turns AI on.
+     * [openUrl] is invoked with the browser URL the user must open. Returns the
+     * failure reason (for the UI) when the handshake doesn't complete.
+     */
+    suspend fun connectOpenAi(openUrl: (String) -> Unit): Result<Unit> {
+        val tokens = openAiAuth.signIn(openUrl = openUrl).getOrElse { return Result.failure(it) }
+        // Persisting can throw if the encrypted key store rejects the write; surface
+        // that as a failure (so the caller shows a message + clears its busy state)
+        // rather than letting it propagate past the caller's cleanup.
+        return runCatching {
+            val config = profileStore.getAiConfig()
+            profileStore.setAiConfig(config.copy(enabled = true, provider = AiProvider.OPENAI, openAiTokens = tokens))
+        }
+    }
+
+    /** Unlinks the OpenAI account (drops the stored tokens); leaves OpenRouter config intact. */
+    suspend fun disconnectOpenAi() {
+        val config = profileStore.getAiConfig()
+        profileStore.setAiConfig(config.copy(openAiTokens = null))
+    }
+
+    /** Builds the [LlmClient] for the configured provider (OpenAI refreshes tokens lazily). */
+    private fun llmClient(config: AiConfig): com.questloop.core.ai.LlmClient = when (config.provider) {
+        AiProvider.OPENROUTER -> OpenRouterClient(config.apiKey, config.activeModel)
+        AiProvider.OPENAI -> OpenAiClient(config.activeModel, openAiResponsesEndpoint) { force -> freshOpenAiTokens(force) }
+    }
+
+    /**
+     * Returns a usable OpenAI token bundle, refreshing + persisting it when expired
+     * (or when [forceRefresh] is set after a 401). Serialised so concurrent AI calls
+     * don't both spend the rotating refresh token. Throws when not signed in or the
+     * refresh fails, so the error flows through [AiQuestService]'s per-call handling.
+     */
+    private suspend fun freshOpenAiTokens(forceRefresh: Boolean) = aiAuthMutex.withLock {
+        val config = profileStore.getAiConfig()
+        val tokens = config.openAiTokens
+            ?: throw java.io.IOException("You're not signed in to ChatGPT. Sign in again in Settings.")
+        val now = System.currentTimeMillis() / 1000
+        if (!forceRefresh && !tokens.isExpired(now)) return@withLock tokens
+        val refreshed = openAiAuth.refresh(tokens).getOrElse {
+            throw java.io.IOException("Your ChatGPT sign-in expired. Please sign in again in Settings.")
+        }
+        profileStore.setAiConfig(config.copy(openAiTokens = refreshed))
+        refreshed
+    }
+
     /** Recent AI error log (model + reason), for the user to export when AI misbehaves. */
     suspend fun aiDiagnosticsDump(): String = withContext(Dispatchers.IO) { aiDiagnostics.dump() }
     suspend fun clearAiDiagnostics() = withContext(Dispatchers.IO) { aiDiagnostics.clear() }
@@ -583,7 +638,7 @@ class QuestRepository(
         return if (config.usable) {
             // Hold a CPU wake lock so a slow response isn't dropped if the screen sleeps.
             val suggestion = aiCallGuard.keepAwake {
-                AiQuestService(OpenRouterClient(config.apiKey, config.model)).suggest(input)
+                AiQuestService(llmClient(config)).suggest(input)
             }
             // Record real failures so the user can export them for troubleshooting.
             suggestion.error?.let { recordAiError(config, it) }
@@ -608,7 +663,7 @@ class QuestRepository(
         return if (config.usable) {
             val existing = questDao.getActive().map { it.toModel() }
             val result = aiCallGuard.keepAwake {
-                AiQuestService(OpenRouterClient(config.apiKey, config.model)).decomposeGoal(goal, existing)
+                AiQuestService(llmClient(config)).decomposeGoal(goal, existing)
             }
             result.error?.let { recordAiError(config, it) }
             result
@@ -631,7 +686,7 @@ class QuestRepository(
             return AiQuestService.RefineResult(null, "AI is off — turn it on in Settings to refine quests.")
         }
         val result = aiCallGuard.keepAwake {
-            AiQuestService(OpenRouterClient(config.apiKey, config.model)).refine(quest, instruction)
+            AiQuestService(llmClient(config)).refine(quest, instruction)
         }
         result.error?.let { recordAiError(config, it) }
         return result
@@ -646,7 +701,7 @@ class QuestRepository(
         val config = profileStore.getAiConfig()
         if (!config.usable) return AiNarrator.Narration(AiNarrator.reviewFallback(review), fromAi = false)
         val result = aiCallGuard.keepAwake {
-            AiNarrator(OpenRouterClient(config.apiKey, config.model))
+            AiNarrator(llmClient(config))
                 .narrateReview(review, sanitize = config.filterWording)
         }
         // Record any AI miss (transport, style reject, or empty) so misbehaviour is
@@ -657,7 +712,7 @@ class QuestRepository(
 
     /** AI errors are logged off the main thread (the diagnostics file is read+rewritten). */
     private suspend fun recordAiError(config: AiConfig, message: String) =
-        withContext(Dispatchers.IO) { aiDiagnostics.record(config.model, redactApiKey(message, config.apiKey)) }
+        withContext(Dispatchers.IO) { aiDiagnostics.record(config.activeModel, redactSecrets(message, config)) }
 
     /** Erases all on-device data (SPEC §9: users can delete their data). */
     suspend fun deleteAllData() {
@@ -676,3 +731,18 @@ class QuestRepository(
  */
 internal fun redactApiKey(message: String, apiKey: String): String =
     if (apiKey.isNotBlank()) message.replace(apiKey, "***") else message
+
+/**
+ * Scrubs every provider secret from a diagnostics message: the OpenRouter API key
+ * and, for the OpenAI provider, the OAuth access + refresh tokens. Same rationale
+ * as [redactApiKey] — the tokens shouldn't appear in error bodies, but this makes
+ * sure they can never leak into an exported log.
+ */
+internal fun redactSecrets(message: String, config: AiConfig): String {
+    var out = redactApiKey(message, config.apiKey)
+    config.openAiTokens?.let { tokens ->
+        out = redactApiKey(out, tokens.accessToken)
+        out = redactApiKey(out, tokens.refreshToken)
+    }
+    return out
+}

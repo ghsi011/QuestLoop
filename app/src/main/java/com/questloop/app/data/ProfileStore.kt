@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.questloop.core.ai.openai.OpenAiOAuth
 import com.questloop.core.model.BadHabit
 import com.questloop.core.model.EnergyCheckIn
 import com.questloop.core.model.Goal
@@ -90,6 +91,8 @@ class ProfileStore(
         val AI_ENABLED = intPreferencesKey("ai_enabled")
         val AI_KEY = stringPreferencesKey("ai_api_key")
         val AI_MODEL = stringPreferencesKey("ai_model")
+        val AI_PROVIDER = stringPreferencesKey("ai_provider")
+        val AI_OPENAI_MODEL = stringPreferencesKey("ai_openai_model")
         val AI_FILTER_WORDING = intPreferencesKey("ai_filter_wording")
         val ONBOARDED = intPreferencesKey("onboarding_complete")
         val REMIND_ENABLED = intPreferencesKey("remind_enabled")
@@ -204,19 +207,34 @@ class ProfileStore(
         }
         return AiConfig(
             enabled = (prefs[Keys.AI_ENABLED] ?: 0) == 1,
+            provider = decodeProvider(prefs[Keys.AI_PROVIDER]),
             apiKey = apiKey,
             model = prefs[Keys.AI_MODEL] ?: AiConfig.DEFAULT_MODEL,
+            openAiTokens = decodeOpenAiTokens(keyStore.getOpenAiTokens()),
+            openAiModel = prefs[Keys.AI_OPENAI_MODEL] ?: AiConfig.OPENAI_DEFAULT_MODEL,
             // Default on: the slop filter protects unless the user opts out.
             filterWording = (prefs[Keys.AI_FILTER_WORDING] ?: 1) == 1,
         )
     }
 
+    private fun decodeProvider(raw: String?): AiProvider =
+        runCatching { AiProvider.valueOf(raw ?: "") }.getOrDefault(AiProvider.OPENROUTER)
+
+    private fun decodeOpenAiTokens(raw: String): OpenAiOAuth.OpenAiTokens? =
+        if (raw.isBlank()) null
+        else runCatching { json.decodeFromString(OpenAiOAuth.OpenAiTokens.serializer(), raw) }.getOrNull()
+
     override suspend fun setAiConfig(config: AiConfig) {
         keyStore.setApiKey(config.apiKey)
+        keyStore.setOpenAiTokens(
+            config.openAiTokens?.let { json.encodeToString(OpenAiOAuth.OpenAiTokens.serializer(), it) }.orEmpty(),
+        )
         dataStore.edit {
             it[Keys.AI_ENABLED] = if (config.enabled) 1 else 0
+            it[Keys.AI_PROVIDER] = config.provider.name
             it.remove(Keys.AI_KEY) // never persist the key in plaintext
             it[Keys.AI_MODEL] = config.model
+            it[Keys.AI_OPENAI_MODEL] = config.openAiModel
             it[Keys.AI_FILTER_WORDING] = if (config.filterWording) 1 else 0
         }
     }
