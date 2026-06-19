@@ -16,7 +16,7 @@ live in AGENTS.md — don't restate them here.)
 - `:app` unit (`app/src/test`, JUnit4 + Robolectric + MockWebServer): runs in
   `full-tests.yml` only (manual / nightly / release) — **not** on every push.
 - `:app` instrumented (`app/src/androidTest`): emulator only, in `full-tests.yml`'s
-  emulator job. There is no `[uitest]` commit trigger.
+  emulator job (manual / nightly / release, or a commit with `[uitest]`).
 
 ## ViewModel unit tests (`app/src/test/.../ui`)
 - Swap the Main dispatcher: `Dispatchers.setMain(UnconfinedTestDispatcher())` in

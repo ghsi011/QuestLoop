@@ -22,5 +22,15 @@ Deferred (rationale):
 - Usage-tracking hook — would live in git-ignored `settings.local.json` and write to a machine-local log; no value for cloud-first development.
 
 Flagged for the user (not auto-changed):
-- `release.yml` / `export-room-schema.yml` push filters still list a stale `claude/gamified-quest-todo-habits-vkiiyl` branch and `master`.
 - Global `~/.claude/CLAUDE.md` hardcodes a `Today's date` line that goes stale.
+
+## 2026-06-19 — follow-up (same session)
+
+User approved fixing the two CI items I'd flagged:
+- **Pruned stale branch filters** in `release.yml` + `export-room-schema.yml` →
+  `["main", "claude/**"]` (dropped dead `master` and the old hardcoded claude branch).
+- **Re-wired `[uitest]`**: `full-tests.yml` now also triggers on push, with every
+  job gated on `contains(commit message, '[uitest]')` so plain pushes stay a no-op;
+  the coverage-badge job is restricted to schedule / release / manual-from-main so a
+  `[uitest]` run can't clobber the published number. Docs (AGENTS.md, CLAUDE.md, the
+  testing rule, the `ci-structure` memory) updated to match — `[uitest]` is live again.

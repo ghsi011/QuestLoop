@@ -26,10 +26,12 @@ QuestLoop: a gamified quest/habit Android app. Gradle multi-module:
   push.** So app/Compose/lint/instrumented breakage is only caught when full-tests
   runs; the per-push smoke gate won't see it.
 - **Instrumented UI** (`:app:connectedDebugAndroidTest`) runs in full-tests' emulator
-  job (same triggers — there is no `[uitest]` commit trigger or `ui-tests.yml` any
-  more). `AppSmokeTest` walks the main screens, hard-asserts each rendered, and writes
-  a screenshot per screen to Test Storage, uploaded as the **`ui-screenshots`**
-  artifact (+ HTML report).
+  job. Triggers: manual dispatch, nightly, release — or push a commit with
+  **`[uitest]`** in the message to run the whole app + emulator suite on demand
+  (other pushes trigger the workflow but every job is gated off). The standalone
+  `ui-tests.yml` is gone; the emulator job now lives in full-tests. `AppSmokeTest`
+  walks the main screens, hard-asserts each rendered, and writes a screenshot per
+  screen to Test Storage, uploaded as the **`ui-screenshots`** artifact (+ HTML report).
 - **Releases**: tag pushes are 403-blocked, so releases are cut server-side by
   putting **`[release]`** in the commit message (empty commit is fine). It
   refreshes the rolling `v0.1.0-experimental` prerelease APK (debug-signed).

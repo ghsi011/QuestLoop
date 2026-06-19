@@ -19,8 +19,9 @@ sandbox (no Google Maven access for the Android Gradle Plugin) — validate any
 
 CI layout: **`smoke.yml`** runs the `:core` suite on every push/PR (fast gate,
 ~1 min). **`full-tests.yml`** runs app build + lint + unit + emulator UI + merged
-coverage — manually, nightly, and on release (NOT per-push). `[release]` cuts a
-release, `[schema]` regenerates the Room schema. Details in AGENTS.md.
+coverage — manually, nightly, and on release (NOT per-push) — or push a commit with
+`[uitest]` to run it on demand. `[release]` cuts a release, `[schema]` regenerates
+the Room schema. Details in AGENTS.md.
 
 ## Orientation: query the knowledge graph first
 

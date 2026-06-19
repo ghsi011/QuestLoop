@@ -2,17 +2,24 @@ name: Full tests
 
 # The complete suite: core logic, app build + lint + unit, instrumented UI on
 # an emulator, and the MERGED (unit + instrumented) coverage gate + badge.
-# Intentionally NOT run on normal pushes — too slow for a per-commit gate.
-# Trigger it:
+# Not run on normal pushes — too slow for a per-commit gate. Trigger it:
 #   • manually from the Actions tab ("Run workflow") — for dev/on-demand,
 #   • nightly on a schedule,
-#   • automatically when a GitHub release is published.
+#   • automatically when a GitHub release is published,
+#   • on a push whose commit message contains "[uitest]" (every job is gated off
+#     for any other push, so the per-push gate stays smoke.yml).
 on:
   workflow_dispatch:
   schedule:
     - cron: "0 6 * * *" # nightly at 06:00 UTC
   release:
     types: [published]
+  # On-demand from a commit: put "[uitest]" in the message to run the full app +
+  # emulator suite on a push. Plain pushes still trigger the workflow but every
+  # job is gated off (see the per-job `if`), so they stay a no-op and the
+  # per-push gate remains smoke.yml.
+  push:
+    branches: ["**"]
 
 concurrency:
   group: full-tests-${{ github.ref }}
@@ -25,11 +32,19 @@ jobs:
   # Same fast core suite the smoke pipeline runs, included here so nightly /
   # release / manual runs are a complete picture on their own.
   core:
+    # On a push, only run when the commit asks for it with "[uitest]".
+    if: >-
+      github.event_name != 'push' ||
+      contains(github.event.head_commit.message, '[uitest]')
     uses: ./.github/workflows/core-tests.yml
 
   android:
     name: App build + lint + unit
     runs-on: ubuntu-latest
+    # Push only runs this when the commit message contains "[uitest]".
+    if: >-
+      github.event_name != 'push' ||
+      contains(github.event.head_commit.message, '[uitest]')
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -60,6 +75,10 @@ jobs:
     name: Instrumented UI + merged coverage
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # Push only runs this when the commit message contains "[uitest]".
+    if: >-
+      github.event_name != 'push' ||
+      contains(github.event.head_commit.message, '[uitest]')
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -161,9 +180,9 @@ jobs:
   coverage-badge:
     name: Coverage badge
     needs: instrumented
-    # Publish from nightly, release, and manual-from-main runs; skip dev-branch
-    # dispatches so they can't clobber the published number.
-    if: ${{ always() && (github.event_name == 'schedule' || github.event_name == 'release' || github.ref == 'refs/heads/main') }}
+    # Publish from nightly, release, and manual-from-main runs only — never from a
+    # push (incl. "[uitest]"), so dev runs can't clobber the published number.
+    if: ${{ always() && (github.event_name == 'schedule' || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
