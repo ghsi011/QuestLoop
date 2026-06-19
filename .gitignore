@@ -22,3 +22,10 @@ keystore.properties
 
 # Logs
 *.log
+
+# graphify knowledge graph — commit the queryable graph + report so cloud
+# agents (which check out the repo) inherit them; ignore the local-only
+# artifacts (1.8 MB HTML viewer, extraction cache, cost/manifest, scratch).
+graphify-out/*
+!graphify-out/graph.json
+!graphify-out/GRAPH_REPORT.md
