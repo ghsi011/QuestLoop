@@ -26,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import android.Manifest
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -48,6 +49,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.questloop.app.data.AiConfig
+import com.questloop.app.data.AiProvider
 import com.questloop.app.reminders.ReminderScheduler
 import com.questloop.app.ui.components.InfoCard
 import com.questloop.app.ui.components.SectionHeader
@@ -119,6 +122,20 @@ fun SettingsScreen(
             context.startActivity(Intent.createChooser(intent, "Export QuestLoop data"))
             viewModel.consumeExport()
         }
+    }
+
+    // When a ChatGPT sign-in starts, open the authorization URL in the browser.
+    // The app's loopback server catches the redirect and finishes the handshake.
+    LaunchedEffect(state.authId) {
+        val url = state.openAuthUrl ?: return@LaunchedEffect
+        runCatching {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }.onFailure {
+            snackbarHostState.showSnackbar("Couldn't open a browser to sign in.", duration = SnackbarDuration.Long)
+        }
+        viewModel.consumeOpenAuthUrl()
     }
 
     // When the AI error log is ready, hand it to the system share sheet.
@@ -194,7 +211,15 @@ fun SettingsScreen(
         FocusChips(selected = prefs.focusCategories, onToggle = viewModel::toggleFocus)
 
         SectionHeader("AI suggestions")
-        AiSection(config = state.ai, onSave = viewModel::saveAi)
+        AiSection(
+            config = state.ai,
+            aiBusy = state.aiBusy,
+            onSelectProvider = viewModel::setProvider,
+            onSaveOpenRouter = viewModel::saveAi,
+            onSaveOpenAi = viewModel::saveOpenAi,
+            onConnectOpenAi = viewModel::connectOpenAi,
+            onDisconnectOpenAi = viewModel::disconnectOpenAi,
+        )
         TextButton(onClick = viewModel::shareDiagnostics) {
             Text("Share AI error log")
         }
@@ -285,84 +310,202 @@ private fun HourRow(label: String, hour: Int, onHour: (Int) -> Unit) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AiSection(
-    config: com.questloop.app.data.AiConfig,
-    onSave: (enabled: Boolean, apiKey: String, model: String, filterWording: Boolean) -> Unit,
+    config: AiConfig,
+    aiBusy: Boolean,
+    onSelectProvider: (AiProvider) -> Unit,
+    onSaveOpenRouter: (enabled: Boolean, apiKey: String, model: String, filterWording: Boolean) -> Unit,
+    onSaveOpenAi: (enabled: Boolean, model: String, filterWording: Boolean) -> Unit,
+    onConnectOpenAi: () -> Unit,
+    onDisconnectOpenAi: () -> Unit,
 ) {
-    var enabled by remember(config.enabled) { mutableStateOf(config.enabled) }
-    var key by remember(config.apiKey) { mutableStateOf(config.apiKey) }
-    var model by remember(config.model) { mutableStateOf(config.model) }
-    var filterWording by remember(config.filterWording) { mutableStateOf(config.filterWording) }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Turn messy lists into quests", fontWeight = FontWeight.SemiBold)
-                Switch(checked = enabled, onCheckedChange = { enabled = it })
-            }
-            Text(
-                "Bring your own key from openrouter.ai. It stays on your device.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            OutlinedTextField(
-                value = key,
-                // Entering a key implies you want AI on, so flip the switch for you
-                // (you can still turn it back off above).
-                onValueChange = { key = it; if (it.isNotBlank()) enabled = true },
-                label = { Text("OpenRouter API key") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = model,
-                onValueChange = { model = it },
-                label = { Text("Model") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Text("Turn messy lists into quests", fontWeight = FontWeight.SemiBold)
+            // Pick the backend. OpenRouter uses a key you paste; OpenAI signs you in
+            // with your ChatGPT account (no key).
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                com.questloop.app.data.AiConfig.FREE_MODEL_PRESETS.forEach { preset ->
-                    FilterChip(
-                        selected = model == preset,
-                        onClick = { model = preset },
-                        label = { Text(modelLabel(preset)) },
-                    )
-                }
+                FilterChip(
+                    selected = config.provider == AiProvider.OPENROUTER,
+                    onClick = { onSelectProvider(AiProvider.OPENROUTER) },
+                    label = { Text("OpenRouter") },
+                )
+                FilterChip(
+                    selected = config.provider == AiProvider.OPENAI,
+                    onClick = { onSelectProvider(AiProvider.OPENAI) },
+                    label = { Text("OpenAI (ChatGPT)") },
+                )
             }
-            Row(
-                // Toggleable on the whole row so the label is the switch's accessible
-                // name (TalkBack reads "Keep AI wording plain, switch, on").
-                Modifier
-                    .fillMaxWidth()
-                    .toggleable(value = filterWording, role = Role.Switch) { filterWording = it },
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("Keep AI wording plain", fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "Trims flattery and filler from AI summaries. Off shows them word-for-word.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                Switch(checked = filterWording, onCheckedChange = null)
-            }
-            Button(
-                onClick = { onSave(enabled, key, model, filterWording) },
-                enabled = !enabled || key.isNotBlank(),
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Save") }
-            if (enabled && key.isBlank()) {
-                Text(
-                    "Enter your OpenRouter key to turn on AI.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
+            when (config.provider) {
+                AiProvider.OPENROUTER -> OpenRouterSettings(config, onSaveOpenRouter)
+                AiProvider.OPENAI -> OpenAiSettings(
+                    config = config,
+                    aiBusy = aiBusy,
+                    onSave = onSaveOpenAi,
+                    onConnect = onConnectOpenAi,
+                    onDisconnect = onDisconnectOpenAi,
                 )
             }
         }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun OpenRouterSettings(
+    config: AiConfig,
+    onSave: (enabled: Boolean, apiKey: String, model: String, filterWording: Boolean) -> Unit,
+) {
+    var enabled by remember(config.provider, config.enabled) { mutableStateOf(config.enabled) }
+    var key by remember(config.apiKey) { mutableStateOf(config.apiKey) }
+    var model by remember(config.model) { mutableStateOf(config.model) }
+    var filterWording by remember(config.filterWording) { mutableStateOf(config.filterWording) }
+
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("Use OpenRouter for suggestions", fontWeight = FontWeight.SemiBold)
+        Switch(checked = enabled, onCheckedChange = { enabled = it })
+    }
+    Text(
+        "Bring your own key from openrouter.ai. It stays on your device.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    OutlinedTextField(
+        value = key,
+        // Entering a key implies you want AI on, so flip the switch for you
+        // (you can still turn it back off above).
+        onValueChange = { key = it; if (it.isNotBlank()) enabled = true },
+        label = { Text("OpenRouter API key") },
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        modifier = Modifier.fillMaxWidth(),
+    )
+    OutlinedTextField(
+        value = model,
+        onValueChange = { model = it },
+        label = { Text("Model") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        AiConfig.FREE_MODEL_PRESETS.forEach { preset ->
+            FilterChip(
+                selected = model == preset,
+                onClick = { model = preset },
+                label = { Text(modelLabel(preset)) },
+            )
+        }
+    }
+    FilterWordingRow(filterWording) { filterWording = it }
+    Button(
+        onClick = { onSave(enabled, key, model, filterWording) },
+        enabled = !enabled || key.isNotBlank(),
+        modifier = Modifier.fillMaxWidth(),
+    ) { Text("Save") }
+    if (enabled && key.isBlank()) {
+        Text(
+            "Enter your OpenRouter key to turn on AI.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun OpenAiSettings(
+    config: AiConfig,
+    aiBusy: Boolean,
+    onSave: (enabled: Boolean, model: String, filterWording: Boolean) -> Unit,
+    onConnect: () -> Unit,
+    onDisconnect: () -> Unit,
+) {
+    var enabled by remember(config.provider, config.enabled) { mutableStateOf(config.enabled) }
+    var model by remember(config.openAiModel) { mutableStateOf(config.openAiModel) }
+    var filterWording by remember(config.filterWording) { mutableStateOf(config.filterWording) }
+
+    Text(
+        "Sign in with your ChatGPT account — no API key needed. Your login stays on this device.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    if (config.openAiConnected) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Signed in to ChatGPT", fontWeight = FontWeight.SemiBold)
+            TextButton(onClick = onDisconnect) { Text("Disconnect") }
+        }
+    } else {
+        Button(onClick = onConnect, enabled = !aiBusy, modifier = Modifier.fillMaxWidth()) {
+            Text(if (aiBusy) "Waiting for the browser…" else "Sign in with ChatGPT")
+        }
+    }
+    OutlinedTextField(
+        value = model,
+        onValueChange = { model = it },
+        label = { Text("Model") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        AiConfig.OPENAI_MODEL_PRESETS.forEach { preset ->
+            FilterChip(
+                selected = model == preset,
+                onClick = { model = preset },
+                label = { Text(preset) },
+            )
+        }
+    }
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("Use ChatGPT for suggestions", fontWeight = FontWeight.SemiBold)
+        Switch(
+            checked = enabled,
+            onCheckedChange = { enabled = it },
+            enabled = config.openAiConnected,
+        )
+    }
+    FilterWordingRow(filterWording) { filterWording = it }
+    Button(
+        onClick = { onSave(enabled, model, filterWording) },
+        enabled = config.openAiConnected,
+        modifier = Modifier.fillMaxWidth(),
+    ) { Text("Save") }
+    if (!config.openAiConnected) {
+        Text(
+            "Sign in to turn on ChatGPT suggestions.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
+}
+
+@Composable
+private fun FilterWordingRow(filterWording: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        // Toggleable on the whole row so the label is the switch's accessible
+        // name (TalkBack reads "Keep AI wording plain, switch, on").
+        Modifier
+            .fillMaxWidth()
+            .toggleable(value = filterWording, role = Role.Switch) { onChange(it) },
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Keep AI wording plain", fontWeight = FontWeight.SemiBold)
+            Text(
+                "Trims flattery and filler from AI summaries. Off shows them word-for-word.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Switch(checked = filterWording, onCheckedChange = null)
     }
 }
 

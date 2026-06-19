@@ -1,5 +1,6 @@
 package com.questloop.app.data
 
+import com.questloop.core.ai.openai.OpenAiOAuth
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Test
@@ -26,5 +27,19 @@ class ApiKeyRedactionTest {
         val msg = "OpenRouter request failed (404) for model \"x\": unknown model"
         assertEquals(msg, redactApiKey(msg, ""))
         assertEquals(msg, redactApiKey(msg, "sk-not-in-this-message"))
+    }
+
+    @Test
+    fun `redactSecrets scrubs the openrouter key and the openai oauth tokens`() {
+        val config = AiConfig(
+            provider = AiProvider.OPENAI,
+            apiKey = "sk-or-secret",
+            openAiTokens = OpenAiOAuth.OpenAiTokens(accessToken = "access-secret", refreshToken = "refresh-secret"),
+        )
+        val msg = "failed with sk-or-secret / access-secret / refresh-secret embedded"
+        val out = redactSecrets(msg, config)
+        assertFalse(out.contains("sk-or-secret"))
+        assertFalse(out.contains("access-secret"))
+        assertFalse(out.contains("refresh-secret"))
     }
 }
