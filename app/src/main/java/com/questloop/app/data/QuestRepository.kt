@@ -586,7 +586,7 @@ class QuestRepository(
                 AiQuestService(OpenRouterClient(config.apiKey, config.model)).suggest(input)
             }
             // Record real failures so the user can export them for troubleshooting.
-            suggestion.error?.let { recordAiError(config.model, it) }
+            suggestion.error?.let { recordAiError(config, it) }
             suggestion
         } else {
             // No AI configured: deterministic, always-safe suggestions.
@@ -610,7 +610,7 @@ class QuestRepository(
             val result = aiCallGuard.keepAwake {
                 AiQuestService(OpenRouterClient(config.apiKey, config.model)).decomposeGoal(goal, existing)
             }
-            result.error?.let { recordAiError(config.model, it) }
+            result.error?.let { recordAiError(config, it) }
             result
         } else {
             AiQuestService.Suggestion(
@@ -633,7 +633,7 @@ class QuestRepository(
         val result = aiCallGuard.keepAwake {
             AiQuestService(OpenRouterClient(config.apiKey, config.model)).refine(quest, instruction)
         }
-        result.error?.let { recordAiError(config.model, it) }
+        result.error?.let { recordAiError(config, it) }
         return result
     }
 
@@ -651,13 +651,13 @@ class QuestRepository(
         }
         // Record any AI miss (transport, style reject, or empty) so misbehaviour is
         // visible in the exportable log — not just transport failures.
-        if (!result.fromAi && result.note != null) recordAiError(config.model, "review narration: ${result.note}")
+        if (!result.fromAi && result.note != null) recordAiError(config, "review narration: ${result.note}")
         return result
     }
 
     /** AI errors are logged off the main thread (the diagnostics file is read+rewritten). */
-    private suspend fun recordAiError(model: String, message: String) =
-        withContext(Dispatchers.IO) { aiDiagnostics.record(model, message) }
+    private suspend fun recordAiError(config: AiConfig, message: String) =
+        withContext(Dispatchers.IO) { aiDiagnostics.record(config.model, redactApiKey(message, config.apiKey)) }
 
     /** Erases all on-device data (SPEC §9: users can delete their data). */
     suspend fun deleteAllData() {
@@ -666,3 +666,13 @@ class QuestRepository(
         profileStore.clear()
     }
 }
+
+/**
+ * Defense-in-depth for the user-shareable AI diagnostics log: scrub the API key
+ * out of any text before it's recorded. [OpenRouterClient] builds its error from
+ * the response *body* (never the `Authorization` header), so the key shouldn't
+ * appear today — but if an upstream message ever changes, this guarantees the key
+ * can't leak into a log the user exports. No-op when [apiKey] is blank.
+ */
+internal fun redactApiKey(message: String, apiKey: String): String =
+    if (apiKey.isNotBlank()) message.replace(apiKey, "***") else message

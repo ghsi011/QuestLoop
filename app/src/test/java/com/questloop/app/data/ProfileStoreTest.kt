@@ -88,4 +88,18 @@ class ProfileStoreTest {
             runBlocking { store.profile.first() }
         }
     }
+
+    @Test
+    fun `streak grace days are clamped to the 0 to 7 range`() = runTest {
+        val store = ProfileStore(ctx, realDataStore())
+        // Above the cap clamps down to 7…
+        store.setStreakGraceDays(99)
+        assertEquals(7, store.profile.first().preferences.streakGraceDays)
+        // …below the floor clamps up to 0…
+        store.setStreakGraceDays(-5)
+        assertEquals(0, store.profile.first().preferences.streakGraceDays)
+        // …and an in-range value is kept as-is.
+        store.setStreakGraceDays(3)
+        assertEquals(3, store.profile.first().preferences.streakGraceDays)
+    }
 }

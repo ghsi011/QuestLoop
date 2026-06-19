@@ -16,8 +16,12 @@ Recorded backlog from the roadmap and review cycles. Not yet started — pick up
   call (data leaves device only when AI is on). Store copy/positioning already in
   `external_research/QuestLoop_Competitive_Landscape.md`.
 - **targetSdk 35** + permission/notification re-check (reminders use inexact alarms — good).
-- **Key-safety**: a test asserting the API key never appears in `ExportSnapshot` JSON
-  or `AiDiagnostics` (export already excludes it; lock it in).
+- ~~**Key-safety**: a test asserting the API key never appears in `ExportSnapshot` JSON
+  or `AiDiagnostics`~~ — DONE. Export side locked in by `QuestRepositoryTest.'export
+  never contains the ai api key'`. Diagnostics side hardened with `redactApiKey`
+  (applied in `recordAiError` before anything is written to the shareable log) and
+  covered by `ApiKeyRedactionTest`. OpenRouter errors are built from the response
+  body, not the `Authorization` header, so this is defense-in-depth.
 
 ## Horizon 2 — surface the moat & deepen safe AI
 - **Advisory anti-farming** — surface the existing `RewardEngine.capReason` as a gentle,
@@ -37,8 +41,9 @@ Recorded backlog from the roadmap and review cycles. Not yet started — pick up
   crediting, re-prioritize depth there.
 
 ## Smaller deferred review nits
-- ProfileStore `streakGraceDays` `coerceIn(0,7)` clamp has no direct test (FakePrefs
-  stores raw); add a ProfileStore-level (Robolectric) clamp test.
+- ~~ProfileStore `streakGraceDays` `coerceIn(0,7)` clamp has no direct test~~ — DONE.
+  `ProfileStoreTest.'streak grace days are clamped to the 0 to 7 range'` covers the
+  over-cap, under-floor, and in-range cases against a real DataStore.
 - `toQuest` fills missing `estimatedMinutes` with `defaultMinutes(difficulty)`, so an
   AI "EPIC with no minutes" survives the difficulty clamp on both suggest + decompose
   paths. Mitigated by prompt guidance; consider clamping by model-provided minutes only.
