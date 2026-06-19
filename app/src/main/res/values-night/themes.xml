@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark variant of Theme.QuestLoop, applied automatically when the system is
+         in dark mode (matches values/themes.xml's light variant). Compose applies
+         the Material3 colour scheme at runtime via isSystemInDarkTheme(). -->
+    <style name="Theme.QuestLoop" parent="android:Theme.Material.NoActionBar" />
+</resources>

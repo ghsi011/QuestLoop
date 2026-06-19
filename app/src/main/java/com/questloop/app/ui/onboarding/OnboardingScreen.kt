@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -24,7 +25,10 @@ import com.questloop.app.ui.components.InfoCard
 @Composable
 fun OnboardingScreen(onGetStarted: () -> Unit) {
     Column(
-        Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()),
+        // safeDrawingPadding keeps the title and the bottom "Get started" button
+        // clear of the status/navigation bars under enforced edge-to-edge
+        // (targetSdk 35+); this screen renders outside the main Scaffold.
+        Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(

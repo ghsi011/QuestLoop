@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -106,7 +107,7 @@ fun QuestLoopApp(repository: QuestRepository) {
 
     when (onboarded) {
         null -> androidx.compose.foundation.layout.Box(
-            Modifier.fillMaxSize(),
+            Modifier.fillMaxSize().safeDrawingPadding(),
             contentAlignment = androidx.compose.ui.Alignment.Center,
         ) { androidx.compose.material3.CircularProgressIndicator() }
         false -> OnboardingScreen(
