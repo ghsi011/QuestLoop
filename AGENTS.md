@@ -15,18 +15,23 @@ QuestLoop: a gamified quest/habit Android app. Gradle multi-module:
 - **The `:app` module does NOT build locally in the agent environment** (no
   Google Maven access for the Android Gradle Plugin). Only `./gradlew :core:test`
   runs locally. Validate all app/Compose changes via CI — review edits carefully.
-- **CI = `.github/workflows/ci.yml`** (every push): `:core:test`,
-  `:app:testDebugUnitTest` (JUnit + Robolectric + MockWebServer), `assembleDebug`,
-  `lintDebug`. This is the normal gate.
-- **`:app` `androidTest` (instrumented) is NOT compiled by ci.yml.** Only the
-  emulator workflow compiles/runs it — so a broken instrumented test won't show
-  up in normal CI.
-- **Emulator UI tests = `.github/workflows/ui-tests.yml`** (on-demand only): runs
-  `connectedDebugAndroidTest` on an AVD via `reactivecircus/android-emulator-runner`.
-  Trigger by putting **`[uitest]`** in the commit message (or manual "Run
-  workflow"). Use it for UI-heavy changes. `AppSmokeTest` walks the main screens,
-  hard-asserts each rendered, and writes a screenshot per screen to Test Storage,
-  uploaded as the **`ui-screenshots`** artifact (+ HTML report).
+- **Per-push gate = `.github/workflows/smoke.yml`** (every push/PR): runs ONLY the
+  `:core` logic suite + its coverage gate (via the reusable `core-tests.yml`), in
+  ~1 minute. It does NOT build `:app`, run app unit tests, or lint.
+- **Everything `:app` lives in `.github/workflows/full-tests.yml`**: app unit tests
+  (`:app:testDebugUnitTest` — JUnit + Robolectric + MockWebServer), `assembleDebug`,
+  `assembleRelease` (R8/minify check), `lintDebug`, the emulator UI tests, and the
+  merged (unit + instrumented) coverage gate + badge. It runs **manually (Actions →
+  "Run workflow"), nightly (06:00 UTC), and on a published release — NOT on every
+  push.** So app/Compose/lint/instrumented breakage is only caught when full-tests
+  runs; the per-push smoke gate won't see it.
+- **Instrumented UI** (`:app:connectedDebugAndroidTest`) runs in full-tests' emulator
+  job. Triggers: manual dispatch, nightly, release — or push a commit with
+  **`[uitest]`** in the message to run the whole app + emulator suite on demand
+  (other pushes trigger the workflow but every job is gated off). The standalone
+  `ui-tests.yml` is gone; the emulator job now lives in full-tests. `AppSmokeTest`
+  walks the main screens, hard-asserts each rendered, and writes a screenshot per
+  screen to Test Storage, uploaded as the **`ui-screenshots`** artifact (+ HTML report).
 - **Releases**: tag pushes are 403-blocked, so releases are cut server-side by
   putting **`[release]`** in the commit message (empty commit is fine). It
   refreshes the rolling `v0.1.0-experimental` prerelease APK (debug-signed).
@@ -37,8 +42,10 @@ QuestLoop: a gamified quest/habit Android app. Gradle multi-module:
   artifact blob host (`*.blob.core.windows.net`), so screenshots can't be
   auto-downloaded yet — the user grabs them from the Actions UI. Add that host to
   the environment's egress allowlist to enable agent-side visual review.
-- Branch: develop on `claude/gamified-quest-todo-habits-vkiiyl`; `master` is the
-  trunk.
+- Trunk is `main`; feature work happens on `claude/*` branches (cloud sessions).
+  Note: `release.yml` / `export-room-schema.yml` still list a stale
+  `claude/gamified-quest-todo-habits-vkiiyl` branch and `master` in their push
+  filters — harmless (they also list `main`), but worth pruning.
 
 ## Coding lessons / gotchas (learned the hard way)
 **Reward economy & data**
