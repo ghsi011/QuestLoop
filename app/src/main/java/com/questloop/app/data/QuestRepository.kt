@@ -56,6 +56,8 @@ class QuestRepository(
     private val aiDiagnostics: AiDiagnostics = NoopAiDiagnostics,
     private val aiCallGuard: AiCallGuard = NoopAiCallGuard,
     private val openAiAuth: OpenAiAuth = OpenAiAuthService(),
+    // Injectable so tests can point the OpenAI client at a local MockWebServer.
+    private val openAiResponsesEndpoint: String = com.questloop.core.ai.openai.OpenAiOAuth.API_RESPONSES_URL,
 ) {
     private val exportJson = kotlinx.serialization.json.Json { prettyPrint = true; ignoreUnknownKeys = true }
 
@@ -581,7 +583,7 @@ class QuestRepository(
     /** Builds the [LlmClient] for the configured provider (OpenAI refreshes tokens lazily). */
     private fun llmClient(config: AiConfig): com.questloop.core.ai.LlmClient = when (config.provider) {
         AiProvider.OPENROUTER -> OpenRouterClient(config.apiKey, config.activeModel)
-        AiProvider.OPENAI -> OpenAiClient(config.activeModel) { force -> freshOpenAiTokens(force) }
+        AiProvider.OPENAI -> OpenAiClient(config.activeModel, openAiResponsesEndpoint) { force -> freshOpenAiTokens(force) }
     }
 
     /**
