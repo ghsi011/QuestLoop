@@ -46,7 +46,9 @@ abstract class QuestLoopDatabase : RoomDatabase() {
                     .addMigrations(*MIGRATIONS)
                     // Only ever destroy data when upgrading from the pre-schema-export
                     // v1 (no migration is authorable for it). Any future v2+ gap throws.
-                    .fallbackToDestructiveMigrationFrom(1)
+                    // Room 2.8 requires the dropAllTables flag; true preserves the prior
+                    // destructive behaviour (drop every table, not just Room-known ones).
+                    .fallbackToDestructiveMigrationFrom(dropAllTables = true, 1)
                     .build()
                     .also { instance = it }
             }

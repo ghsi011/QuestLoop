@@ -1,4 +1,5 @@
 import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
@@ -75,9 +76,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
     buildFeatures {
         compose = true
     }
@@ -96,6 +94,14 @@ android {
     // MigrationTestHelper can open each historical version and validate the
     // migrations against the real schema JSON that ships in the repo.
     sourceSets.getByName("androidTest").assets.srcDirs("$projectDir/schemas")
+}
+
+// Kotlin compiler options (compilerOptions DSL; the old android.kotlinOptions
+// String API was removed in Kotlin 2.x).
+kotlin {
+    compilerOptions {
+        jvmTarget = JvmTarget.JVM_17
+    }
 }
 
 // Where Room writes exported schemas (for migrations and migration tests).
