@@ -309,7 +309,7 @@ private fun HourRow(label: String, hour: Int, onHour: (Int) -> Unit) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AiSection(
+internal fun AiSection(
     config: AiConfig,
     aiBusy: Boolean,
     onSelectProvider: (AiProvider) -> Unit,
@@ -322,16 +322,18 @@ private fun AiSection(
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Turn messy lists into quests", fontWeight = FontWeight.SemiBold)
             // Pick the backend. OpenRouter uses a key you paste; OpenAI signs you in
-            // with your ChatGPT account (no key).
+            // with your ChatGPT account (no key). Locked while a sign-in is in flight.
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = config.provider == AiProvider.OPENROUTER,
                     onClick = { onSelectProvider(AiProvider.OPENROUTER) },
+                    enabled = !aiBusy,
                     label = { Text("OpenRouter") },
                 )
                 FilterChip(
                     selected = config.provider == AiProvider.OPENAI,
                     onClick = { onSelectProvider(AiProvider.OPENAI) },
+                    enabled = !aiBusy,
                     label = { Text("OpenAI (ChatGPT)") },
                 )
             }

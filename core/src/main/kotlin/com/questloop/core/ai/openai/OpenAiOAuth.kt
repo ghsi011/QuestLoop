@@ -70,9 +70,14 @@ object OpenAiOAuth {
         val accountId: String = "",
         val expiresAtEpochSec: Long = 0L,
     ) {
-        /** True when the access token is at/near expiry (with a safety [skewSec]). */
+        /**
+         * True when the access token is at/near expiry (with a safety [skewSec]). An
+         * unknown expiry ([expiresAtEpochSec] <= 0) is treated as NOT expired so we
+         * don't refresh on every call (which would burn the rotating refresh token);
+         * a genuinely dead token is then caught by the 401 retry instead.
+         */
         fun isExpired(nowEpochSec: Long, skewSec: Long = 60): Boolean =
-            nowEpochSec >= expiresAtEpochSec - skewSec
+            expiresAtEpochSec > 0 && nowEpochSec >= expiresAtEpochSec - skewSec
     }
 
     /** Generates a fresh PKCE pair using a cryptographically secure verifier. */
@@ -127,12 +132,10 @@ object OpenAiOAuth {
     /** Form body for refreshing an expired access token. */
     fun refreshForm(refreshToken: String): Map<String, String> = linkedMapOf(
         "grant_type" to "refresh_token",
-        "client_id" to refreshClientId(),
+        "client_id" to CLIENT_ID,
         "refresh_token" to refreshToken,
         "scope" to SCOPE,
     )
-
-    private fun refreshClientId() = CLIENT_ID
 
     /**
      * Parses a token endpoint response into [OpenAiTokens]. [nowEpochSec] is used

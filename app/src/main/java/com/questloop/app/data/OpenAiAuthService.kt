@@ -17,10 +17,33 @@ import java.net.URLDecoder
 import java.util.concurrent.TimeUnit
 
 /**
- * Runs the "Sign in with ChatGPT" OAuth flow on-device, mirroring OpenAI's Codex
- * CLI. The pure protocol bits (PKCE, URL building, token + JWT parsing) live in
- * core's [OpenAiOAuth]; this class owns the side effects: a loopback HTTP server
- * that catches the browser redirect, the OkHttp token calls, and the clock.
+ * Drives the "Sign in with ChatGPT" OAuth flow. Abstracted as an interface so the
+ * repository can be unit-tested with a fake (the real one needs a browser + socket).
+ */
+interface OpenAiAuth {
+    /**
+     * Runs the authorization-code + PKCE handshake. [openUrl] is invoked with the
+     * browser URL the user must visit. Suspends until the loopback callback arrives
+     * or [timeoutMs] elapses. All failures come back as [Result.failure].
+     */
+    suspend fun signIn(
+        timeoutMs: Long = DEFAULT_TIMEOUT_MS,
+        openUrl: (String) -> Unit,
+    ): Result<OpenAiOAuth.OpenAiTokens>
+
+    /** Trades a refresh token for a fresh access token. */
+    suspend fun refresh(tokens: OpenAiOAuth.OpenAiTokens): Result<OpenAiOAuth.OpenAiTokens>
+
+    companion object {
+        const val DEFAULT_TIMEOUT_MS = 5 * 60_000L
+    }
+}
+
+/**
+ * On-device implementation, mirroring OpenAI's Codex CLI. The pure protocol bits
+ * (PKCE, URL building, token + JWT parsing) live in core's [OpenAiOAuth]; this
+ * class owns the side effects: a loopback HTTP server that catches the browser
+ * redirect, the OkHttp token calls, and the clock.
  *
  * Loopback (rather than a custom URI scheme) is required because OpenAI's public
  * Codex client is registered with a fixed `http://localhost:1455/auth/callback`
@@ -31,17 +54,10 @@ class OpenAiAuthService(
     private val http: OkHttpClient = sharedClient,
     private val tokenEndpoint: String = OpenAiOAuth.TOKEN_ENDPOINT,
     private val nowEpochSec: () -> Long = { System.currentTimeMillis() / 1000 },
-) {
+) : OpenAiAuth {
 
-    /**
-     * Performs the full authorization-code + PKCE handshake. [openUrl] is invoked
-     * with the browser URL the user must visit (e.g. to launch a browser intent).
-     * Suspends until the loopback callback arrives or [timeoutMs] elapses, then
-     * exchanges the code for tokens. All failures are returned as [Result.failure]
-     * with a user-facing message.
-     */
-    suspend fun signIn(
-        timeoutMs: Long = DEFAULT_TIMEOUT_MS,
+    override suspend fun signIn(
+        timeoutMs: Long,
         openUrl: (String) -> Unit,
     ): Result<OpenAiOAuth.OpenAiTokens> = withContext(Dispatchers.IO) {
         val pkce = OpenAiOAuth.generatePkce()
@@ -52,11 +68,10 @@ class OpenAiAuthService(
                 // fail with "address already in use" while the port drains.
                 server.reuseAddress = true
                 server.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), OpenAiOAuth.REDIRECT_PORT), 1)
-                server.soTimeout = timeoutMs.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
                 openUrl(OpenAiOAuth.authorizeUrl(pkce.challenge, state))
-                val callback = awaitCallback(server) ?: error("Sign-in timed out. Please try again.")
+                val callback = awaitCallback(server, timeoutMs) ?: error("Sign-in timed out. Please try again.")
                 when {
-                    callback.error != null -> error("Sign-in was declined: ${callback.error}")
+                    callback.error != null -> error("Sign-in was declined. Please try again.")
                     callback.state != state -> error("Sign-in could not be verified. Please try again.")
                     callback.code.isNullOrBlank() -> error("Sign-in didn't return an authorization code.")
                     else -> exchange(callback.code, pkce.verifier).getOrThrow()
@@ -65,8 +80,7 @@ class OpenAiAuthService(
         }
     }
 
-    /** Trades a refresh token for a fresh access token, keeping the prior account id. */
-    suspend fun refresh(tokens: OpenAiOAuth.OpenAiTokens): Result<OpenAiOAuth.OpenAiTokens> =
+    override suspend fun refresh(tokens: OpenAiOAuth.OpenAiTokens): Result<OpenAiOAuth.OpenAiTokens> =
         withContext(Dispatchers.IO) {
             postForm(OpenAiOAuth.refreshForm(tokens.refreshToken), priorRefresh = tokens.refreshToken)
                 .map { if (it.accountId.isBlank()) it.copy(accountId = tokens.accountId) else it }
@@ -91,8 +105,25 @@ class OpenAiAuthService(
 
     private data class Callback(val code: String?, val state: String?, val error: String?)
 
-    /** Accepts a single loopback request, parses its query, and replies with a success page. */
-    private fun awaitCallback(server: ServerSocket): Callback? = try {
+    /**
+     * Waits (until [timeoutMs] elapses) for the loopback request that carries the
+     * OAuth `code`/`error`. Stray connections without those params (favicon fetches,
+     * connectivity probes) are answered and skipped so they don't abort the flow.
+     */
+    private fun awaitCallback(server: ServerSocket, timeoutMs: Long): Callback? {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (true) {
+            val remaining = deadline - System.currentTimeMillis()
+            if (remaining <= 0) return null
+            server.soTimeout = remaining.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            val cb = acceptOnce(server) ?: return null // socket timeout
+            if (cb.code != null || cb.error != null) return cb
+            // else: a stray request — keep waiting for the real callback.
+        }
+    }
+
+    /** Accepts one loopback request, parses its query, and replies with a page. Null on timeout. */
+    private fun acceptOnce(server: ServerSocket): Callback? = try {
         server.accept().use { socket ->
             // e.g. "GET /auth/callback?code=...&state=... HTTP/1.1"
             val requestLine = BufferedReader(InputStreamReader(socket.getInputStream())).readLine().orEmpty()
@@ -117,8 +148,6 @@ class OpenAiAuthService(
     private fun decode(s: String) = runCatching { URLDecoder.decode(s, "UTF-8") }.getOrDefault(s)
 
     companion object {
-        private const val DEFAULT_TIMEOUT_MS = 5 * 60_000L
-
         private val SUCCESS_PAGE =
             "<!doctype html><html><body style=\"font-family:sans-serif;text-align:center;padding-top:3rem\">" +
                 "<h2>You're signed in</h2><p>You can close this tab and return to QuestLoop.</p></body></html>"

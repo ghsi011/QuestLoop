@@ -72,6 +72,21 @@ class OpenAiResponsesCodecTest {
     }
 
     @Test
+    fun `parseResponse treats a mid-stream failure as a miss, not partial success`() {
+        val sse = """
+            data: {"type":"response.output_text.delta","delta":"half an ans"}
+
+            data: {"type":"response.failed","response":{"error":{"message":"content_filter"}}}
+        """.trimIndent()
+        assertEquals("", OpenAiResponsesCodec.parseResponse(sse))
+    }
+
+    @Test
+    fun `parseResponse treats a bare error envelope as a miss`() {
+        assertEquals("", OpenAiResponsesCodec.parseResponse("""data: {"error":{"message":"boom"}}"""))
+    }
+
+    @Test
     fun `parseResponse returns empty for blank, junk, or unrelated events`() {
         assertEquals("", OpenAiResponsesCodec.parseResponse(""))
         assertEquals("", OpenAiResponsesCodec.parseResponse("garbage that is not sse or json"))

@@ -2,10 +2,14 @@ package com.questloop.app.ui.settings
 
 import androidx.room.Room
 import com.questloop.app.data.AiConfig
+import com.questloop.app.data.AiProvider
+import com.questloop.app.data.OpenAiAuth
 import com.questloop.app.data.ProfilePreferences
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.data.ReminderConfig
 import com.questloop.app.data.local.QuestLoopDatabase
+import com.questloop.core.ai.openai.OpenAiOAuth
+import java.io.IOException
 import com.questloop.core.model.BadHabit
 import com.questloop.core.model.EnergyCheckIn
 import com.questloop.core.model.Goal
@@ -40,6 +44,23 @@ class SettingsViewModelTest {
 
     private lateinit var db: QuestLoopDatabase
     private lateinit var repo: QuestRepository
+
+    /** Fake OAuth backend: signIn surfaces a URL then returns a fixed result; no sockets. */
+    private class FakeAuth(
+        var result: Result<OpenAiOAuth.OpenAiTokens> = Result.success(
+            OpenAiOAuth.OpenAiTokens("at", "rt", accountId = "acct", expiresAtEpochSec = Long.MAX_VALUE),
+        ),
+    ) : OpenAiAuth {
+        var openedUrl: String? = null
+        override suspend fun signIn(timeoutMs: Long, openUrl: (String) -> Unit): Result<OpenAiOAuth.OpenAiTokens> {
+            openUrl("https://auth.openai.test/authorize?x=1")
+            openedUrl = "https://auth.openai.test/authorize?x=1"
+            return result
+        }
+        override suspend fun refresh(tokens: OpenAiOAuth.OpenAiTokens) = Result.success(tokens)
+    }
+
+    private val fakeAuth = FakeAuth()
 
     /** Persists everything Settings reads back after a write. */
     private class FakePrefs : ProfilePreferences {
@@ -103,7 +124,7 @@ class SettingsViewModelTest {
             RuntimeEnvironment.getApplication(),
             QuestLoopDatabase::class.java,
         ).allowMainThreadQueries().setQueryExecutor(sync).setTransactionExecutor(sync).build()
-        repo = QuestRepository(db.questDao(), db.completionDao(), FakePrefs())
+        repo = QuestRepository(db.questDao(), db.completionDao(), FakePrefs(), openAiAuth = fakeAuth)
     }
 
     @After
@@ -175,6 +196,56 @@ class SettingsViewModelTest {
         assertNotNull(vm.state.value.savedMessage)
         vm.consumeSavedMessage()
         assertNull(vm.state.value.savedMessage)
+    }
+
+    @Test
+    fun `selecting the OpenAI provider switches the backend`() = runTest {
+        val vm = SettingsViewModel(repo)
+        vm.setProvider(AiProvider.OPENAI)
+        assertEquals(AiProvider.OPENAI, vm.state.value.ai.provider)
+    }
+
+    @Test
+    fun `saving OpenAI settings persists the model and provider`() = runTest {
+        val vm = SettingsViewModel(repo)
+        vm.saveOpenAi(enabled = true, model = "gpt-5-codex ", filterWording = false)
+        val state = vm.state.value
+        assertEquals(AiProvider.OPENAI, state.ai.provider)
+        assertEquals("gpt-5-codex", state.ai.openAiModel)
+        assertFalse(state.ai.filterWording)
+        assertEquals("AI settings saved", state.savedMessage)
+    }
+
+    @Test
+    fun `connecting ChatGPT links the account and opens the browser url`() = runTest {
+        val vm = SettingsViewModel(repo)
+        vm.connectOpenAi()
+        val state = vm.state.value
+        assertTrue(state.ai.openAiConnected)
+        assertEquals(AiProvider.OPENAI, state.ai.provider)
+        assertNotNull("the browser url is surfaced for the screen to open", state.openAuthUrl)
+        assertEquals("Connected to ChatGPT", state.savedMessage)
+        assertFalse(state.aiBusy)
+    }
+
+    @Test
+    fun `a failed ChatGPT sign-in reports a friendly message and stays disconnected`() = runTest {
+        fakeAuth.result = Result.failure(IOException("Unable to resolve host \"auth.openai.com\""))
+        val vm = SettingsViewModel(repo)
+        vm.connectOpenAi()
+        val state = vm.state.value
+        assertFalse(state.ai.openAiConnected)
+        assertEquals("Couldn't sign in to ChatGPT. Please try again.", state.savedMessage)
+    }
+
+    @Test
+    fun `disconnecting ChatGPT unlinks the account`() = runTest {
+        val vm = SettingsViewModel(repo)
+        vm.connectOpenAi()
+        assertTrue(vm.state.value.ai.openAiConnected)
+        vm.disconnectOpenAi()
+        assertFalse(vm.state.value.ai.openAiConnected)
+        assertEquals("Disconnected from ChatGPT", vm.state.value.savedMessage)
     }
 
     @Test

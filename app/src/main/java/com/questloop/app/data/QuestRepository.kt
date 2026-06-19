@@ -55,7 +55,7 @@ class QuestRepository(
     private val safetyGuard: SafetyGuard = SafetyGuard(),
     private val aiDiagnostics: AiDiagnostics = NoopAiDiagnostics,
     private val aiCallGuard: AiCallGuard = NoopAiCallGuard,
-    private val openAiAuth: OpenAiAuthService = OpenAiAuthService(),
+    private val openAiAuth: OpenAiAuth = OpenAiAuthService(),
 ) {
     private val exportJson = kotlinx.serialization.json.Json { prettyPrint = true; ignoreUnknownKeys = true }
 
@@ -580,8 +580,8 @@ class QuestRepository(
 
     /** Builds the [LlmClient] for the configured provider (OpenAI refreshes tokens lazily). */
     private fun llmClient(config: AiConfig): com.questloop.core.ai.LlmClient = when (config.provider) {
-        AiProvider.OPENROUTER -> OpenRouterClient(config.apiKey, config.model)
-        AiProvider.OPENAI -> OpenAiClient(config.openAiModel) { force -> freshOpenAiTokens(force) }
+        AiProvider.OPENROUTER -> OpenRouterClient(config.apiKey, config.activeModel)
+        AiProvider.OPENAI -> OpenAiClient(config.activeModel) { force -> freshOpenAiTokens(force) }
     }
 
     /**
@@ -597,7 +597,7 @@ class QuestRepository(
         val now = System.currentTimeMillis() / 1000
         if (!forceRefresh && !tokens.isExpired(now)) return@withLock tokens
         val refreshed = openAiAuth.refresh(tokens).getOrElse {
-            throw java.io.IOException("Couldn't refresh your ChatGPT sign-in: ${it.message ?: "please sign in again."}")
+            throw java.io.IOException("Your ChatGPT sign-in expired. Please sign in again in Settings.")
         }
         profileStore.setAiConfig(config.copy(openAiTokens = refreshed))
         refreshed
@@ -708,10 +708,7 @@ class QuestRepository(
 
     /** AI errors are logged off the main thread (the diagnostics file is read+rewritten). */
     private suspend fun recordAiError(config: AiConfig, message: String) =
-        withContext(Dispatchers.IO) {
-            val model = if (config.provider == AiProvider.OPENAI) config.openAiModel else config.model
-            aiDiagnostics.record(model, redactSecrets(message, config))
-        }
+        withContext(Dispatchers.IO) { aiDiagnostics.record(config.activeModel, redactSecrets(message, config)) }
 
     /** Erases all on-device data (SPEC §9: users can delete their data). */
     suspend fun deleteAllData() {

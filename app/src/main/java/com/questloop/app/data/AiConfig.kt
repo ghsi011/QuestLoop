@@ -41,6 +41,13 @@ data class AiConfig(
             AiProvider.OPENAI -> openAiConnected
         }
 
+    /** The model that will actually be requested for the selected provider. */
+    val activeModel: String
+        get() = when (provider) {
+            AiProvider.OPENROUTER -> model
+            AiProvider.OPENAI -> openAiModel
+        }
+
     /** True when an OpenAI account is linked, independent of the on/off switch. */
     val openAiConnected: Boolean
         get() = openAiTokens?.refreshToken?.isNotBlank() == true

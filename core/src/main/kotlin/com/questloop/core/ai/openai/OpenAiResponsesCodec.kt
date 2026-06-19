@@ -65,6 +65,8 @@ object OpenAiResponsesCodec {
         if (raw.isBlank()) return ""
         val deltas = StringBuilder()
         var finalFromEvent: String? = null
+        var sawCompleted = false
+        var sawFailure = false
 
         for (line in raw.lineSequence()) {
             val trimmed = line.trim()
@@ -75,11 +77,19 @@ object OpenAiResponsesCodec {
             when (event["type"]?.jsonPrimitive?.contentOrNull) {
                 "response.output_text.delta" ->
                     event["delta"]?.jsonPrimitive?.contentOrNull?.let { deltas.append(it) }
-                "response.completed", "response.done" ->
+                "response.completed", "response.done" -> {
+                    sawCompleted = true
                     finalFromEvent = textOf(event["response"]?.asObject())
+                }
+                "response.failed", "error", "response.error" -> sawFailure = true
+                // A bare error envelope (no "type") also signals failure.
+                else -> if (event["error"] != null) sawFailure = true
             }
         }
 
+        // A failure event before any successful completion means the generation
+        // didn't finish — don't pass partial deltas off as a complete answer.
+        if (sawFailure && !sawCompleted) return ""
         if (deltas.isNotEmpty()) return deltas.toString()
         if (!finalFromEvent.isNullOrBlank()) return finalFromEvent
 

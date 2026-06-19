@@ -129,6 +129,9 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
      * the screen to open) and suspends until the loopback callback completes.
      */
     fun connectOpenAi() {
+        // Ignore taps while a sign-in is already in flight (the loopback wait can
+        // last minutes); a second flow would fail to bind the same port.
+        if (_state.value.aiBusy) return
         launchSafely {
             _state.update { it.copy(aiBusy = true) }
             val result = repository.connectOpenAi { url ->
@@ -139,7 +142,8 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
             emitMessage(
                 result.fold(
                     onSuccess = { "Connected to ChatGPT" },
-                    onFailure = { "Couldn't connect: ${it.message ?: "please try again."}" },
+                    // Keep it user-facing: the underlying reason is in the AI error log.
+                    onFailure = { "Couldn't sign in to ChatGPT. Please try again." },
                 ),
             )
         }

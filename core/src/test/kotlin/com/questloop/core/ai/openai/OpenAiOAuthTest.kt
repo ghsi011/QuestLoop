@@ -114,6 +114,12 @@ class OpenAiOAuthTest {
         assertTrue(tokens.isExpired(nowEpochSec = 1_500))
     }
 
+    @Test
+    fun `unknown expiry is treated as not expired so we don't refresh on every call`() {
+        val tokens = OpenAiOAuth.OpenAiTokens("a", "r", expiresAtEpochSec = 0)
+        assertFalse(tokens.isExpired(nowEpochSec = 10_000))
+    }
+
     /** Builds a fake (unsigned) JWT whose payload is [payloadJson]. */
     private fun jwt(payloadJson: String): String {
         val enc = Base64.getUrlEncoder().withoutPadding()
