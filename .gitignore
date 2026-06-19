@@ -22,3 +22,6 @@ keystore.properties
 
 # Logs
 *.log
+
+# graphify generated knowledge graph (build locally with `graphify update .`)
+graphify-out/
