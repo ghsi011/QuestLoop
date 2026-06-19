@@ -19,24 +19,25 @@ sandbox (no Google Maven access for the Android Gradle Plugin) — validate any
 
 CI layout: **`smoke.yml`** runs the `:core` suite on every push/PR (fast gate,
 ~1 min). **`full-tests.yml`** runs app build + lint + unit + emulator UI + merged
-coverage — manually, nightly, and on release (NOT per-push) — or push a commit with
+coverage — manually, nightly, and on release (NOT per-push), or push a commit with
 `[uitest]` to run it on demand. `[release]` cuts a release, `[schema]` regenerates
 the Room schema. Details in AGENTS.md.
 
-## Orientation: query the knowledge graph first
+## graphify — query the knowledge graph first
 
-A graphify knowledge graph of this repo is committed at `graphify-out/graph.json`
-(plain-language report: `graphify-out/GRAPH_REPORT.md`). For "how / where / why
-does X work" questions, orient from the graph **before** grepping or reading
-source files:
+This project has a knowledge graph (god nodes, community structure, cross-file
+relationships). It is **generated, not committed** — build/refresh it locally with
+the `/graphify` skill, and run `graphify update .` after changing code (AST-only,
+no API cost).
 
-- `graphify query "<question>"` — when the graphify CLI is installed
-- otherwise read `graphify-out/graph.json` directly — it is NetworkX node-link
-  JSON: `nodes[]` carry `label` / `source_file` / `file_type`, `links[]` carry
-  `relation` / `confidence`. Filter to the relevant subgraph, then open the files
-  it points at.
+- For codebase questions, first run `graphify query "<question>"` when
+  `graphify-out/graph.json` exists. Use `graphify path "<A>" "<B>"` for
+  relationships and `graphify explain "<concept>"` for focused concepts — these
+  return a scoped subgraph, usually far smaller than `GRAPH_REPORT.md` or raw grep.
+- If `graphify-out/wiki/index.md` exists, use it for broad navigation instead of
+  raw source browsing.
+- Read `graphify-out/GRAPH_REPORT.md` only for broad architecture review, or when
+  query/path/explain don't surface enough context.
 
 `QuestRepository` is the central hub (wires DB + engines + AI); `:core` holds the
 deterministic engine (reward economy, generation, AI parse/validate, safety).
-Rebuild the graph after large changes with the `/graphify` skill (it installs the
-`graphifyy` package on first run).

@@ -34,3 +34,16 @@ User approved fixing the two CI items I'd flagged:
   the coverage-badge job is restricted to schedule / release / manual-from-main so a
   `[uitest]` run can't clobber the published number. Docs (AGENTS.md, CLAUDE.md, the
   testing rule, the `ci-structure` memory) updated to match — `[uitest]` is live again.
+
+## 2026-06-19 — reconciliation with main
+
+Opening PR #1 to `main` revealed `main` had independently committed its own graphify
+config (identical hooks + vendored skill) and **deliberately gitignored `graphify-out/`**
+(cloud agents rebuild via `graphify update .`). Reconciled best-of-both rather than
+override that decision:
+- Adopted main's gitignore — **un-committed** `graphify-out/graph.json` + `GRAPH_REPORT.md`
+  (kept on disk, now ignored). The graph is rebuilt locally, not stored in git.
+- Kept main's root + `.claude/CLAUDE.md`; enriched the root `CLAUDE.md` with the
+  build/test commands it lacked + the `@AGENTS.md` import.
+- Net-new on top of main: CI hygiene (workflow branch filters + `[uitest]`), the
+  AGENTS.md CI-staleness fix, and `.claude/rules/testing.md`.
