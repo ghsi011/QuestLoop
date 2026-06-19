@@ -38,7 +38,9 @@ fi
 echo "==> [1/3] JDK 17 (AGP targets 17; many containers ship only a newer JDK)"
 if [ ! -x /usr/lib/jvm/java-17-openjdk-amd64/bin/java ]; then
   $SUDO apt-get update -qq
-  $SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+  # `env VAR=val` (not a bare `VAR=val` prefix): when run as root $SUDO is empty,
+  # and a bare assignment after an empty expansion is parsed as the command name.
+  $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
     openjdk-17-jdk-headless unzip curl
 fi
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
