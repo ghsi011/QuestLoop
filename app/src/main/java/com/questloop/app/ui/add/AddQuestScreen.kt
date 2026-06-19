@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -81,14 +82,11 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
         }
 
         if (draft.completionStyle == CompletionStyle.QUANTITATIVE) {
-            OutlinedTextField(
-                value = draft.targetCount.toString(),
-                onValueChange = { v ->
-                    v.toIntOrNull()?.coerceIn(1, 1000)?.let { n -> viewModel.updateDraft { it.copy(targetCount = n) } }
-                },
-                label = { Text("Target count") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                singleLine = true,
+            NumberField(
+                value = draft.targetCount,
+                onValue = { n -> viewModel.updateDraft { it.copy(targetCount = n) } },
+                label = "Target count",
+                range = 1..1000,
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
@@ -99,14 +97,11 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
             )
         }
 
-        OutlinedTextField(
-            value = draft.minutes.toString(),
-            onValueChange = { v ->
-                v.toIntOrNull()?.coerceIn(1, 1440)?.let { n -> viewModel.updateDraft { it.copy(minutes = n) } }
-            },
-            label = { Text(if (draft.completionStyle == CompletionStyle.DURATION) "Target minutes" else "Estimated minutes") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            singleLine = true,
+        NumberField(
+            value = draft.minutes,
+            onValue = { n -> viewModel.updateDraft { it.copy(minutes = n) } },
+            label = if (draft.completionStyle == CompletionStyle.DURATION) "Target minutes" else "Estimated minutes",
+            range = 1..1440,
             modifier = Modifier.fillMaxWidth(),
         )
 
@@ -243,12 +238,11 @@ private fun SuggestionCard(
 
             if (quest.completionStyle == CompletionStyle.QUANTITATIVE) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = (quest.targetCount ?: 8).toString(),
-                        onValueChange = { v -> onChange(quest.copy(targetCount = v.toIntOrNull()?.coerceIn(1, 1000) ?: quest.targetCount)) },
-                        label = { Text("Target") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
+                    NumberField(
+                        value = quest.targetCount ?: 8,
+                        onValue = { n -> onChange(quest.copy(targetCount = n)) },
+                        label = "Target",
+                        range = 1..1000,
                         modifier = Modifier.weight(1f),
                     )
                     OutlinedTextField(
@@ -261,12 +255,11 @@ private fun SuggestionCard(
                 }
             }
 
-            OutlinedTextField(
-                value = quest.estimatedMinutes.toString(),
-                onValueChange = { v -> onChange(quest.copy(estimatedMinutes = v.toIntOrNull()?.coerceIn(1, 1440) ?: quest.estimatedMinutes)) },
-                label = { Text(if (quest.completionStyle == CompletionStyle.DURATION) "Target minutes" else "Estimated minutes") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                singleLine = true,
+            NumberField(
+                value = quest.estimatedMinutes,
+                onValue = { n -> onChange(quest.copy(estimatedMinutes = n)) },
+                label = if (quest.completionStyle == CompletionStyle.DURATION) "Target minutes" else "Estimated minutes",
+                range = 1..1440,
                 modifier = Modifier.fillMaxWidth(),
             )
 
@@ -317,4 +310,36 @@ private fun <T> prettyOf(value: T): String = when (value) {
     is QuestCategory -> value.pretty()
     is Enum<*> -> value.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
     else -> value.toString()
+}
+
+/**
+ * Whole-number input that holds its own editable text so a value can be cleared
+ * and retyped freely. The model ([value]) only updates when the text parses to a
+ * number in [range]; an empty/partial field is allowed mid-edit instead of
+ * snapping back to the last value (which made deleting a digit feel broken). The
+ * text is re-seeded only when [value] changes from outside (e.g. a difficulty
+ * default), not on every keystroke, so deletion isn't fought.
+ */
+@Composable
+internal fun NumberField(
+    value: Int,
+    onValue: (Int) -> Unit,
+    label: String,
+    range: IntRange,
+    modifier: Modifier = Modifier,
+) {
+    val maxLen = range.last.toString().length
+    var text by rememberSaveable(value) { mutableStateOf(value.toString()) }
+    OutlinedTextField(
+        value = text,
+        onValueChange = { raw ->
+            val digits = raw.filter { it.isDigit() }.take(maxLen)
+            text = digits
+            digits.toIntOrNull()?.coerceIn(range.first, range.last)?.let(onValue)
+        },
+        label = { Text(label) },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        singleLine = true,
+        modifier = modifier,
+    )
 }
