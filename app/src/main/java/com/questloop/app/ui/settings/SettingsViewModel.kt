@@ -132,8 +132,11 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
         // Ignore taps while a sign-in is already in flight (the loopback wait can
         // last minutes); a second flow would fail to bind the same port.
         if (_state.value.aiBusy) return
+        // Claim the in-flight slot synchronously (before launching/suspending) so a
+        // quick second tap can't start a parallel sign-in that fails to rebind the
+        // loopback port.
+        _state.update { it.copy(aiBusy = true) }
         launchSafely {
-            _state.update { it.copy(aiBusy = true) }
             try {
                 val result = repository.connectOpenAi { url ->
                     _state.update { it.copy(openAuthUrl = url, authId = it.authId + 1) }

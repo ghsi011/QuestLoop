@@ -32,11 +32,14 @@ class OpenAiClient(
 
     override suspend fun complete(systemPrompt: String, userPrompt: String): String = withContext(Dispatchers.IO) {
         val payload = OpenAiResponsesCodec.buildRequestBody(model, systemPrompt, userPrompt)
+        // One session id for this logical request, reused across the 401 retry so the
+        // backend sees a single session rather than two.
+        val sessionId = UUID.randomUUID().toString()
         // First attempt with the current (lazily refreshed) token; on a 401, force a
         // refresh once and retry, since the access token may have been revoked early.
-        when (val first = call(payload, freshTokens(false))) {
+        when (val first = call(payload, sessionId, freshTokens(false))) {
             is Outcome.Ok -> first.text
-            is Outcome.Unauthorized -> when (val retry = call(payload, freshTokens(true))) {
+            is Outcome.Unauthorized -> when (val retry = call(payload, sessionId, freshTokens(true))) {
                 is Outcome.Ok -> retry.text
                 is Outcome.Unauthorized -> throw IOException("OpenAI rejected the sign-in (401). Please sign in again.")
                 is Outcome.Failed -> throw retry.error
@@ -45,14 +48,14 @@ class OpenAiClient(
         }
     }
 
-    private fun call(payload: String, tokens: OpenAiOAuth.OpenAiTokens): Outcome {
+    private fun call(payload: String, sessionId: String, tokens: OpenAiOAuth.OpenAiTokens): Outcome {
         val builder = Request.Builder()
             .url(endpoint)
             .addHeader("Authorization", "Bearer ${tokens.accessToken}")
             .addHeader("OpenAI-Beta", OpenAiOAuth.OPENAI_BETA)
             .addHeader("originator", OpenAiOAuth.ORIGINATOR)
             .addHeader("User-Agent", OpenAiOAuth.USER_AGENT)
-            .addHeader("session-id", UUID.randomUUID().toString())
+            .addHeader("session-id", sessionId)
             .addHeader("Accept", "text/event-stream")
             .post(payload.toRequestBody(JSON_MEDIA))
         if (tokens.accountId.isNotBlank()) builder.addHeader("ChatGPT-Account-Id", tokens.accountId)

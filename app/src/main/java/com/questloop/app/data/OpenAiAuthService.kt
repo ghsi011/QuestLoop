@@ -120,7 +120,7 @@ class OpenAiAuthService(
             val remaining = deadline - System.currentTimeMillis()
             if (remaining <= 0) return null
             server.soTimeout = remaining.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-            val cb = acceptOnce(server, remaining) ?: return null // accept() timed out → overall timeout
+            val cb = acceptOnce(server, deadline) ?: return null // accept() timed out → overall timeout
             if (cb.code != null || cb.error != null) return cb
             // else: a stray/slow request — keep waiting for the real callback.
         }
@@ -133,7 +133,7 @@ class OpenAiAuthService(
      * is bounded by a per-socket read timeout and skipped (empty [Callback]) so it
      * can't hang the sign-in past the deadline.
      */
-    private fun acceptOnce(server: ServerSocket, remainingMs: Long): Callback? {
+    private fun acceptOnce(server: ServerSocket, deadline: Long): Callback? {
         val socket = try {
             server.accept()
         } catch (e: SocketTimeoutException) {
@@ -141,8 +141,10 @@ class OpenAiAuthService(
         }
         return socket.use {
             // accept()'s timeout does NOT cover reading the request, so bound the read
-            // too — otherwise a client that connects but never sends a line blocks forever.
-            it.soTimeout = remainingMs.coerceIn(1L, READ_TIMEOUT_MS).toInt()
+            // too — otherwise a client that connects but never sends a line blocks
+            // forever. Recompute against the deadline (accept may have eaten most of
+            // the budget) and cap it so one stalled client can't hold the whole window.
+            it.soTimeout = (deadline - System.currentTimeMillis()).coerceIn(1L, READ_TIMEOUT_MS).toInt()
             val requestLine = try {
                 // e.g. "GET /auth/callback?code=...&state=... HTTP/1.1"
                 BufferedReader(InputStreamReader(it.getInputStream())).readLine().orEmpty()
