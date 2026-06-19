@@ -134,18 +134,23 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
         if (_state.value.aiBusy) return
         launchSafely {
             _state.update { it.copy(aiBusy = true) }
-            val result = repository.connectOpenAi { url ->
-                _state.update { it.copy(openAuthUrl = url, authId = it.authId + 1) }
+            try {
+                val result = repository.connectOpenAi { url ->
+                    _state.update { it.copy(openAuthUrl = url, authId = it.authId + 1) }
+                }
+                reload()
+                emitMessage(
+                    result.fold(
+                        onSuccess = { "Connected to ChatGPT" },
+                        // Keep it user-facing: the underlying reason is in the AI error log.
+                        onFailure = { "Couldn't sign in to ChatGPT. Please try again." },
+                    ),
+                )
+            } finally {
+                // Always clear the in-flight flag so the sign-in button can't get stuck
+                // (e.g. if persisting the tokens or the reload throws).
+                _state.update { it.copy(aiBusy = false) }
             }
-            reload()
-            _state.update { it.copy(aiBusy = false) }
-            emitMessage(
-                result.fold(
-                    onSuccess = { "Connected to ChatGPT" },
-                    // Keep it user-facing: the underlying reason is in the AI error log.
-                    onFailure = { "Couldn't sign in to ChatGPT. Please try again." },
-                ),
-            )
         }
     }
 

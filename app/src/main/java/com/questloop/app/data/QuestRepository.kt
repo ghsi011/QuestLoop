@@ -567,11 +567,13 @@ class QuestRepository(
      */
     suspend fun connectOpenAi(openUrl: (String) -> Unit): Result<Unit> {
         val tokens = openAiAuth.signIn(openUrl = openUrl).getOrElse { return Result.failure(it) }
-        val config = profileStore.getAiConfig()
-        profileStore.setAiConfig(
-            config.copy(enabled = true, provider = AiProvider.OPENAI, openAiTokens = tokens),
-        )
-        return Result.success(Unit)
+        // Persisting can throw if the encrypted key store rejects the write; surface
+        // that as a failure (so the caller shows a message + clears its busy state)
+        // rather than letting it propagate past the caller's cleanup.
+        return runCatching {
+            val config = profileStore.getAiConfig()
+            profileStore.setAiConfig(config.copy(enabled = true, provider = AiProvider.OPENAI, openAiTokens = tokens))
+        }
     }
 
     /** Unlinks the OpenAI account (drops the stored tokens); leaves OpenRouter config intact. */

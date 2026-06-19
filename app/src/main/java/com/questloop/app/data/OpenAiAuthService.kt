@@ -120,27 +120,43 @@ class OpenAiAuthService(
             val remaining = deadline - System.currentTimeMillis()
             if (remaining <= 0) return null
             server.soTimeout = remaining.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-            val cb = acceptOnce(server) ?: return null // socket timeout
+            val cb = acceptOnce(server, remaining) ?: return null // accept() timed out → overall timeout
             if (cb.code != null || cb.error != null) return cb
-            // else: a stray request — keep waiting for the real callback.
+            // else: a stray/slow request — keep waiting for the real callback.
         }
     }
 
-    /** Accepts one loopback request, parses its query, and replies with a page. Null on timeout. */
-    private fun acceptOnce(server: ServerSocket): Callback? = try {
-        server.accept().use { socket ->
-            // e.g. "GET /auth/callback?code=...&state=... HTTP/1.1"
-            val requestLine = BufferedReader(InputStreamReader(socket.getInputStream())).readLine().orEmpty()
+    /**
+     * Accepts one loopback request, parses its query, and replies with a page.
+     * Returns null only when [ServerSocket.accept] itself times out (overall
+     * deadline reached). A connection that stalls without sending a request line
+     * is bounded by a per-socket read timeout and skipped (empty [Callback]) so it
+     * can't hang the sign-in past the deadline.
+     */
+    private fun acceptOnce(server: ServerSocket, remainingMs: Long): Callback? {
+        val socket = try {
+            server.accept()
+        } catch (e: SocketTimeoutException) {
+            return null
+        }
+        return socket.use {
+            // accept()'s timeout does NOT cover reading the request, so bound the read
+            // too — otherwise a client that connects but never sends a line blocks forever.
+            it.soTimeout = remainingMs.coerceIn(1L, READ_TIMEOUT_MS).toInt()
+            val requestLine = try {
+                // e.g. "GET /auth/callback?code=...&state=... HTTP/1.1"
+                BufferedReader(InputStreamReader(it.getInputStream())).readLine().orEmpty()
+            } catch (e: SocketTimeoutException) {
+                return@use Callback(null, null, null) // stalled client → skip, keep listening
+            }
             val query = requestLine.substringAfter('?', "").substringBefore(' ')
             val params = parseQuery(query)
-            socket.getOutputStream().use { out ->
+            it.getOutputStream().use { out ->
                 out.write(SUCCESS_RESPONSE.toByteArray())
                 out.flush()
             }
             Callback(code = params["code"], state = params["state"], error = params["error"])
         }
-    } catch (e: SocketTimeoutException) {
-        null
     }
 
     private fun parseQuery(query: String): Map<String, String> =
@@ -152,6 +168,11 @@ class OpenAiAuthService(
     private fun decode(s: String) = runCatching { URLDecoder.decode(s, "UTF-8") }.getOrDefault(s)
 
     companion object {
+        // Upper bound for reading a single loopback request line; keeps one stalled
+        // connection from eating the whole sign-in window while still leaving time
+        // to accept the genuine browser callback.
+        private const val READ_TIMEOUT_MS = 10_000L
+
         private val SUCCESS_PAGE =
             "<!doctype html><html><body style=\"font-family:sans-serif;text-align:center;padding-top:3rem\">" +
                 "<h2>You're signed in</h2><p>You can close this tab and return to QuestLoop.</p></body></html>"
