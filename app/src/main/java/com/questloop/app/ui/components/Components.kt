@@ -127,6 +127,16 @@ fun CategoryDot(category: QuestCategory, modifier: Modifier = Modifier) {
 /** Pretty, human label for a difficulty (e.g. "Medium"). */
 fun Difficulty.pretty(): String = name.lowercase().replaceFirstChar { it.uppercase() }
 
+/** Pretty, human label for a recurrence cadence (e.g. "One-off"). */
+fun com.questloop.core.model.QuestFrequency.pretty(): String = when (this) {
+    com.questloop.core.model.QuestFrequency.DAILY -> "Daily"
+    com.questloop.core.model.QuestFrequency.WEEKLY -> "Weekly"
+    com.questloop.core.model.QuestFrequency.MONTHLY -> "Monthly"
+    com.questloop.core.model.QuestFrequency.RECURRING -> "Recurring"
+    com.questloop.core.model.QuestFrequency.ONE_OFF -> "One-off"
+    com.questloop.core.model.QuestFrequency.SEASONAL -> "Seasonal"
+}
+
 /** Difficulty shown as filled pips (e.g. ●●●○○) instead of a word. The pip count
  *  is visual-only, so the tier is exposed as a content description for TalkBack. */
 @Composable

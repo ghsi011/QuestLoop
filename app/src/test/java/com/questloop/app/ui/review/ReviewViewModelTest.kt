@@ -108,6 +108,21 @@ class ReviewViewModelTest {
     }
 
     @Test
+    fun `load builds weekly and monthly plans and mode toggles`() = runTest {
+        repo.addQuest(quest()) // a daily quest -> should populate the forward plan
+        val vm = ReviewViewModel(repo)
+        vm.load()
+        val state = vm.state.value
+        assertNotNull(state.weeklyPlan)
+        assertNotNull(state.monthlyPlan)
+        assertTrue(state.weeklyPlan!!.items.any { it.quest.id == "a" })
+        // Default mode is the retrospective; toggling flips to the forward plan.
+        assertTrue(state.mode == ReviewMode.REVIEW)
+        vm.setMode(ReviewMode.PLAN)
+        assertTrue(vm.state.value.mode == ReviewMode.PLAN)
+    }
+
+    @Test
     fun `summarize with ai falls back to deterministic text when ai is off`() = runTest {
         val vm = ReviewViewModel(repo)
         vm.load()
