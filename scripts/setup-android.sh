@@ -38,11 +38,14 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 echo "==> [1/4] graphify (codebase knowledge graph; https://github.com/safishamsi/graphify)"
+export PATH="$HOME/.local/bin:$PATH"   # uv + the graphify CLI install here
 if ! command -v graphify >/dev/null 2>&1; then
   curl -LSsf https://astral.sh/uv/install.sh | sh
-  export PATH="$HOME/.local/bin:$PATH"
   uv tool install graphifyy   # PyPI package is 'graphifyy' (double-y); CLI is 'graphify'
 fi
+# Register the /graphify skill for Claude Code. Writes ~/.claude (user-level),
+# not the repo, so the working tree stays clean.
+graphify install --platform claude
 
 echo "==> [2/4] JDK 17 (AGP targets 17; many containers ship only a newer JDK)"
 if [ ! -x /usr/lib/jvm/java-17-openjdk-amd64/bin/java ]; then
