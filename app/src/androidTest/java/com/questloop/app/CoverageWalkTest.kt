@@ -159,6 +159,10 @@ class CoverageWalkTest {
     fun reviews_and_rewards_render_and_interact() {
         tab("Reviews")
         awaitSafe { present("Reviews") }
+        // Toggle the forward Plan view, then back to the retrospective Review.
+        tapText("Plan")
+        composeRule.waitForIdle()
+        tapText("Review")
         tab("Rewards")
         awaitSafe { present("Save budget") }
         typeInto("Affordable monthly budget", "25")

@@ -19,4 +19,13 @@ object AppClock {
         val date = LocalDate.ofEpochDay(today)
         return date.withDayOfMonth(1).toEpochDay()
     }
+
+    /** Last day (inclusive) of the ISO week `today` falls in — for forward-looking plans. */
+    fun endOfWeek(today: Long): Long = startOfWeek(today) + 6
+
+    /** Last day (inclusive) of the calendar month `today` falls in. */
+    fun endOfMonth(today: Long): Long {
+        val date = LocalDate.ofEpochDay(today)
+        return date.withDayOfMonth(date.lengthOfMonth()).toEpochDay()
+    }
 }

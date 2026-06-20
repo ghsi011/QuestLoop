@@ -65,9 +65,13 @@ Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
   Add screen uses it. *(The live network call can't be exercised in the CI
   sandbox — OpenRouter is firewalled there — so it's covered by fake-client unit
   tests and verified on-device.)*
-- **Weekly/monthly quest *lists*** (§4) — recurrence cadence is now enforced
-  (`QuestScheduler`), but the app still renders one **daily** plan; there are no
-  dedicated weekly/monthly planning screens.
+- **Weekly/monthly quest *lists*** (§4) — recurrence cadence is enforced
+  (`QuestScheduler`) and the Reviews tab now has a **Plan** view (toggle next to
+  the retrospective Review) that lays the candidate pool out across the current
+  week/month: `PeriodPlanner` computes each quest's expected occurrences, flags
+  overdue / due-this-period deadlines, and groups by category with time
+  subtotals. *Forward-looking calendar weeks/months only; per-day scheduling
+  within the period and drag-to-reschedule aren't built.*
 - **Admin quests for reward funds** (§6) — one seed quest + static guidance on
   the Rewards screen, not a dynamic flow.
 - **Energy/mood check-in** (§7) — energy check-in shapes the plan and is now
@@ -87,5 +91,6 @@ Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
 - Cloud sync (data export and delete-all are implemented).
 
 ## Biggest gaps vs. spec
-Live AI (scaffolded but deterministic), habit/goal management UI, true
-weekly/monthly scheduling, and all external integrations.
+Per-day scheduling/rescheduling within a week/month (the Plan view is a
+forward overview, not a calendar you can drag quests around in), a dynamic
+admin/reward-fund flow, a mood check-in, and all external integrations.

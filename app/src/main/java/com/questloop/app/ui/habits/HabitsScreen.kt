@@ -49,6 +49,9 @@ fun HabitsScreen(viewModel: HabitsViewModel) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         SectionHeader("Habits to build")
+        if (state.habits.isEmpty()) {
+            EmptyHint("No habits yet — add one below to start turning it into daily quests.")
+        }
         state.habits.forEach { habit ->
             RowItem(
                 title = habit.title,
@@ -59,6 +62,9 @@ fun HabitsScreen(viewModel: HabitsViewModel) {
         AddHabitForm(onAdd = viewModel::addHabit)
 
         SectionHeader("Habits to reduce")
+        if (state.badHabits.isEmpty()) {
+            EmptyHint("Nothing to reduce yet — tracking one honestly is rewarded, not punished.")
+        }
         state.badHabits.forEach { bad ->
             RowItem(
                 title = bad.title,
@@ -69,6 +75,9 @@ fun HabitsScreen(viewModel: HabitsViewModel) {
         AddBadHabitForm(onAdd = viewModel::addBadHabit)
 
         SectionHeader("Goals")
+        if (state.goals.isEmpty()) {
+            EmptyHint("No goals yet — add one to get a gentle weekly progress check-in.")
+        }
         state.goals.forEach { goal ->
             RowItem(
                 title = goal.title,
@@ -90,6 +99,15 @@ fun HabitsScreen(viewModel: HabitsViewModel) {
             dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Cancel") } },
         )
     }
+}
+
+@Composable
+private fun EmptyHint(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable

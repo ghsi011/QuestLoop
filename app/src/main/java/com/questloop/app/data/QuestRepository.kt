@@ -8,6 +8,7 @@ import com.questloop.core.ai.AiQuestService
 import com.questloop.core.completion.CompletionPolicy
 import com.questloop.core.completion.CompletionScaling
 import com.questloop.core.generation.HabitQuestFactory
+import com.questloop.core.generation.PeriodPlanner
 import com.questloop.core.generation.QuestGenerator
 import com.questloop.core.generation.QuestScheduler
 import com.questloop.core.generation.RoutineQuestFactory
@@ -52,6 +53,7 @@ class QuestRepository(
     private val profileStore: ProfilePreferences,
     private val engine: QuestLoopEngine = QuestLoopEngine(),
     private val generator: QuestGenerator = QuestGenerator(),
+    private val periodPlanner: PeriodPlanner = PeriodPlanner(),
     private val safetyGuard: SafetyGuard = SafetyGuard(),
     private val aiDiagnostics: AiDiagnostics = NoopAiDiagnostics,
     private val aiCallGuard: AiCallGuard = NoopAiCallGuard,
@@ -394,6 +396,24 @@ class QuestRepository(
         return ReviewGenerator.generate(periodLabel, records) { xpByInstance[it.instanceId] ?: 0L }
     }
 
+    /**
+     * Forward-looking weekly/monthly plan over the inclusive `[fromEpochDay,
+     * toEpochDay]` window — the same candidate pool as [todayPlan] (stored quests
+     * + derived habit/goal quests), but laid out across the whole period instead
+     * of a single day. Powers the Reviews tab's "Plan" view.
+     */
+    suspend fun periodPlan(
+        periodLabel: String,
+        fromEpochDay: Long,
+        toEpochDay: Long,
+    ): PeriodPlanner.PeriodPlan {
+        val profile = profileStore.profile.first()
+        val lastCompleted = completionDao.lastCompletedDays().associate { it.questId to it.lastDay }
+        val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals)
+        val candidates = questDao.getActive().map { it.toModel() } + derived
+        return periodPlanner.plan(periodLabel, fromEpochDay, toEpochDay, candidates, lastCompleted)
+    }
+
     suspend fun allowance(fromEpochDay: Long, toEpochDay: Long): RewardAllowanceCalculator.AllowanceResult {
         val profile = profileStore.profile.first()
         val records = completionDao.between(fromEpochDay, toEpochDay).map { it.toModel() }
@@ -555,6 +575,9 @@ class QuestRepository(
         profileStore.getCheckIn()?.takeIf { it.epochDay == epochDay }
 
     suspend fun setCheckIn(checkIn: EnergyCheckIn) = profileStore.setCheckIn(checkIn)
+
+    /** Clears today's energy check-in (deselecting the chip reverts to the default plan). */
+    suspend fun clearCheckIn() = profileStore.setCheckIn(null)
 
     suspend fun aiConfig(): AiConfig = profileStore.getAiConfig()
     suspend fun setAiConfig(config: AiConfig) = profileStore.setAiConfig(config)

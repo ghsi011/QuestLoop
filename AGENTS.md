@@ -49,9 +49,7 @@ QuestLoop: a gamified quest/habit Android app. Gradle multi-module:
   auto-downloaded yet — the user grabs them from the Actions UI. Add that host to
   the environment's egress allowlist to enable agent-side visual review.
 - Trunk is `main`; feature work happens on `claude/*` branches (cloud sessions).
-  Note: `release.yml` / `export-room-schema.yml` still list a stale
-  `claude/gamified-quest-todo-habits-vkiiyl` branch and `master` in their push
-  filters — harmless (they also list `main`), but worth pruning.
+  `release.yml` / `export-room-schema.yml` trigger on `["main", "claude/**"]`.
 
 ## Coding lessons / gotchas (learned the hard way)
 **Reward economy & data**

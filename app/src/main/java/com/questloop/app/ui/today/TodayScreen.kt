@@ -59,6 +59,8 @@ data class TodayActions(
     val onSkip: (Quest) -> Unit,
     val onCompleteMeasured: (Quest, Int) -> Unit,
     val onCheckIn: (energy: Int) -> Unit,
+    /** Tapping the already-selected energy chip clears the check-in. */
+    val onClearCheckIn: () -> Unit = {},
     val onOpenQuestBank: () -> Unit = {},
     val onOpenAddQuest: () -> Unit = {},
     /** Permanently dismiss a first-run guide quest. */
@@ -100,6 +102,7 @@ fun TodayScreen(
             onSkip = { viewModel.complete(it, CompletionResult.SKIPPED) },
             onCompleteMeasured = { quest, value -> buzz(); viewModel.completeMeasured(quest, value) },
             onCheckIn = viewModel::setCheckIn,
+            onClearCheckIn = viewModel::clearCheckIn,
             onOpenQuestBank = onOpenQuestBank,
             onOpenAddQuest = onOpenAddQuest,
             onDismissGuide = viewModel::dismissGuide,
@@ -139,7 +142,13 @@ fun TodayContent(state: TodayUiState, actions: TodayActions, onOpenAchievements:
             item { SafetyBanner(state.signals) }
         }
 
-        item { EnergyCheckInRow(selectedEnergy = state.energy, onSelect = actions.onCheckIn) }
+        item {
+            EnergyCheckInRow(
+                selectedEnergy = state.energy,
+                onSelect = actions.onCheckIn,
+                onClear = actions.onClearCheckIn,
+            )
+        }
 
         val quests = state.plan?.quests.orEmpty()
         if (quests.isNotEmpty() && state.availableMinutes > 0) {
@@ -290,9 +299,15 @@ private fun SafetyBanner(signals: List<SafetyGuard.Signal>) {
     }
 }
 
-/** Compact emoji segmented control; no question text. */
+/** Compact emoji segmented control; no question text. A "Rest" option (energy 1)
+ *  is distinct from "Low" — it schedules only the gentle daily routines. Re-tapping
+ *  the selected chip clears the check-in. */
 @Composable
-private fun EnergyCheckInRow(selectedEnergy: Int?, onSelect: (energy: Int) -> Unit) {
+private fun EnergyCheckInRow(
+    selectedEnergy: Int?,
+    onSelect: (energy: Int) -> Unit,
+    onClear: () -> Unit,
+) {
     Row(
         // FilterChips already expose their own selected (toggle) state to
         // accessibility services, so no selectableGroup() (which models
@@ -302,15 +317,28 @@ private fun EnergyCheckInRow(selectedEnergy: Int?, onSelect: (energy: Int) -> Un
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("Energy", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        EnergyOption("🔋 Low", 2, selectedEnergy, onSelect)
-        EnergyOption("⚡ OK", 3, selectedEnergy, onSelect)
-        EnergyOption("🔥 High", 5, selectedEnergy, onSelect)
+        EnergyOption("😴 Rest", 1, selectedEnergy, onSelect, onClear)
+        EnergyOption("🔋 Low", 2, selectedEnergy, onSelect, onClear)
+        EnergyOption("⚡ OK", 3, selectedEnergy, onSelect, onClear)
+        EnergyOption("🔥 High", 5, selectedEnergy, onSelect, onClear)
     }
 }
 
 @Composable
-private fun EnergyOption(label: String, energy: Int, selected: Int?, onSelect: (Int) -> Unit) {
-    FilterChip(selected = selected == energy, onClick = { onSelect(energy) }, label = { Text(label) })
+private fun EnergyOption(
+    label: String,
+    energy: Int,
+    selected: Int?,
+    onSelect: (Int) -> Unit,
+    onClear: () -> Unit,
+) {
+    val isSelected = selected == energy
+    FilterChip(
+        selected = isSelected,
+        // Re-tapping the active chip deselects it; otherwise select this level.
+        onClick = { if (isSelected) onClear() else onSelect(energy) },
+        label = { Text(label) },
+    )
 }
 
 @Composable

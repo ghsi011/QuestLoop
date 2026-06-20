@@ -61,10 +61,20 @@ class QuestGenerator(
 
         // Low-energy days get fewer quests and a difficulty ceiling so the plan
         // is never punishing (SPEC 8 & 9: support low-energy days, no burnout).
+        // A *rest day* (the lowest energy) goes further: only the gentle daily
+        // routines are scheduled, never real quests — rest is a valid choice, not
+        // a failure, and is framed that way.
+        val restDay = energy != null && energy <= 1
         val lowEnergy = energy != null && energy <= 2
-        val maxQuests = if (lowEnergy) (prefs.maxDailyQuests - 2).coerceAtLeast(2) else prefs.maxDailyQuests
+        val maxQuests = when {
+            restDay -> 0
+            lowEnergy -> (prefs.maxDailyQuests - 2).coerceAtLeast(2)
+            else -> prefs.maxDailyQuests
+        }
         val difficultyCeiling = if (lowEnergy) Difficulty.MEDIUM else Difficulty.EPIC
-        if (lowEnergy) {
+        if (restDay) {
+            notes += "Rest day — only your gentle check-ins are scheduled. Recovery is progress, not a pause."
+        } else if (lowEnergy) {
             notes += "Low-energy day detected — suggesting a lighter, shorter plan. Rest is progress too."
         }
 
@@ -131,9 +141,10 @@ class QuestGenerator(
 
         val deferred = remaining
 
-        if (selected.isEmpty()) {
+        if (selected.isEmpty() && !restDay) {
             // Offer at least one approachable quest rather than an empty day —
-            // but never resurface something already dismissed today.
+            // but never resurface something already dismissed today. (Skipped on a
+            // rest day, where an empty real-quest plan is the intended outcome.)
             val easiest = request.candidates
                 .filter { it.id !in dismissed }
                 .minByOrNull { it.difficulty.ordinal }
@@ -147,7 +158,9 @@ class QuestGenerator(
         if (usedMinutes > availableMinutes) {
             notes += "Plan slightly exceeds your available time — feel free to defer anything."
         }
-        if (deferred.size > selected.size && selected.isNotEmpty()) {
+        // On a rest day everything real is intentionally deferred, so this note
+        // would only undercut the recovery framing.
+        if (!restDay && deferred.size > selected.size && selected.isNotEmpty()) {
             notes += "${deferred.size} quest(s) deferred to keep today realistic."
         }
 
