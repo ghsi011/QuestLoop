@@ -142,6 +142,8 @@ class QuestGeneratorTest {
         // Only the routine is scheduled — no real quests, even though they fit the budget.
         assertEquals(listOf("routine"), plan.quests.map { it.quest.id })
         assertTrue(plan.notes.any { it.contains("Rest day", ignoreCase = true) })
+        // The "deferred to keep today realistic" note must not undercut the rest framing.
+        assertTrue(plan.notes.none { it.contains("deferred", ignoreCase = true) })
     }
 
     @Test

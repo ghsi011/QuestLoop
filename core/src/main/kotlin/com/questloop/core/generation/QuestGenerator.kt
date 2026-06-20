@@ -158,7 +158,9 @@ class QuestGenerator(
         if (usedMinutes > availableMinutes) {
             notes += "Plan slightly exceeds your available time — feel free to defer anything."
         }
-        if (deferred.size > selected.size && selected.isNotEmpty()) {
+        // On a rest day everything real is intentionally deferred, so this note
+        // would only undercut the recovery framing.
+        if (!restDay && deferred.size > selected.size && selected.isNotEmpty()) {
             notes += "${deferred.size} quest(s) deferred to keep today realistic."
         }
 

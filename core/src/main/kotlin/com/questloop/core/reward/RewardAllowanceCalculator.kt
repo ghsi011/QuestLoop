@@ -95,7 +95,6 @@ object RewardAllowanceCalculator {
         val suggested = (cap * earnedFraction).roundToCents()
 
         val explanation = buildString {
-            append("Suggested allowance: ${suggested.money()} of your ${cap.money()} budget. ")
             append("Based on ${(completionRate * 100).roundToInt()}% difficulty-weighted completion ")
             append("and ${(consistencyFactor * 100).roundToInt()}% day-to-day consistency")
             if (criticalMissed > 0) append("; reduced for $criticalMissed missed critical task(s)")
@@ -114,5 +113,4 @@ object RewardAllowanceCalculator {
     }
 
     private fun Double.roundToCents(): Double = (this * 100).roundToInt() / 100.0
-    private fun Double.money(): String = "%.2f".format(this)
 }
