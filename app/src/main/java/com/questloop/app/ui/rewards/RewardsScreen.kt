@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.questloop.app.ui.Money
 import com.questloop.app.ui.components.InfoCard
 import com.questloop.app.ui.components.SectionHeader
 import com.questloop.core.reward.RewardAllowanceCalculator
@@ -65,7 +66,7 @@ fun RewardsScreen(viewModel: RewardsViewModel, snackbarHostState: SnackbarHostSt
                 Column(Modifier.padding(16.dp)) {
                     Text("Earned this month", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "%.2f".format(allowance.suggestedAllowance),
+                        Money.format(allowance.suggestedAllowance),
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(vertical = 4.dp),
