@@ -116,6 +116,18 @@ class QuestSchedulerTest {
         assertEquals(0, QuestScheduler.expectedOccurrences(QuestFrequency.DAILY, from = 106, to = 100, null))
     }
 
+    @Test
+    fun `a future-dated completion does not hide a recurring quest`() {
+        // Clock skew / timezone can stamp a completion after the window end. It
+        // must not push the next due date out and silently drop the quest.
+        assertEquals(7, QuestScheduler.expectedOccurrences(QuestFrequency.DAILY, from = 100, to = 106, 200))
+        assertEquals(1, QuestScheduler.expectedOccurrences(QuestFrequency.WEEKLY, from = 100, to = 106, 200))
+        assertEquals(1, QuestScheduler.expectedOccurrences(QuestFrequency.MONTHLY, from = 100, to = 129, 999))
+        assertEquals(100L, QuestScheduler.firstDueDay(QuestFrequency.DAILY, from = 100, to = 106, 200))
+        // A one-off, however, stays done regardless of when it was logged.
+        assertEquals(0, QuestScheduler.expectedOccurrences(QuestFrequency.ONE_OFF, from = 100, to = 106, 200))
+    }
+
     // --- firstDueDay -----------------------------------------------------------
 
     @Test
