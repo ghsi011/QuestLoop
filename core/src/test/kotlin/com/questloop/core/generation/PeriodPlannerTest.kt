@@ -72,17 +72,27 @@ class PeriodPlannerTest {
     }
 
     @Test
-    fun `a one-off already completed is dropped unless its deadline keeps it in view`() {
+    fun `a completed one-off is dropped even when it is dated`() {
         // Completed one-off with no deadline -> gone.
         val doneNoDeadline = quest("done", QuestFrequency.ONE_OFF)
         val resultA = plan(listOf(doneNoDeadline), lastCompleted = mapOf("done" to 90L))
         assertTrue(resultA.items.isEmpty())
 
-        // Completed one-off whose deadline still lands this period -> retained as dated.
-        val doneDated = quest("doneDated", QuestFrequency.ONE_OFF, deadline = from + 2)
-        val resultB = plan(listOf(doneDated), lastCompleted = mapOf("doneDated" to 90L))
-        val item = resultB.items.single()
-        assertEquals(0, item.expectedOccurrences)
+        // A completed one-off must NOT linger as planned work just because its
+        // deadline falls in (or before) the window — it's already done.
+        val doneDueThisPeriod = quest("doneDated", QuestFrequency.ONE_OFF, deadline = from + 2)
+        assertTrue(plan(listOf(doneDueThisPeriod), lastCompleted = mapOf("doneDated" to 90L)).items.isEmpty())
+
+        val doneOverdue = quest("doneLate", QuestFrequency.ONE_OFF, deadline = from - 3)
+        assertTrue(plan(listOf(doneOverdue), lastCompleted = mapOf("doneLate" to 95L)).items.isEmpty())
+    }
+
+    @Test
+    fun `an unmet dated one-off is still kept`() {
+        // Never completed, deadline this period -> retained as dated work.
+        val dued = quest("due", QuestFrequency.ONE_OFF, deadline = from + 2)
+        val item = plan(listOf(dued)).items.single()
+        assertEquals(1, item.expectedOccurrences) // an unmet one-off counts once
         assertTrue(item.dueThisPeriod)
     }
 

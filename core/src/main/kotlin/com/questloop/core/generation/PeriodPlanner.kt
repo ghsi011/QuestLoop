@@ -74,10 +74,14 @@ class PeriodPlanner {
                 quest.frequency, fromEpochDay, toEpochDay, lastCompleted,
             )
             val deadline = quest.deadlineEpochDay
-            val dueThisPeriod = deadline != null && deadline in fromEpochDay..toEpochDay
-            val isOverdue = deadline != null && deadline < fromEpochDay
-            // Drop quests with no occurrences this period — unless an unmet deadline
-            // (overdue, or already-completed-but-still-dated work) pulls them in.
+            // A deadline only pulls a quest in while it's still unmet. A completed
+            // one-off (or a recurring quest already satisfied for its period) must
+            // not linger in the plan as "Due …"/"Overdue" forever.
+            val unmet = QuestScheduler.isDue(quest.frequency, toEpochDay, lastCompleted)
+            val dueThisPeriod = unmet && deadline != null && deadline in fromEpochDay..toEpochDay
+            val isOverdue = unmet && deadline != null && deadline < fromEpochDay
+            // Drop quests with no occurrences this period unless an unmet deadline
+            // (overdue or due-this-period) genuinely keeps them on the plate.
             if (occurrences == 0 && !dueThisPeriod && !isOverdue) return@mapNotNull null
             PlanItem(
                 quest = quest,
