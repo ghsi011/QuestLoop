@@ -19,6 +19,7 @@ enum class QuestCategory {
     WORK_STUDY,
     SOCIAL,
     PERSONAL_GROWTH,
+    HOBBY_MAINTENANCE,
     BAD_HABIT_REDUCTION,
     META_MAINTENANCE;
 

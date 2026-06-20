@@ -105,6 +105,7 @@ fun QuestCategory.color(): Color = when (this) {
     QuestCategory.WORK_STUDY -> Color(0xFF3B82F6)
     QuestCategory.SOCIAL -> Color(0xFFEC4899)
     QuestCategory.PERSONAL_GROWTH -> Color(0xFF8B5CF6)
+    QuestCategory.HOBBY_MAINTENANCE -> Color(0xFF14B8A6)
     QuestCategory.BAD_HABIT_REDUCTION -> Color(0xFFEF4444)
     QuestCategory.META_MAINTENANCE -> Color(0xFF64748B)
 }
