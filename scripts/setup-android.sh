@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Provision a machine to build and test the full QuestLoop project (:core AND
-# :app) without relying on CI. Installs JDK 17 (the toolchain AGP targets) and a
-# minimal Android SDK (cmdline-tools, platform-tools, the compileSdk platform and
-# matching build-tools). Idempotent: safe to re-run; skips work already done.
+# :app) without relying on CI. Installs graphify (the codebase knowledge-graph
+# tool — https://github.com/safishamsi/graphify), JDK 17 (the toolchain AGP
+# targets) and a minimal Android SDK (cmdline-tools, platform-tools, the
+# compileSdk platform and matching build-tools). Idempotent: safe to re-run;
+# skips work already done.
 #
 # Used two ways:
 #   • Claude Code on the web / cloud setup script: call this from the env's setup
@@ -35,7 +37,14 @@ if [ "$(id -u)" -ne 0 ]; then
     echo "ERROR: need root or sudo to install JDK 17." >&2; exit 1; }
 fi
 
-echo "==> [1/3] JDK 17 (AGP targets 17; many containers ship only a newer JDK)"
+echo "==> [1/4] graphify (codebase knowledge graph; https://github.com/safishamsi/graphify)"
+if ! command -v graphify >/dev/null 2>&1; then
+  curl -LSsf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
+  uv tool install graphifyy   # PyPI package is 'graphifyy' (double-y); CLI is 'graphify'
+fi
+
+echo "==> [2/4] JDK 17 (AGP targets 17; many containers ship only a newer JDK)"
 if [ ! -x /usr/lib/jvm/java-17-openjdk-amd64/bin/java ]; then
   $SUDO apt-get update -qq
   # `env VAR=val` (not a bare `VAR=val` prefix): when run as root $SUDO is empty,
@@ -46,7 +55,7 @@ fi
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 "$JAVA_HOME/bin/java" -version
 
-echo "==> [2/3] Android command-line tools"
+echo "==> [3/4] Android command-line tools"
 if [ ! -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
   mkdir -p "$ANDROID_HOME/cmdline-tools"
   curl -fsSL -o /tmp/cmdtools.zip \
@@ -57,7 +66,7 @@ if [ ! -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
 fi
 SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
 
-echo "==> [3/3] SDK packages: platform-tools, platforms;$ANDROID_PLATFORM, build-tools;$ANDROID_BUILD_TOOLS"
+echo "==> [4/4] SDK packages: platform-tools, platforms;$ANDROID_PLATFORM, build-tools;$ANDROID_BUILD_TOOLS"
 # `yes |` accepts licenses; `|| true` because yes() exits non-zero on SIGPIPE.
 yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
 "$SDKMANAGER" --install \
