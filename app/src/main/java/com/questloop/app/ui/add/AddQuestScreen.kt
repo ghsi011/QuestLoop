@@ -315,10 +315,12 @@ private fun <T> prettyOf(value: T): String = when (value) {
 /**
  * Whole-number input that holds its own editable text so a value can be cleared
  * and retyped freely. The model ([value]) only updates when the text parses to a
- * number in [range]; an empty/partial field is allowed mid-edit instead of
- * snapping back to the last value (which made deleting a digit feel broken). The
- * text is re-seeded only when [value] changes from outside (e.g. a difficulty
- * default), not on every keystroke, so deletion isn't fought.
+ * number, clamped to [range]; an empty/partial field is allowed mid-edit instead
+ * of snapping back to the last value (which made deleting a digit feel broken).
+ * The text is re-seeded only when [value] changes from outside (e.g. a difficulty
+ * default), not on every keystroke, so deletion isn't fought. When a typed number
+ * is out of range, the field shows the clamped value (so it never displays a
+ * number different from what will be saved, even if the model value is unchanged).
  */
 @Composable
 internal fun NumberField(
@@ -334,8 +336,17 @@ internal fun NumberField(
         value = text,
         onValueChange = { raw ->
             val digits = raw.filter { it.isDigit() }.take(maxLen)
-            text = digits
-            digits.toIntOrNull()?.coerceIn(range.first, range.last)?.let(onValue)
+            val parsed = digits.toIntOrNull()
+            if (parsed == null) {
+                text = digits // empty / mid-edit — allow it
+            } else {
+                val clamped = parsed.coerceIn(range.first, range.last)
+                // Keep the display in sync with what will be saved: show exactly what
+                // was typed when it's in range, but the clamped value when it isn't
+                // (we can't rely on a re-seed — the model value may not change).
+                text = if (clamped == parsed) digits else clamped.toString()
+                onValue(clamped)
+            }
         },
         label = { Text(label) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),

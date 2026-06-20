@@ -94,4 +94,26 @@ class NumberFieldTest {
         assertEquals(1440, last)
         assertEditable("1440")
     }
+
+    // Regression for the case the clamp result equals the current model value: onValue
+    // doesn't change the state, so there's no re-seed — the field must still normalize
+    // its own text so it never shows a number different from what will be saved.
+
+    @Test
+    fun `clamp at the min shows in the field when the value is already the min`() {
+        var last = -1
+        render(initial = 1, range = 1..1440, onValue = { last = it }) // already at min
+        composeRule.onNodeWithTag("num").performTextReplacement("0") // clamps back to 1
+        assertEditable("1")
+        assertEquals(1, last)
+    }
+
+    @Test
+    fun `clamp at the max shows in the field when the value is already the max`() {
+        var last = -1
+        render(initial = 1440, range = 1..1440, onValue = { last = it }) // already at max
+        composeRule.onNodeWithTag("num").performTextReplacement("9999") // clamps back to 1440
+        assertEditable("1440")
+        assertEquals(1440, last)
+    }
 }
