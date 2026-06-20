@@ -1,0 +1,597 @@
+{
+  "/home/user/QuestLoop/app/build.gradle.kts": {
+    "mtime": 1781932755.5359352,
+    "ast_hash": "1e6eabd9b73b3f393f8df9833f80762c",
+    "semantic_hash": "1e6eabd9b73b3f393f8df9833f80762c"
+  },
+  "/home/user/QuestLoop/app/schemas/com.questloop.app.data.local.QuestLoopDatabase/2.json": {
+    "mtime": 1781932755.538701,
+    "ast_hash": "004f6473218fa3a091623dcfc0efc387",
+    "semantic_hash": "004f6473218fa3a091623dcfc0efc387"
+  },
+  "/home/user/QuestLoop/app/src/androidTest/java/com/questloop/app/AppSmokeTest.kt": {
+    "mtime": 1781932755.5405755,
+    "ast_hash": "8bcb357bdc3bd6518f6243fb88d1e957",
+    "semantic_hash": "8bcb357bdc3bd6518f6243fb88d1e957"
+  },
+  "/home/user/QuestLoop/app/src/androidTest/java/com/questloop/app/NavigationTransitionTest.kt": {
+    "mtime": 1781932755.5417368,
+    "ast_hash": "9e63518db60a1a0051786d1b24c872a1",
+    "semantic_hash": "9e63518db60a1a0051786d1b24c872a1"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/MainActivity.kt": {
+    "mtime": 1781932755.543022,
+    "ast_hash": "fb1fc0270f6947ac6a4fb7b3b224c090",
+    "semantic_hash": "fb1fc0270f6947ac6a4fb7b3b224c090"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/QuestLoopApplication.kt": {
+    "mtime": 1781932755.5441248,
+    "ast_hash": "a80531f348abe79e19167ddc2e61bb02",
+    "semantic_hash": "a80531f348abe79e19167ddc2e61bb02"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/data/AiCallGuard.kt": {
+    "mtime": 1781932755.5441248,
+    "ast_hash": "e2aeec1602419436800a0c5b96d5ee80",
+    "semantic_hash": "e2aeec1602419436800a0c5b96d5ee80"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/data/AiConfig.kt": {
+    "mtime": 1781932755.544693,
+    "ast_hash": "c66ea9602f71d0c93bca5988a8f98f8d",
+    "semantic_hash": "c66ea9602f71d0c93bca5988a8f98f8d"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/data/AiDiagnostics.kt": {
+    "mtime": 1781932755.544693,
+    "ast_hash": "9d1a660cfb353ee5cebf75678754f14a",
+    "semantic_hash": "9d1a660cfb353ee5cebf75678754f14a"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/data/ExportSnapshot.kt": {
+    "mtime": 1781932755.544693,
+    "ast_hash": "ff8b8901dfd0883223d5b2a8c9e5fdd2",
+    "semantic_hash": "ff8b8901dfd0883223d5b2a8c9e5fdd2"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/data/Mappers.kt": {
+    "mtime": 1781932755.544693,
+    "ast_hash": "1d4022eecb74a6fe7f8e90e19166581b",
+    "semantic_hash": "1d4022eecb74a6fe7f8e90e19166581b"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/data/OpenRouterClient.kt": {
+    "mtime": 1781932755.544693,
+    "ast_hash": "d207990d6bf74157b2771ea9e7794536",
+    "semantic_hash": "d207990d6bf74157b2771ea9e7794536"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/data/ProfileStore.kt": {
+    "mtime": 1781932755.544693,
+    "ast_hash": "8d4de02dfbf2de764d70d067fe155429",
+    "semantic_hash": "8d4de02dfbf2de764d70d067fe155429"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/data/QuestRepository.kt": {
+    "mtime": 1781932755.544693,
+    "ast_hash": "ed8d3722be15ff87a46db1229d3f1f77",
+    "semantic_hash": "ed8d3722be15ff87a46db1229d3f1f77"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/data/ReminderConfig.kt": {
+    "mtime": 1781932755.544693,
+    "ast_hash": "230a98ea21c9db4d57105fde2a95166c",
+    "semantic_hash": "230a98ea21c9db4d57105fde2a95166c"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/data/SampleData.kt": {
+    "mtime": 1781932755.544693,
+    "ast_hash": "d72b44ec65c2d328ec24daaee908575b",
+    "semantic_hash": "d72b44ec65c2d328ec24daaee908575b"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/data/SecureKeyStore.kt": {
+    "mtime": 1781932755.544693,
+    "ast_hash": "827fbdaee98f61c64d9a9a2f50be5a6c",
+    "semantic_hash": "827fbdaee98f61c64d9a9a2f50be5a6c"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/data/local/Daos.kt": {
+    "mtime": 1781932755.544693,
+    "ast_hash": "faa2778f629aa632031ef4301bd59e70",
+    "semantic_hash": "faa2778f629aa632031ef4301bd59e70"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/data/local/Entities.kt": {
+    "mtime": 1781932755.5487611,
+    "ast_hash": "0c94fa47625652fc4b67d9323ef276e1",
+    "semantic_hash": "0c94fa47625652fc4b67d9323ef276e1"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/data/local/QuestLoopDatabase.kt": {
+    "mtime": 1781932755.5487611,
+    "ast_hash": "a983e46c507a4cd2cd2f3fb6385a301c",
+    "semantic_hash": "a983e46c507a4cd2cd2f3fb6385a301c"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/di/AppContainer.kt": {
+    "mtime": 1781932755.5487611,
+    "ast_hash": "4f48d549575487d161eb9c023f0f6494",
+    "semantic_hash": "4f48d549575487d161eb9c023f0f6494"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/reminders/BootReceiver.kt": {
+    "mtime": 1781932755.5487611,
+    "ast_hash": "b4c2ceca79ace1633ca228f14ff39146",
+    "semantic_hash": "b4c2ceca79ace1633ca228f14ff39146"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/reminders/ReminderActionReceiver.kt": {
+    "mtime": 1781932755.5504203,
+    "ast_hash": "e319f2c943c78631a8b587dea81c1888",
+    "semantic_hash": "e319f2c943c78631a8b587dea81c1888"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/reminders/ReminderNotifications.kt": {
+    "mtime": 1781932755.5504203,
+    "ast_hash": "fc72d867b01736dd0003c1ebe994c0d0",
+    "semantic_hash": "fc72d867b01736dd0003c1ebe994c0d0"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/reminders/ReminderReceiver.kt": {
+    "mtime": 1781932755.5504203,
+    "ast_hash": "295cfabdac6503a070459ae3d5beda58",
+    "semantic_hash": "295cfabdac6503a070459ae3d5beda58"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/reminders/ReminderSchedule.kt": {
+    "mtime": 1781932755.5504203,
+    "ast_hash": "e79c6790ca939e5e602962e2613795d5",
+    "semantic_hash": "e79c6790ca939e5e602962e2613795d5"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/reminders/ReminderScheduler.kt": {
+    "mtime": 1781932755.5504203,
+    "ast_hash": "cc5441fd8f796b90bb27142cd9b108f9",
+    "semantic_hash": "cc5441fd8f796b90bb27142cd9b108f9"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/Clock.kt": {
+    "mtime": 1781932755.5504203,
+    "ast_hash": "6d0a348cdfbb1c66f3a5cd3439776ff3",
+    "semantic_hash": "6d0a348cdfbb1c66f3a5cd3439776ff3"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/QuestLoopApp.kt": {
+    "mtime": 1781932755.5525389,
+    "ast_hash": "93b8546abeb3334a3d989a6ccd9428dd",
+    "semantic_hash": "93b8546abeb3334a3d989a6ccd9428dd"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/ViewModelFactory.kt": {
+    "mtime": 1781932755.5525389,
+    "ast_hash": "d9b6d274b92443412a9227962370bc76",
+    "semantic_hash": "d9b6d274b92443412a9227962370bc76"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/achievements/AchievementsScreen.kt": {
+    "mtime": 1781932755.5525389,
+    "ast_hash": "3be2763f1cede0dee381d009a00ec2f7",
+    "semantic_hash": "3be2763f1cede0dee381d009a00ec2f7"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/achievements/AchievementsViewModel.kt": {
+    "mtime": 1781932755.553915,
+    "ast_hash": "218b4bb3275ddf85968a9d624f716899",
+    "semantic_hash": "218b4bb3275ddf85968a9d624f716899"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/add/AddQuestScreen.kt": {
+    "mtime": 1781932755.553915,
+    "ast_hash": "ecc033781980a971d5d2f369e16aae3b",
+    "semantic_hash": "ecc033781980a971d5d2f369e16aae3b"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/add/AddQuestViewModel.kt": {
+    "mtime": 1781932755.5549827,
+    "ast_hash": "8fe484c192c80d652ae19d450f83bb28",
+    "semantic_hash": "8fe484c192c80d652ae19d450f83bb28"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/components/Components.kt": {
+    "mtime": 1781932755.5549827,
+    "ast_hash": "e71e973764af39015a8bd43144bd81d4",
+    "semantic_hash": "e71e973764af39015a8bd43144bd81d4"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/components/QuestControls.kt": {
+    "mtime": 1781932755.556061,
+    "ast_hash": "ca279311a40e94d471793fb0237075e1",
+    "semantic_hash": "ca279311a40e94d471793fb0237075e1"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/habits/HabitsScreen.kt": {
+    "mtime": 1781932755.556061,
+    "ast_hash": "5357fe03b05ebecff2823769317b655f",
+    "semantic_hash": "5357fe03b05ebecff2823769317b655f"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/habits/HabitsViewModel.kt": {
+    "mtime": 1781932755.5571733,
+    "ast_hash": "a4be826d5102c8602c460ee9704d18f6",
+    "semantic_hash": "a4be826d5102c8602c460ee9704d18f6"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/onboarding/OnboardingScreen.kt": {
+    "mtime": 1781932755.5571733,
+    "ast_hash": "e318772124f78bd7f195333ffe8c4d47",
+    "semantic_hash": "e318772124f78bd7f195333ffe8c4d47"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/quests/QuestBankScreen.kt": {
+    "mtime": 1781932755.5571733,
+    "ast_hash": "dd480080486dc6714cae35a1948e8d6a",
+    "semantic_hash": "dd480080486dc6714cae35a1948e8d6a"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/quests/QuestBankViewModel.kt": {
+    "mtime": 1781932755.5584679,
+    "ast_hash": "a016aa7d9085f86c1fe9b1983a942325",
+    "semantic_hash": "a016aa7d9085f86c1fe9b1983a942325"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/quests/QuestsScreen.kt": {
+    "mtime": 1781932755.5584679,
+    "ast_hash": "7fc881d7d0db91f041633ca9b8b12c55",
+    "semantic_hash": "7fc881d7d0db91f041633ca9b8b12c55"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/quests/QuestsViewModel.kt": {
+    "mtime": 1781932755.5584679,
+    "ast_hash": "d74f7998b99462feb2f289431d3f85d3",
+    "semantic_hash": "d74f7998b99462feb2f289431d3f85d3"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/review/ReviewScreen.kt": {
+    "mtime": 1781932755.5584679,
+    "ast_hash": "0110d83d25d884ef0cf893ca583d3ea9",
+    "semantic_hash": "0110d83d25d884ef0cf893ca583d3ea9"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/review/ReviewViewModel.kt": {
+    "mtime": 1781932755.5600898,
+    "ast_hash": "7fcd71ddbacd43b11d80c5265b2c6672",
+    "semantic_hash": "7fcd71ddbacd43b11d80c5265b2c6672"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/rewards/RewardsScreen.kt": {
+    "mtime": 1781932755.5600898,
+    "ast_hash": "9cf4945117d139d5df588bbf00a5dc6f",
+    "semantic_hash": "9cf4945117d139d5df588bbf00a5dc6f"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/rewards/RewardsViewModel.kt": {
+    "mtime": 1781932755.5609345,
+    "ast_hash": "2da4a8e66babf703d553d382eaaf3295",
+    "semantic_hash": "2da4a8e66babf703d553d382eaaf3295"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/settings/SettingsScreen.kt": {
+    "mtime": 1781932755.5609345,
+    "ast_hash": "17e5bc5430df4d98ebea5b669fc26fed",
+    "semantic_hash": "17e5bc5430df4d98ebea5b669fc26fed"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/settings/SettingsViewModel.kt": {
+    "mtime": 1781932755.5620449,
+    "ast_hash": "1e374ef35689a8cf259c63e9ee67e6bb",
+    "semantic_hash": "1e374ef35689a8cf259c63e9ee67e6bb"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/theme/Theme.kt": {
+    "mtime": 1781932755.5620449,
+    "ast_hash": "eb04c0136a07b9db6f3eebf65da7253f",
+    "semantic_hash": "eb04c0136a07b9db6f3eebf65da7253f"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/today/TodayScreen.kt": {
+    "mtime": 1781932755.5620449,
+    "ast_hash": "3dfb0d2cbd8aeaacc0a89ef095050e99",
+    "semantic_hash": "3dfb0d2cbd8aeaacc0a89ef095050e99"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/ui/today/TodayViewModel.kt": {
+    "mtime": 1781932755.563842,
+    "ast_hash": "139fee0cfa3e725a994e41ed4dbec01c",
+    "semantic_hash": "139fee0cfa3e725a994e41ed4dbec01c"
+  },
+  "/home/user/QuestLoop/app/src/main/java/com/questloop/app/widget/QuestWidget.kt": {
+    "mtime": 1781932755.563842,
+    "ast_hash": "ec35f5be0327b149587c4cc70b4439b9",
+    "semantic_hash": "ec35f5be0327b149587c4cc70b4439b9"
+  },
+  "/home/user/QuestLoop/app/src/test/java/com/questloop/app/data/AiDiagnosticsTest.kt": {
+    "mtime": 1781932755.568856,
+    "ast_hash": "a2fe0f767003498c82860f936373718c",
+    "semantic_hash": "a2fe0f767003498c82860f936373718c"
+  },
+  "/home/user/QuestLoop/app/src/test/java/com/questloop/app/data/MappersTest.kt": {
+    "mtime": 1781932755.569958,
+    "ast_hash": "2fdddd2fd8cf3b057632ca57660115e1",
+    "semantic_hash": "2fdddd2fd8cf3b057632ca57660115e1"
+  },
+  "/home/user/QuestLoop/app/src/test/java/com/questloop/app/data/OpenRouterClientTest.kt": {
+    "mtime": 1781932755.569958,
+    "ast_hash": "8c2932b8a9f328336c86fc3bc85bd40b",
+    "semantic_hash": "8c2932b8a9f328336c86fc3bc85bd40b"
+  },
+  "/home/user/QuestLoop/app/src/test/java/com/questloop/app/data/ProfileStoreTest.kt": {
+    "mtime": 1781932755.569958,
+    "ast_hash": "97041cc44608863e4bcf6c20ff567db1",
+    "semantic_hash": "97041cc44608863e4bcf6c20ff567db1"
+  },
+  "/home/user/QuestLoop/app/src/test/java/com/questloop/app/data/QuestRepositoryTest.kt": {
+    "mtime": 1781932755.569958,
+    "ast_hash": "03f5de3fcc7d65ca11dd5b497ddfe116",
+    "semantic_hash": "03f5de3fcc7d65ca11dd5b497ddfe116"
+  },
+  "/home/user/QuestLoop/app/src/test/java/com/questloop/app/reminders/ReminderRearmTest.kt": {
+    "mtime": 1781932755.569958,
+    "ast_hash": "41ec2489ccee3fe11bf69ddc853d59e6",
+    "semantic_hash": "41ec2489ccee3fe11bf69ddc853d59e6"
+  },
+  "/home/user/QuestLoop/app/src/test/java/com/questloop/app/reminders/ReminderScheduleTest.kt": {
+    "mtime": 1781932755.5719855,
+    "ast_hash": "20829ab4c7470cf37698dcb709d0e97d",
+    "semantic_hash": "20829ab4c7470cf37698dcb709d0e97d"
+  },
+  "/home/user/QuestLoop/app/src/test/java/com/questloop/app/ui/add/AddQuestViewModelTest.kt": {
+    "mtime": 1781932755.572457,
+    "ast_hash": "d21688c426ae90df8ac00b133dc11441",
+    "semantic_hash": "d21688c426ae90df8ac00b133dc11441"
+  },
+  "/home/user/QuestLoop/app/src/test/java/com/questloop/app/ui/today/TodayContentTest.kt": {
+    "mtime": 1781932755.572457,
+    "ast_hash": "c80cf723e6e07dc7f1555fb845bae619",
+    "semantic_hash": "c80cf723e6e07dc7f1555fb845bae619"
+  },
+  "/home/user/QuestLoop/app/src/test/java/com/questloop/app/ui/today/TodayViewModelTest.kt": {
+    "mtime": 1781932755.5736756,
+    "ast_hash": "cbd3289bde5c50722f97a44bfdd92e46",
+    "semantic_hash": "cbd3289bde5c50722f97a44bfdd92e46"
+  },
+  "/home/user/QuestLoop/build.gradle.kts": {
+    "mtime": 1781932755.5736756,
+    "ast_hash": "456c099c5c06718dab2edf8c513fd898",
+    "semantic_hash": "456c099c5c06718dab2edf8c513fd898"
+  },
+  "/home/user/QuestLoop/core/build.gradle.kts": {
+    "mtime": 1781932755.5736756,
+    "ast_hash": "f5c76aa11e49b191aa0d1eab7ccdc916",
+    "semantic_hash": "f5c76aa11e49b191aa0d1eab7ccdc916"
+  },
+  "/home/user/QuestLoop/core/src/main/kotlin/com/questloop/core/QuestLoopEngine.kt": {
+    "mtime": 1781932755.5753748,
+    "ast_hash": "4f36e3e54b33524f77a3d903adca30ee",
+    "semantic_hash": "4f36e3e54b33524f77a3d903adca30ee"
+  },
+  "/home/user/QuestLoop/core/src/main/kotlin/com/questloop/core/ai/AiQuestService.kt": {
+    "mtime": 1781932755.576435,
+    "ast_hash": "7a13792645a7255e647a6b98e366ce61",
+    "semantic_hash": "7a13792645a7255e647a6b98e366ce61"
+  },
+  "/home/user/QuestLoop/core/src/main/kotlin/com/questloop/core/ai/AiQuestValidator.kt": {
+    "mtime": 1781932755.5768492,
+    "ast_hash": "170243454d33133ed5c74797ec9e2540",
+    "semantic_hash": "170243454d33133ed5c74797ec9e2540"
+  },
+  "/home/user/QuestLoop/core/src/main/kotlin/com/questloop/core/ai/LlmClient.kt": {
+    "mtime": 1781932755.5768492,
+    "ast_hash": "c582e2cae179160a1694f5b85c5b70b5",
+    "semantic_hash": "c582e2cae179160a1694f5b85c5b70b5"
+  },
+  "/home/user/QuestLoop/core/src/main/kotlin/com/questloop/core/ai/PromptLibrary.kt": {
+    "mtime": 1781932755.5768492,
+    "ast_hash": "02f219de64d29f0e920761c8749fd81c",
+    "semantic_hash": "02f219de64d29f0e920761c8749fd81c"
+  },
+  "/home/user/QuestLoop/core/src/main/kotlin/com/questloop/core/completion/CompletionScaling.kt": {
+    "mtime": 1781932755.5768492,
+    "ast_hash": "8e944d8978ba63c0a90fe20020916507",
+    "semantic_hash": "8e944d8978ba63c0a90fe20020916507"
+  },
+  "/home/user/QuestLoop/core/src/main/kotlin/com/questloop/core/generation/HabitQuestFactory.kt": {
+    "mtime": 1781932755.5768492,
+    "ast_hash": "56c0a5a69dbb1463f5637fb9552a1184",
+    "semantic_hash": "56c0a5a69dbb1463f5637fb9552a1184"
+  },
+  "/home/user/QuestLoop/core/src/main/kotlin/com/questloop/core/generation/QuestGenerator.kt": {
+    "mtime": 1781932755.5788574,
+    "ast_hash": "1f1f9a9df77898acb45a09ca209fc5d3",
+    "semantic_hash": "1f1f9a9df77898acb45a09ca209fc5d3"
+  },
+  "/home/user/QuestLoop/core/src/main/kotlin/com/questloop/core/generation/QuestScheduler.kt": {
+    "mtime": 1781932755.5788574,
+    "ast_hash": "0420dd2e82a879891dc8b5e5b0ae2740",
+    "semantic_hash": "0420dd2e82a879891dc8b5e5b0ae2740"
+  },
+  "/home/user/QuestLoop/core/src/main/kotlin/com/questloop/core/generation/RoutineQuestFactory.kt": {
+    "mtime": 1781932755.5788574,
+    "ast_hash": "ac2b5dfbe4f831d103b24257bc4ca6f2",
+    "semantic_hash": "ac2b5dfbe4f831d103b24257bc4ca6f2"
+  },
+  "/home/user/QuestLoop/core/src/main/kotlin/com/questloop/core/model/Domain.kt": {
+    "mtime": 1781932755.5788574,
+    "ast_hash": "be49643978aa097a4c0f03c6cc435cf3",
+    "semantic_hash": "be49643978aa097a4c0f03c6cc435cf3"
+  },
+  "/home/user/QuestLoop/core/src/main/kotlin/com/questloop/core/review/ReviewGenerator.kt": {
+    "mtime": 1781932755.5788574,
+    "ast_hash": "8b3d38160fe85d4abdf979974375b9e5",
+    "semantic_hash": "8b3d38160fe85d4abdf979974375b9e5"
+  },
+  "/home/user/QuestLoop/core/src/main/kotlin/com/questloop/core/reward/AchievementEngine.kt": {
+    "mtime": 1781932755.5788574,
+    "ast_hash": "085c7aeab80714e185753c0fe4504521",
+    "semantic_hash": "085c7aeab80714e185753c0fe4504521"
+  },
+  "/home/user/QuestLoop/core/src/main/kotlin/com/questloop/core/reward/LevelSystem.kt": {
+    "mtime": 1781932755.581726,
+    "ast_hash": "856049b674c7b88b3727027dc46f66c5",
+    "semantic_hash": "856049b674c7b88b3727027dc46f66c5"
+  },
+  "/home/user/QuestLoop/core/src/main/kotlin/com/questloop/core/reward/RewardAllowanceCalculator.kt": {
+    "mtime": 1781932755.581726,
+    "ast_hash": "dc6213248ade5470cfb54e62eeca49d8",
+    "semantic_hash": "dc6213248ade5470cfb54e62eeca49d8"
+  },
+  "/home/user/QuestLoop/core/src/main/kotlin/com/questloop/core/reward/RewardEngine.kt": {
+    "mtime": 1781932755.581726,
+    "ast_hash": "d759a280be9aa107118c1a408c3e62df",
+    "semantic_hash": "d759a280be9aa107118c1a408c3e62df"
+  },
+  "/home/user/QuestLoop/core/src/main/kotlin/com/questloop/core/reward/StreakTracker.kt": {
+    "mtime": 1781932755.581726,
+    "ast_hash": "bc918171032b99b40302682812b74ec6",
+    "semantic_hash": "bc918171032b99b40302682812b74ec6"
+  },
+  "/home/user/QuestLoop/core/src/main/kotlin/com/questloop/core/safety/SafetyGuard.kt": {
+    "mtime": 1781932755.581726,
+    "ast_hash": "fc6a385d25a6523299f1d4da785246d9",
+    "semantic_hash": "fc6a385d25a6523299f1d4da785246d9"
+  },
+  "/home/user/QuestLoop/core/src/test/kotlin/com/questloop/core/QuestLoopEngineTest.kt": {
+    "mtime": 1781932755.5845368,
+    "ast_hash": "a06ea0580397bda79690ad697cfa3b6a",
+    "semantic_hash": "a06ea0580397bda79690ad697cfa3b6a"
+  },
+  "/home/user/QuestLoop/core/src/test/kotlin/com/questloop/core/ScenarioTest.kt": {
+    "mtime": 1781932755.5858724,
+    "ast_hash": "d4ef1e49c61c3fd3681b13075b2502c6",
+    "semantic_hash": "d4ef1e49c61c3fd3681b13075b2502c6"
+  },
+  "/home/user/QuestLoop/core/src/test/kotlin/com/questloop/core/ai/AiQuestServiceTest.kt": {
+    "mtime": 1781932755.5858724,
+    "ast_hash": "836fcc8adc707dc0236fba1265d87c01",
+    "semantic_hash": "836fcc8adc707dc0236fba1265d87c01"
+  },
+  "/home/user/QuestLoop/core/src/test/kotlin/com/questloop/core/ai/AiQuestValidatorTest.kt": {
+    "mtime": 1781932755.5868747,
+    "ast_hash": "04c3942268cf3a9e24331e32f21a6e38",
+    "semantic_hash": "04c3942268cf3a9e24331e32f21a6e38"
+  },
+  "/home/user/QuestLoop/core/src/test/kotlin/com/questloop/core/completion/CompletionPolicyTest.kt": {
+    "mtime": 1781932755.5868747,
+    "ast_hash": "8408df5a2052adee1b8eb76b78375ad2",
+    "semantic_hash": "8408df5a2052adee1b8eb76b78375ad2"
+  },
+  "/home/user/QuestLoop/core/src/test/kotlin/com/questloop/core/completion/CompletionScalingTest.kt": {
+    "mtime": 1781932755.5880158,
+    "ast_hash": "728def9b16c7a5ccffeca4ff9bdf6850",
+    "semantic_hash": "728def9b16c7a5ccffeca4ff9bdf6850"
+  },
+  "/home/user/QuestLoop/core/src/test/kotlin/com/questloop/core/generation/HabitQuestFactoryTest.kt": {
+    "mtime": 1781932755.5880158,
+    "ast_hash": "307635d1f3f4ede5ef310faaedaf5ccb",
+    "semantic_hash": "307635d1f3f4ede5ef310faaedaf5ccb"
+  },
+  "/home/user/QuestLoop/core/src/test/kotlin/com/questloop/core/generation/QuestGeneratorTest.kt": {
+    "mtime": 1781932755.5890334,
+    "ast_hash": "38d998abd020b690481e8ffc81016250",
+    "semantic_hash": "38d998abd020b690481e8ffc81016250"
+  },
+  "/home/user/QuestLoop/core/src/test/kotlin/com/questloop/core/generation/QuestSchedulerTest.kt": {
+    "mtime": 1781932755.5890334,
+    "ast_hash": "659578f486ea140534a00c1d02262ef4",
+    "semantic_hash": "659578f486ea140534a00c1d02262ef4"
+  },
+  "/home/user/QuestLoop/core/src/test/kotlin/com/questloop/core/generation/RoutineQuestFactoryTest.kt": {
+    "mtime": 1781932755.5890334,
+    "ast_hash": "5ecaea5f4017abe2cce847c085fe630a",
+    "semantic_hash": "5ecaea5f4017abe2cce847c085fe630a"
+  },
+  "/home/user/QuestLoop/core/src/test/kotlin/com/questloop/core/review/ReviewGeneratorTest.kt": {
+    "mtime": 1781932755.5890334,
+    "ast_hash": "d86d41617084db0610f59461b486b19c",
+    "semantic_hash": "d86d41617084db0610f59461b486b19c"
+  },
+  "/home/user/QuestLoop/core/src/test/kotlin/com/questloop/core/reward/AchievementEngineTest.kt": {
+    "mtime": 1781932755.5890334,
+    "ast_hash": "df73dcb41bf30ff7f5379778c0ab288f",
+    "semantic_hash": "df73dcb41bf30ff7f5379778c0ab288f"
+  },
+  "/home/user/QuestLoop/core/src/test/kotlin/com/questloop/core/reward/LevelSystemTest.kt": {
+    "mtime": 1781932755.5910602,
+    "ast_hash": "efe815e322e8f1f54eac1a4a5e90d38e",
+    "semantic_hash": "efe815e322e8f1f54eac1a4a5e90d38e"
+  },
+  "/home/user/QuestLoop/core/src/test/kotlin/com/questloop/core/reward/RewardAllowanceCalculatorTest.kt": {
+    "mtime": 1781932755.5910602,
+    "ast_hash": "afbbfdcd96e15fbdc3fb6623a8555eba",
+    "semantic_hash": "afbbfdcd96e15fbdc3fb6623a8555eba"
+  },
+  "/home/user/QuestLoop/core/src/test/kotlin/com/questloop/core/reward/RewardEngineTest.kt": {
+    "mtime": 1781932755.5910602,
+    "ast_hash": "ebfdee0d6cb6b2b0e7f713277303165e",
+    "semantic_hash": "ebfdee0d6cb6b2b0e7f713277303165e"
+  },
+  "/home/user/QuestLoop/core/src/test/kotlin/com/questloop/core/reward/StreakTrackerTest.kt": {
+    "mtime": 1781932755.5910602,
+    "ast_hash": "534c73716129613f57814c98b4d28b75",
+    "semantic_hash": "534c73716129613f57814c98b4d28b75"
+  },
+  "/home/user/QuestLoop/core/src/test/kotlin/com/questloop/core/safety/SafetyGuardTest.kt": {
+    "mtime": 1781932755.5910602,
+    "ast_hash": "3d639919ad49b342773d3a548ff4d964",
+    "semantic_hash": "3d639919ad49b342773d3a548ff4d964"
+  },
+  "/home/user/QuestLoop/gradlew": {
+    "mtime": 1781932755.5999234,
+    "ast_hash": "794669d78aef1dd5c7d889ef618b311a",
+    "semantic_hash": "794669d78aef1dd5c7d889ef618b311a"
+  },
+  "/home/user/QuestLoop/settings.gradle.kts": {
+    "mtime": 1781932755.5999234,
+    "ast_hash": "27bf7bbde2f9c8e6ec7d443286664c86",
+    "semantic_hash": "27bf7bbde2f9c8e6ec7d443286664c86"
+  },
+  "/home/user/QuestLoop/.github/workflows/ci.yml": {
+    "mtime": 1781932755.5348783,
+    "ast_hash": "f8d8108751b84c2a52fcae56a94aa77e",
+    "semantic_hash": "f8d8108751b84c2a52fcae56a94aa77e"
+  },
+  "/home/user/QuestLoop/.github/workflows/export-room-schema.yml": {
+    "mtime": 1781932755.5359352,
+    "ast_hash": "069dedd62201b5dae7c5024d0def6b08",
+    "semantic_hash": "069dedd62201b5dae7c5024d0def6b08"
+  },
+  "/home/user/QuestLoop/.github/workflows/release.yml": {
+    "mtime": 1781932755.5359352,
+    "ast_hash": "07b999da4f3a5b4cf4d2f8b0346701cd",
+    "semantic_hash": "07b999da4f3a5b4cf4d2f8b0346701cd"
+  },
+  "/home/user/QuestLoop/.github/workflows/ui-tests.yml": {
+    "mtime": 1781932755.5359352,
+    "ast_hash": "f7a977906496bc34d6146ca231c1b8c1",
+    "semantic_hash": "f7a977906496bc34d6146ca231c1b8c1"
+  },
+  "/home/user/QuestLoop/AGENTS.md": {
+    "mtime": 1781932755.5359352,
+    "ast_hash": "2abb36c4d1db089b6fd21a61ea98fedd",
+    "semantic_hash": "2abb36c4d1db089b6fd21a61ea98fedd"
+  },
+  "/home/user/QuestLoop/README.md": {
+    "mtime": 1781932755.5359352,
+    "ast_hash": "7ec6b191f47c0e1e9f9248b4692db079",
+    "semantic_hash": "7ec6b191f47c0e1e9f9248b4692db079"
+  },
+  "/home/user/QuestLoop/docs/ARCHITECTURE.md": {
+    "mtime": 1781932755.5910602,
+    "ast_hash": "dc365e4eff6d6761cb430f60b4e43a08",
+    "semantic_hash": "dc365e4eff6d6761cb430f60b4e43a08"
+  },
+  "/home/user/QuestLoop/docs/CODE_REVIEW.md": {
+    "mtime": 1781932755.5935547,
+    "ast_hash": "f70a5ac87d28efaff2dbf3859fadef3f",
+    "semantic_hash": "f70a5ac87d28efaff2dbf3859fadef3f"
+  },
+  "/home/user/QuestLoop/docs/CONTENT_STYLE.md": {
+    "mtime": 1781932755.5935547,
+    "ast_hash": "611906812ee33abe43e2799ef303e97d",
+    "semantic_hash": "611906812ee33abe43e2799ef303e97d"
+  },
+  "/home/user/QuestLoop/docs/CURRENT_STATE.md": {
+    "mtime": 1781932755.5935547,
+    "ast_hash": "45fbb3b0a6ce77a73fd57c54146acb0f",
+    "semantic_hash": "45fbb3b0a6ce77a73fd57c54146acb0f"
+  },
+  "/home/user/QuestLoop/docs/DESIGN_DECISIONS.md": {
+    "mtime": 1781932755.5935547,
+    "ast_hash": "0c4d2217f6345527cc891e707849ed3a",
+    "semantic_hash": "0c4d2217f6345527cc891e707849ed3a"
+  },
+  "/home/user/QuestLoop/docs/DESIGN_DIRECTION.md": {
+    "mtime": 1781932755.5935547,
+    "ast_hash": "5a45e549d879b0532c4509bf98165ad9",
+    "semantic_hash": "5a45e549d879b0532c4509bf98165ad9"
+  },
+  "/home/user/QuestLoop/docs/RESEARCH_NOTES.md": {
+    "mtime": 1781932755.5935547,
+    "ast_hash": "095b77eb35eedc5e58fa6aea1bb992cc",
+    "semantic_hash": "095b77eb35eedc5e58fa6aea1bb992cc"
+  },
+  "/home/user/QuestLoop/docs/REWARD_ECONOMY.md": {
+    "mtime": 1781932755.5935547,
+    "ast_hash": "dd1a5a76814fd52df282f74212331395",
+    "semantic_hash": "dd1a5a76814fd52df282f74212331395"
+  },
+  "/home/user/QuestLoop/docs/SAFETY_AND_PRIVACY.md": {
+    "mtime": 1781932755.5935547,
+    "ast_hash": "fcdeba41477aac1632d6cb96695f7cb3",
+    "semantic_hash": "fcdeba41477aac1632d6cb96695f7cb3"
+  },
+  "/home/user/QuestLoop/docs/UX_REVIEW.md": {
+    "mtime": 1781932755.5935547,
+    "ast_hash": "458098c4804f3271426ece10b16c6099",
+    "semantic_hash": "458098c4804f3271426ece10b16c6099"
+  },
+  "/home/user/QuestLoop/external_research/QuestLoop_Competitive_Landscape.md": {
+    "mtime": 1781932755.5935547,
+    "ast_hash": "c579743f782d55f76e23ec5ccd46ecb6",
+    "semantic_hash": "c579743f782d55f76e23ec5ccd46ecb6"
+  }
+}

@@ -16,3 +16,8 @@ captures/
 
 # Logs
 *.log
+
+# graphify (knowledge graph build) — machine-specific & cache artifacts
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+graphify-out/cache/
