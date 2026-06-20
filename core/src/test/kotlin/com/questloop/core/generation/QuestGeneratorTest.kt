@@ -116,11 +116,47 @@ class QuestGeneratorTest {
                 epochDay = 100,
                 profile = profile(UserPreferences(maxDailyQuests = 6, defaultAvailableMinutes = 1000)),
                 candidates = candidates,
-                checkIn = EnergyCheckIn(100, energy = 1, availableMinutes = 1000),
+                checkIn = EnergyCheckIn(100, energy = 2, availableMinutes = 1000),
             ),
         )
         assertTrue(plan.quests.none { it.quest.difficulty.ordinal > Difficulty.MEDIUM.ordinal })
         assertTrue(plan.notes.any { it.contains("Low-energy", ignoreCase = true) })
+    }
+
+    @Test
+    fun `rest day schedules only routines and frames it as recovery`() {
+        val candidates = listOf(
+            quest("easy1", difficulty = Difficulty.EASY, minutes = 10),
+            quest("med1", difficulty = Difficulty.MEDIUM, minutes = 15),
+        )
+        val routine = quest("routine", category = QuestCategory.META_MAINTENANCE, minutes = 1)
+        val plan = generator.generateDaily(
+            QuestGenerator.Request(
+                epochDay = 100,
+                profile = profile(UserPreferences(maxDailyQuests = 6, defaultAvailableMinutes = 1000)),
+                candidates = candidates,
+                checkIn = EnergyCheckIn(100, energy = 1, availableMinutes = 1000),
+                routineQuests = listOf(routine),
+            ),
+        )
+        // Only the routine is scheduled — no real quests, even though they fit the budget.
+        assertEquals(listOf("routine"), plan.quests.map { it.quest.id })
+        assertTrue(plan.notes.any { it.contains("Rest day", ignoreCase = true) })
+    }
+
+    @Test
+    fun `rest day with no routines still schedules nothing`() {
+        val candidates = listOf(quest("easy1", difficulty = Difficulty.EASY, minutes = 10))
+        val plan = generator.generateDaily(
+            QuestGenerator.Request(
+                epochDay = 100,
+                profile = profile(UserPreferences(maxDailyQuests = 6, defaultAvailableMinutes = 1000)),
+                candidates = candidates,
+                checkIn = EnergyCheckIn(100, energy = 1, availableMinutes = 1000),
+            ),
+        )
+        // The "never empty" fallback is intentionally skipped on a rest day.
+        assertTrue(plan.quests.isEmpty())
     }
 
     @Test

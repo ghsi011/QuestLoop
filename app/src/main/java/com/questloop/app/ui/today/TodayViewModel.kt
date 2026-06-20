@@ -133,6 +133,14 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
         }
     }
 
+    /** Deselects today's check-in (tapping the already-selected energy chip). */
+    fun clearCheckIn() {
+        launchSafely {
+            repository.clearCheckIn()
+            refresh()
+        }
+    }
+
     fun complete(quest: Quest, result: CompletionResult) = runCompletion {
         repository.completeQuest(quest, AppClock.todayEpochDay(), result)
     }

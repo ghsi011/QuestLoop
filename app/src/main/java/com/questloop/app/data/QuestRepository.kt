@@ -576,6 +576,9 @@ class QuestRepository(
 
     suspend fun setCheckIn(checkIn: EnergyCheckIn) = profileStore.setCheckIn(checkIn)
 
+    /** Clears today's energy check-in (deselecting the chip reverts to the default plan). */
+    suspend fun clearCheckIn() = profileStore.setCheckIn(null)
+
     suspend fun aiConfig(): AiConfig = profileStore.getAiConfig()
     suspend fun setAiConfig(config: AiConfig) = profileStore.setAiConfig(config)
 

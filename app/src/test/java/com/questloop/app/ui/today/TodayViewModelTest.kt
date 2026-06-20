@@ -57,8 +57,9 @@ class TodayViewModelTest {
         override suspend fun setHabits(habits: List<Habit>) {}
         override suspend fun setBadHabits(badHabits: List<BadHabit>) {}
         override suspend fun setGoals(goals: List<Goal>) {}
-        override suspend fun setCheckIn(checkIn: EnergyCheckIn?) {}
-        override suspend fun getCheckIn(): EnergyCheckIn? = null
+        private var checkIn: EnergyCheckIn? = null
+        override suspend fun setCheckIn(checkIn: EnergyCheckIn?) { this.checkIn = checkIn }
+        override suspend fun getCheckIn(): EnergyCheckIn? = checkIn
         override suspend fun getAiConfig(): AiConfig = AiConfig()
         override suspend fun setAiConfig(config: AiConfig) {}
         override suspend fun isOnboardingComplete(): Boolean = true
@@ -92,6 +93,18 @@ class TodayViewModelTest {
         frequency = QuestFrequency.DAILY,
         difficulty = Difficulty.MEDIUM,
     )
+
+    @Test
+    fun `setting then clearing the check-in toggles the energy state`() = runTest {
+        repo.addQuest(quest())
+        val vm = TodayViewModel(repo)
+
+        vm.setCheckIn(1) // rest day
+        assertEquals(1, vm.state.value.energy)
+
+        vm.clearCheckIn() // re-tapping the active chip deselects it
+        assertNull(vm.state.value.energy)
+    }
 
     @Test
     fun `completing shows a toast and offers undo`() = runTest {
