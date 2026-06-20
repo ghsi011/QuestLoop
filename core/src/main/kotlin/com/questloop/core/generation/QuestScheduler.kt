@@ -93,8 +93,16 @@ object QuestScheduler {
                 periodicCount(from, to, lastCompletedEpochDay, 1L)
             QuestFrequency.WEEKLY ->
                 periodicCount(from, to, lastCompletedEpochDay, WEEKLY_PERIOD_DAYS)
-            QuestFrequency.MONTHLY ->
-                periodicCount(from, to, lastCompletedEpochDay, MONTHLY_PERIOD_DAYS)
+            QuestFrequency.MONTHLY -> {
+                val count = periodicCount(from, to, lastCompletedEpochDay, MONTHLY_PERIOD_DAYS)
+                // A calendar month can be 31 days — longer than the 30-day rolling
+                // period — so the fence-post count would report a once-a-month quest
+                // as twice on the 1st of a long month. Cap by the number of whole
+                // calendar months the window can hold (using 31 as the max month).
+                val spanDays = to - from + 1
+                val maxMonths = ((spanDays + 30) / 31).toInt().coerceAtLeast(1)
+                minOf(count, maxMonths)
+            }
             QuestFrequency.ONE_OFF -> if (lastCompletedEpochDay == null) 1 else 0
             QuestFrequency.SEASONAL -> 1
         }

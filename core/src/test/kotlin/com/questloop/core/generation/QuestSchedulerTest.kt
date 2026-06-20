@@ -96,6 +96,15 @@ class QuestSchedulerTest {
     }
 
     @Test
+    fun `monthly counts once across a full 31-day calendar month`() {
+        // The 1st..31st inclusive (span 31) would naively fence-post to 2 at the
+        // 30-day period boundary — capped to a single calendar month.
+        assertEquals(1, QuestScheduler.expectedOccurrences(QuestFrequency.MONTHLY, from = 0, to = 30, null))
+        // A two-month window still allows two.
+        assertEquals(2, QuestScheduler.expectedOccurrences(QuestFrequency.MONTHLY, from = 0, to = 61, null))
+    }
+
+    @Test
     fun `one-off counts once until done then zero, seasonal always once`() {
         assertEquals(1, QuestScheduler.expectedOccurrences(QuestFrequency.ONE_OFF, from = 100, to = 130, null))
         assertEquals(0, QuestScheduler.expectedOccurrences(QuestFrequency.ONE_OFF, from = 100, to = 130, 90))
