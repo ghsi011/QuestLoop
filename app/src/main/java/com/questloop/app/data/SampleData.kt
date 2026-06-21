@@ -143,16 +143,9 @@ object QuestBank {
             difficulty = Difficulty.MEDIUM,
             estimatedMinutes = 45,
         ),
+        // The reward-fund "open a pot" step is no longer a static seed: it's now
+        // derived by AdminFundFactory once the user sets an affordable budget.
         // One-off
-        Quest(
-            id = "bank-reward-fund",
-            title = "Set up your external rewards fund",
-            category = QuestCategory.META_MAINTENANCE,
-            frequency = QuestFrequency.ONE_OFF,
-            difficulty = Difficulty.EASY,
-            origin = QuestOrigin.SYSTEM_RECURRING,
-            rationale = "Create a separate savings pot you control — QuestLoop never touches your money.",
-        ),
         Quest(
             id = "bank-declutter",
             title = "Declutter one drawer or shelf",
