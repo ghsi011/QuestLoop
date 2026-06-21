@@ -456,6 +456,24 @@ class QuestRepository(
         )
     }
 
+    /** Live status of the reward-fund admin flow, for the Rewards screen. */
+    data class RewardFundStatus(
+        val budgetSet: Boolean,
+        val potOpened: Boolean,
+        /** Admin steps actionable right now (open pot / fund this month / claim). */
+        val steps: List<Quest>,
+    )
+
+    suspend fun rewardFundStatus(today: Long): RewardFundStatus {
+        val profile = profileStore.profile.first()
+        val lastCompleted = completionDao.lastCompletedDays().associate { it.questId to it.lastDay }
+        val cap = profile.preferences.monthlyRewardBudgetCap
+        val potOpened = lastCompleted.containsKey(AdminFundFactory.OPEN_POT_ID)
+        val steps = adminFundQuests(today, profile, lastCompleted)
+            .filter { QuestScheduler.isDue(it.frequency, today, lastCompleted[it.id]) }
+        return RewardFundStatus(budgetSet = cap > 0.0, potOpened = potOpened, steps = steps)
+    }
+
     suspend fun safetySignals(today: Long): List<SafetyGuard.Signal> {
         val records = completionDao.since(today - safetyWindowDays).map { it.toModel() }
         val active = completionDao.activeDays().toSet()

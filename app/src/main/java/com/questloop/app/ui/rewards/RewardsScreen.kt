@@ -2,6 +2,7 @@ package com.questloop.app.ui.rewards
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -23,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -31,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.questloop.app.ui.Money
 import com.questloop.app.ui.components.InfoCard
 import com.questloop.app.ui.components.SectionHeader
+import com.questloop.core.model.Quest
 import com.questloop.core.reward.RewardAllowanceCalculator
 
 @Composable
@@ -76,6 +79,13 @@ fun RewardsScreen(viewModel: RewardsViewModel, snackbarHostState: SnackbarHostSt
             }
         }
 
+        FundCard(
+            budgetSet = state.fundBudgetSet,
+            potOpened = state.fundPotOpened,
+            steps = state.fundSteps,
+            onStepDone = viewModel::markFundStepDone,
+        )
+
         OutlinedTextField(
             value = budgetText,
             onValueChange = { input ->
@@ -116,5 +126,57 @@ fun RewardsScreen(viewModel: RewardsViewModel, snackbarHostState: SnackbarHostSt
                     "3. Auto-transfer it outside QuestLoop.\n4. Release only what you've earned and can afford.",
             )
         }
+    }
+}
+
+/**
+ * Live reward-fund status (SPEC §6): the setup milestones already reached, plus
+ * the admin steps actionable right now (open a pot / fund this month / claim),
+ * each completable here. Replaces the old static "set up your fund" checklist
+ * with state that reflects where the user actually is.
+ */
+@Composable
+private fun FundCard(
+    budgetSet: Boolean,
+    potOpened: Boolean,
+    steps: List<Quest>,
+    onStepDone: (Quest) -> Unit,
+) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Your reward fund", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            if (!budgetSet) {
+                Text(
+                    "Set an affordable monthly budget below to start your fund.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                StatusRow(done = true, label = "Budget set")
+                if (potOpened) StatusRow(done = true, label = "External pot opened")
+                steps.forEach { step ->
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            step.title,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        TextButton(onClick = { onStepDone(step) }) { Text("Mark done") }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusRow(done: Boolean, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(if (done) "✓" else "○", style = MaterialTheme.typography.bodyMedium)
+        Text(label, style = MaterialTheme.typography.bodySmall)
     }
 }

@@ -6,6 +6,7 @@ import com.questloop.app.data.ProfilePreferences
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.data.ReminderConfig
 import com.questloop.app.data.local.QuestLoopDatabase
+import com.questloop.core.generation.AdminFundFactory
 import com.questloop.core.model.BadHabit
 import com.questloop.core.model.EnergyCheckIn
 import com.questloop.core.model.Goal
@@ -109,6 +110,21 @@ class RewardsViewModelTest {
         val vm = RewardsViewModel(repo)
         vm.setBudgetCap(0.0)
         assertEquals("Budget cleared.", vm.state.value.savedMessage)
+    }
+
+    @Test
+    fun `the reward-fund flow surfaces open-pot then advances when marked done`() = runTest {
+        val vm = RewardsViewModel(repo)
+        vm.setBudgetCap(50.0)
+        assertTrue(vm.state.value.fundBudgetSet)
+        val openPot = vm.state.value.fundSteps.firstOrNull { it.id == AdminFundFactory.OPEN_POT_ID }
+        assertNotNull("open-pot step is offered once a budget is set", openPot)
+
+        vm.markFundStepDone(openPot!!)
+        val state = vm.state.value
+        assertTrue("pot now shows opened", state.fundPotOpened)
+        assertTrue(state.fundSteps.none { it.id == AdminFundFactory.OPEN_POT_ID })
+        assertTrue(state.fundSteps.any { it.id == AdminFundFactory.FUND_MONTH_ID })
     }
 
     @Test

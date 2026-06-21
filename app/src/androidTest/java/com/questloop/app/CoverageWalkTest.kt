@@ -167,6 +167,9 @@ class CoverageWalkTest {
         awaitSafe { present("Save budget") }
         typeInto("Affordable monthly budget", "25")
         tapText("Save budget")
+        // With a budget set, the reward-fund card offers an admin step to complete.
+        awaitSafe { present("Mark done") }
+        tapText("Mark done")
         tapText("How rewards work")
     }
 }
