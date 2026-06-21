@@ -83,6 +83,7 @@ fun RewardsScreen(viewModel: RewardsViewModel, snackbarHostState: SnackbarHostSt
             budgetSet = state.fundBudgetSet,
             potOpened = state.fundPotOpened,
             steps = state.fundSteps,
+            stepInFlight = state.fundStepInFlight,
             onStepDone = viewModel::markFundStepDone,
         )
 
@@ -140,6 +141,7 @@ private fun FundCard(
     budgetSet: Boolean,
     potOpened: Boolean,
     steps: List<Quest>,
+    stepInFlight: Boolean,
     onStepDone: (Quest) -> Unit,
 ) {
     Card(Modifier.fillMaxWidth()) {
@@ -165,7 +167,10 @@ private fun FundCard(
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.weight(1f, fill = false),
                         )
-                        TextButton(onClick = { onStepDone(step) }) { Text("Mark done") }
+                        TextButton(
+                            onClick = { onStepDone(step) },
+                            enabled = !stepInFlight,
+                        ) { Text("Mark done") }
                     }
                 }
             }

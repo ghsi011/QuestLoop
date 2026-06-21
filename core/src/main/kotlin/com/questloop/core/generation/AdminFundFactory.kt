@@ -41,6 +41,9 @@ object AdminFundFactory {
     const val FUND_MONTH_ID = "${PREFIX}fund-month"
     const val CLAIM_ID = "${PREFIX}claim-allowance"
 
+    /** Every admin-quest id, for allowlisting (e.g. import validation). */
+    val ALL_IDS: List<String> = listOf(OPEN_POT_ID, FUND_MONTH_ID, CLAIM_ID)
+
     fun openPotQuest(): Quest = adminQuest(
         id = OPEN_POT_ID,
         title = "Open a separate savings pot you control",

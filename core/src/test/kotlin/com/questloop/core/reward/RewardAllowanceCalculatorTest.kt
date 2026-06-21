@@ -27,6 +27,47 @@ class RewardAllowanceCalculatorTest {
         fraction = if (result == CompletionResult.COMPLETED) 1.0 else 0.0,
     )
 
+    private fun metaRec(day: Long = 2) = CompletionRecord(
+        instanceId = "admin-fund-month@$day",
+        questId = "admin-fund-month",
+        category = QuestCategory.META_MAINTENANCE,
+        difficulty = Difficulty.EASY,
+        priority = Priority.NORMAL,
+        result = CompletionResult.COMPLETED,
+        epochDay = day,
+        fraction = 1.0,
+    )
+
+    @Test
+    fun `meta-maintenance records do not raise the suggested allowance`() {
+        // The reward-fund admin quests are meta; completing them must not inflate
+        // the very allowance that decides whether a "claim" step is offered.
+        val real = listOf(rec(CompletionResult.COMPLETED, day = 1))
+        val withoutMeta = RewardAllowanceCalculator.calculate(
+            RewardAllowanceCalculator.AllowanceInput(100.0, real, activeDays = 1, daysInMonth = 30),
+        )
+        val withMeta = RewardAllowanceCalculator.calculate(
+            RewardAllowanceCalculator.AllowanceInput(100.0, real + metaRec(), activeDays = 1, daysInMonth = 30),
+        )
+        assertEquals(withoutMeta.suggestedAllowance, withMeta.suggestedAllowance, 1e-9)
+        assertEquals(withoutMeta.completionRate, withMeta.completionRate, 1e-9)
+    }
+
+    @Test
+    fun `meta records alone earn nothing`() {
+        // Even if the caller reports active days, admin/meta completions on their
+        // own can never manufacture an allowance (closes the feedback loop).
+        val result = RewardAllowanceCalculator.calculate(
+            RewardAllowanceCalculator.AllowanceInput(
+                monthlyBudgetCap = 100.0,
+                records = listOf(metaRec(2), metaRec(3)),
+                activeDays = 2,
+                daysInMonth = 30,
+            ),
+        )
+        assertEquals(0.0, result.suggestedAllowance, 1e-9)
+    }
+
     @Test
     fun `zero days in month does not produce NaN`() {
         // Regression: activeDays / daysInMonth with daysInMonth == 0 yields NaN,

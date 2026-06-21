@@ -442,7 +442,11 @@ class QuestRepository(
 
     suspend fun allowance(fromEpochDay: Long, toEpochDay: Long): RewardAllowanceCalculator.AllowanceResult {
         val profile = profileStore.profile.first()
+        // Exclude meta-maintenance/admin records so the reward-fund bookkeeping
+        // (and routines) never counts as real-world earning (SPEC §6–7); the
+        // calculator drops them too, but activeDays is computed here.
         val records = completionDao.between(fromEpochDay, toEpochDay).map { it.toModel() }
+            .filterNot { it.isMeta }
         val activeDays = records
             .filter { it.result == CompletionResult.COMPLETED || it.result == CompletionResult.PARTIAL }
             .map { it.epochDay }.toSet().size
@@ -584,7 +588,9 @@ class QuestRepository(
             val derivedIds = HabitQuestFactory.deriveAll(habits, badHabits, goals).map { it.id }
             val routineIds = RoutineQuestFactory.all().map { it.id }
             val existingIds = questDao.getAll().map { it.id }
-            val validQuestIds = (snapshot.quests.map { it.id } + existingIds + derivedIds + routineIds).toSet()
+            val validQuestIds = (
+                snapshot.quests.map { it.id } + existingIds + derivedIds + routineIds + AdminFundFactory.ALL_IDS
+            ).toSet()
 
             var imported = 0
             var skipped = 0

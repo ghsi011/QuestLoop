@@ -23,6 +23,8 @@ data class RewardsUiState(
     val fundBudgetSet: Boolean = false,
     val fundPotOpened: Boolean = false,
     val fundSteps: List<Quest> = emptyList(),
+    /** True while a "Mark done" completion is in flight, to guard against double-taps. */
+    val fundStepInFlight: Boolean = false,
     /** One-shot confirmation shown after the budget is saved; consumed by the UI. */
     val savedMessage: String? = null,
     /**
@@ -69,12 +71,19 @@ class RewardsViewModel(private val repository: QuestRepository) : ViewModel() {
         }
     }
 
-    /** Marks a reward-fund admin step done (the user did the external action). */
+    /** Marks a reward-fund admin step done (the user did the external action).
+     *  Guarded so a double-tap can't fire two completions or duplicate snackbars. */
     fun markFundStepDone(quest: Quest) {
+        if (_state.value.fundStepInFlight) return
+        _state.update { it.copy(fundStepInFlight = true) }
         launchSafely {
-            repository.completeQuest(quest, AppClock.todayEpochDay(), CompletionResult.COMPLETED)
-            load()
-            _state.update { it.copy(savedMessage = "Marked done — nice.", messageId = it.messageId + 1) }
+            try {
+                repository.completeQuest(quest, AppClock.todayEpochDay(), CompletionResult.COMPLETED)
+                load()
+                _state.update { it.copy(savedMessage = "Marked done — nice.", messageId = it.messageId + 1) }
+            } finally {
+                _state.update { it.copy(fundStepInFlight = false) }
+            }
         }
     }
 
