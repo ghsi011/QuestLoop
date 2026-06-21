@@ -19,8 +19,9 @@ import com.questloop.app.ui.components.InfoCard
 
 /**
  * One-time intro shown on first launch. Sets expectations for the quest/XP model
- * and — importantly — surfaces the money/rewards disclaimer and the local-first
- * privacy stance up front, before the user touches anything sensitive (SPEC §6, §9).
+ * and surfaces the local-first privacy stance up front, before the user touches
+ * anything sensitive (SPEC §6, §9). The money/rewards disclaimer lives on the
+ * Rewards tab.
  */
 @Composable
 fun OnboardingScreen(onGetStarted: () -> Unit) {
@@ -45,10 +46,6 @@ fun OnboardingScreen(onGetStarted: () -> Unit) {
         InfoCard(
             title = "🎯 A gentle daily loop",
             body = "A quick morning glance, a short evening wrap-up. Rough days are okay.",
-        )
-        InfoCard(
-            title = "💸 Your rewards stay yours",
-            body = "Not financial advice. QuestLoop never touches your money — you set and manage a budget yourself.",
         )
         InfoCard(
             title = "🔒 Private by default",

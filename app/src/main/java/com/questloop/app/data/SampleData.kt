@@ -151,7 +151,7 @@ object QuestBank {
             frequency = QuestFrequency.ONE_OFF,
             difficulty = Difficulty.EASY,
             origin = QuestOrigin.SYSTEM_RECURRING,
-            rationale = "Create a separate savings pot you control — QuestLoop never touches your money.",
+            rationale = "Create a separate savings pot you control.",
         ),
         Quest(
             id = "bank-declutter",
