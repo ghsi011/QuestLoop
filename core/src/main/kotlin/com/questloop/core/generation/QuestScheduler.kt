@@ -111,7 +111,13 @@ object QuestScheduler {
     /** First due day at `period`-day spacing: `from`, or one full period past the
      *  last completion, whichever is later. Null if that lands beyond the window. */
     private fun firstPeriodicDue(from: Long, to: Long, lastCompleted: Long?, period: Long): Long? {
-        val firstDue = if (lastCompleted == null) from else maxOf(from, lastCompleted + period)
+        // A completion dated after the window end is anomalous (clock skew /
+        // timezone) — it hasn't happened *within* this window, so it must not push
+        // the next due date past the window and silently hide a recurring quest.
+        // Treat it as not-yet-completed here. (One-off completion is handled by the
+        // caller, where any completion still means "done".)
+        val effectiveLast = lastCompleted?.takeIf { it <= to }
+        val firstDue = if (effectiveLast == null) from else maxOf(from, effectiveLast + period)
         return if (firstDue > to) null else firstDue
     }
 

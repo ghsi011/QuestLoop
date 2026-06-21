@@ -49,6 +49,16 @@ class PeriodPlannerTest {
     }
 
     @Test
+    fun `a recurring quest with a future-dated completion still appears`() {
+        // A daily quest whose last completion is stamped after the window (clock
+        // skew) must not vanish from the plan.
+        val daily = quest("d", QuestFrequency.DAILY, minutes = 10)
+        val result = plan(listOf(daily), lastCompleted = mapOf("d" to to + 50))
+        val item = result.items.single()
+        assertEquals(7, item.expectedOccurrences)
+    }
+
+    @Test
     fun `quests not due in the window are dropped`() {
         // Monthly completed mid-window -> not due again this week.
         val result = plan(
