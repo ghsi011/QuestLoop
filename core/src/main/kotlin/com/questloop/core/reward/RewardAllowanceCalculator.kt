@@ -45,7 +45,14 @@ object RewardAllowanceCalculator {
 
     fun calculate(input: AllowanceInput): AllowanceResult {
         val cap = input.monthlyBudgetCap.coerceAtLeast(0.0)
-        if (cap <= 0.0 || input.records.isEmpty()) {
+        // Meta-maintenance/admin completions (the reward-fund bookkeeping itself,
+        // routines, etc.) must never count as real-world earning — keeping the
+        // system running can't stand in for real progress (SPEC §6–7). Excluding
+        // them here also stops the reward-fund admin quests from inflating the very
+        // allowance that decides whether a "claim" step is offered. Callers must
+        // likewise derive `activeDays` from non-meta records for consistency.
+        val records = input.records.filterNot { it.isMeta }
+        if (cap <= 0.0 || records.isEmpty()) {
             return AllowanceResult(
                 suggestedAllowance = 0.0,
                 budgetCap = cap,
@@ -59,15 +66,14 @@ object RewardAllowanceCalculator {
             )
         }
 
-        val attempted = input.records.count { it.result != CompletionResult.RESCHEDULED }
-        val completedWeighted = input.records.sumOf {
+        val completedWeighted = records.sumOf {
             when (it.result) {
                 CompletionResult.COMPLETED -> it.difficulty.weight
                 CompletionResult.PARTIAL -> it.difficulty.weight * it.fraction
                 else -> 0.0
             }
         }
-        val attemptedWeighted = input.records
+        val attemptedWeighted = records
             .filter { it.result != CompletionResult.RESCHEDULED }
             .sumOf { it.difficulty.weight }
             .coerceAtLeast(1.0)
@@ -81,7 +87,7 @@ object RewardAllowanceCalculator {
         val consistencyFactor = (input.activeDays.coerceAtLeast(0).toDouble() / daysInMonth.toDouble())
             .coerceIn(0.0, 1.0)
 
-        val criticalMissed = input.records.count {
+        val criticalMissed = records.count {
             it.priority == Priority.CRITICAL &&
                 (it.result == CompletionResult.FAILED || it.result == CompletionResult.SKIPPED)
         }

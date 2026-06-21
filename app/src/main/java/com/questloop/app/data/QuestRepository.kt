@@ -7,10 +7,12 @@ import com.questloop.core.ai.AiNarrator
 import com.questloop.core.ai.AiQuestService
 import com.questloop.core.completion.CompletionPolicy
 import com.questloop.core.completion.CompletionScaling
+import com.questloop.core.generation.AdminFundFactory
 import com.questloop.core.generation.HabitQuestFactory
 import com.questloop.core.generation.PeriodPlanner
 import com.questloop.core.generation.QuestGenerator
 import com.questloop.core.generation.QuestScheduler
+import com.questloop.core.generation.RewardFundState
 import com.questloop.core.generation.RoutineQuestFactory
 import com.questloop.core.model.BadHabit
 import com.questloop.core.model.Habit
@@ -20,6 +22,7 @@ import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.DayPart
 import com.questloop.core.model.EnergyCheckIn
 import com.questloop.core.model.Quest
+import com.questloop.core.model.UserProfile
 import com.questloop.core.model.VerificationMethod
 import com.questloop.core.reward.Achievement
 import com.questloop.core.reward.AchievementEngine
@@ -37,6 +40,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.time.LocalDate
 import kotlin.math.roundToInt
 
 /**
@@ -177,8 +181,10 @@ class QuestRepository(
         // Only surface quests whose recurrence cadence makes them due today
         // (e.g. a weekly quest doesn't reappear every day after completion).
         val lastCompleted = completionDao.lastCompletedDays().associate { it.questId to it.lastDay }
-        // User-created quests plus quests derived from habits, bad habits & goals.
-        val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals)
+        // User-created quests plus quests derived from habits/goals and the
+        // reward-fund admin flow.
+        val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals) +
+            adminFundQuests(epochDay, profile, lastCompleted)
         val candidates = (questDao.getActive().map { it.toModel() } + derived)
             .filter { QuestScheduler.isDue(it.frequency, epochDay, lastCompleted[it.id]) }
         // Recent history is only needed for avoidance scoring (skipped quests).
@@ -194,6 +200,25 @@ class QuestRepository(
                 dismissedToday = dismissedQuestIdsToday(epochDay),
             ),
         )
+    }
+
+    /**
+     * Admin quests for the self-funded reward pot (SPEC §6), derived from the
+     * current budget, whether the user has opened a pot (a completed one-off in
+     * the ledger), and this month's earned allowance. Returns nothing until a
+     * budget is set — the Rewards screen prompts for that instead.
+     */
+    private suspend fun adminFundQuests(
+        today: Long,
+        profile: UserProfile,
+        lastCompleted: Map<String, Long>,
+    ): List<Quest> {
+        val cap = profile.preferences.monthlyRewardBudgetCap
+        if (cap <= 0.0) return emptyList()
+        val potOpened = lastCompleted.containsKey(AdminFundFactory.OPEN_POT_ID)
+        val monthStart = LocalDate.ofEpochDay(today).withDayOfMonth(1).toEpochDay()
+        val earned = allowance(monthStart, today).suggestedAllowance
+        return AdminFundFactory.deriveAll(RewardFundState(cap, potOpened, earned))
     }
 
     /**
@@ -409,14 +434,19 @@ class QuestRepository(
     ): PeriodPlanner.PeriodPlan {
         val profile = profileStore.profile.first()
         val lastCompleted = completionDao.lastCompletedDays().associate { it.questId to it.lastDay }
-        val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals)
+        val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals) +
+            adminFundQuests(fromEpochDay, profile, lastCompleted)
         val candidates = questDao.getActive().map { it.toModel() } + derived
         return periodPlanner.plan(periodLabel, fromEpochDay, toEpochDay, candidates, lastCompleted)
     }
 
     suspend fun allowance(fromEpochDay: Long, toEpochDay: Long): RewardAllowanceCalculator.AllowanceResult {
         val profile = profileStore.profile.first()
+        // Exclude meta-maintenance/admin records so the reward-fund bookkeeping
+        // (and routines) never counts as real-world earning (SPEC §6–7); the
+        // calculator drops them too, but activeDays is computed here.
         val records = completionDao.between(fromEpochDay, toEpochDay).map { it.toModel() }
+            .filterNot { it.isMeta }
         val activeDays = records
             .filter { it.result == CompletionResult.COMPLETED || it.result == CompletionResult.PARTIAL }
             .map { it.epochDay }.toSet().size
@@ -428,6 +458,24 @@ class QuestRepository(
                 daysInMonth = (toEpochDay - fromEpochDay + 1).toInt().coerceAtLeast(1),
             ),
         )
+    }
+
+    /** Live status of the reward-fund admin flow, for the Rewards screen. */
+    data class RewardFundStatus(
+        val budgetSet: Boolean,
+        val potOpened: Boolean,
+        /** Admin steps actionable right now (open pot / fund this month / claim). */
+        val steps: List<Quest>,
+    )
+
+    suspend fun rewardFundStatus(today: Long): RewardFundStatus {
+        val profile = profileStore.profile.first()
+        val lastCompleted = completionDao.lastCompletedDays().associate { it.questId to it.lastDay }
+        val cap = profile.preferences.monthlyRewardBudgetCap
+        val potOpened = lastCompleted.containsKey(AdminFundFactory.OPEN_POT_ID)
+        val steps = adminFundQuests(today, profile, lastCompleted)
+            .filter { QuestScheduler.isDue(it.frequency, today, lastCompleted[it.id]) }
+        return RewardFundStatus(budgetSet = cap > 0.0, potOpened = potOpened, steps = steps)
     }
 
     suspend fun safetySignals(today: Long): List<SafetyGuard.Signal> {
@@ -540,7 +588,9 @@ class QuestRepository(
             val derivedIds = HabitQuestFactory.deriveAll(habits, badHabits, goals).map { it.id }
             val routineIds = RoutineQuestFactory.all().map { it.id }
             val existingIds = questDao.getAll().map { it.id }
-            val validQuestIds = (snapshot.quests.map { it.id } + existingIds + derivedIds + routineIds).toSet()
+            val validQuestIds = (
+                snapshot.quests.map { it.id } + existingIds + derivedIds + routineIds + AdminFundFactory.ALL_IDS
+            ).toSet()
 
             var imported = 0
             var skipped = 0

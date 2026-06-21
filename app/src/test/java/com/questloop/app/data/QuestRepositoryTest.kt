@@ -3,6 +3,7 @@ package com.questloop.app.data
 import androidx.room.Room
 import com.questloop.app.data.local.QuestLoopDatabase
 import com.questloop.core.model.CompletionRecord
+import com.questloop.core.generation.AdminFundFactory
 import com.questloop.core.model.CompletionResult
 import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.DayPart
@@ -529,5 +530,51 @@ class QuestRepositoryTest {
         repo.deleteAllData()
         assertEquals(0L, repo.totalXp())
         assertTrue(repo.todayPlan(epochDay = 1, dayPart = DayPart.MIDDAY).quests.isEmpty())
+    }
+
+    @Test
+    fun `no reward-fund admin quests until a budget is set`() = runTest {
+        // Default repo has a zero budget cap.
+        val plan = repo.periodPlan("This month", fromEpochDay = 1, toEpochDay = 31)
+        assertTrue(plan.items.none { it.quest.id.startsWith(AdminFundFactory.PREFIX) })
+    }
+
+    @Test
+    fun `setting a budget surfaces the open-pot admin quest`() = runTest {
+        val funded = QuestRepository(db.questDao(), db.completionDao(), FakePrefs(cap = 50.0))
+        val plan = funded.periodPlan("This month", fromEpochDay = 1, toEpochDay = 31)
+        assertTrue(plan.items.any { it.quest.id == AdminFundFactory.OPEN_POT_ID })
+        assertTrue(plan.items.none { it.quest.id == AdminFundFactory.FUND_MONTH_ID })
+    }
+
+    @Test
+    fun `opening the pot advances to monthly funding`() = runTest {
+        val funded = QuestRepository(db.questDao(), db.completionDao(), FakePrefs(cap = 50.0))
+        funded.completeQuest(AdminFundFactory.openPotQuest(), epochDay = 1, result = CompletionResult.COMPLETED)
+        val plan = funded.periodPlan("This month", fromEpochDay = 2, toEpochDay = 32)
+        assertTrue(plan.items.none { it.quest.id == AdminFundFactory.OPEN_POT_ID })
+        assertTrue(plan.items.any { it.quest.id == AdminFundFactory.FUND_MONTH_ID })
+    }
+
+    @Test
+    fun `funding stays done within the month then recurs`() = runTest {
+        val funded = QuestRepository(db.questDao(), db.completionDao(), FakePrefs(cap = 50.0))
+        funded.completeQuest(AdminFundFactory.openPotQuest(), epochDay = 1, result = CompletionResult.COMPLETED)
+        funded.completeQuest(AdminFundFactory.fundMonthQuest(), epochDay = 2, result = CompletionResult.COMPLETED)
+        // Within the monthly period -> funding step is not due again.
+        val soon = funded.periodPlan("m", fromEpochDay = 10, toEpochDay = 20)
+        assertTrue(soon.items.none { it.quest.id == AdminFundFactory.FUND_MONTH_ID })
+        // Past the ~30-day period -> it returns.
+        val later = funded.periodPlan("m", fromEpochDay = 33, toEpochDay = 63)
+        assertTrue(later.items.any { it.quest.id == AdminFundFactory.FUND_MONTH_ID })
+    }
+
+    @Test
+    fun `completing admin steps does not manufacture an earned allowance`() = runTest {
+        val funded = QuestRepository(db.questDao(), db.completionDao(), FakePrefs(cap = 50.0))
+        funded.completeQuest(AdminFundFactory.openPotQuest(), epochDay = 1, result = CompletionResult.COMPLETED)
+        funded.completeQuest(AdminFundFactory.fundMonthQuest(), epochDay = 1, result = CompletionResult.COMPLETED)
+        // Meta/admin completions are excluded, so nothing has been "earned".
+        assertEquals(0.0, funded.allowance(fromEpochDay = 1, toEpochDay = 31).suggestedAllowance, 0.0001)
     }
 }
