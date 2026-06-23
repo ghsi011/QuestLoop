@@ -58,6 +58,7 @@ class QuestRepository(
     private val engine: QuestLoopEngine = QuestLoopEngine(),
     private val generator: QuestGenerator = QuestGenerator(),
     private val periodPlanner: PeriodPlanner = PeriodPlanner(),
+    private val calendarReader: CalendarReader = NoopCalendarReader,
     private val safetyGuard: SafetyGuard = SafetyGuard(),
     private val aiDiagnostics: AiDiagnostics = NoopAiDiagnostics,
     private val aiCallGuard: AiCallGuard = NoopAiCallGuard,
@@ -189,6 +190,9 @@ class QuestRepository(
             .filter { QuestScheduler.isDue(it.frequency, epochDay, lastCompleted[it.id]) }
         // Recent history is only needed for avoidance scoring (skipped quests).
         val history = completionDao.since(epochDay - 14).map { it.toModel() }
+        // Free time left on the device calendar (null unless the user opted in and
+        // granted permission) tightens today's time budget automatically.
+        val calendarMinutes = calendarReader.freeMinutesToday()
         return generator.generateDaily(
             QuestGenerator.Request(
                 epochDay = epochDay,
@@ -198,6 +202,7 @@ class QuestRepository(
                 checkIn = checkIn,
                 routineQuests = RoutineQuestFactory.routinesFor(dayPart),
                 dismissedToday = dismissedQuestIdsToday(epochDay),
+                availableMinutesOverride = calendarMinutes,
             ),
         )
     }
@@ -489,6 +494,8 @@ class QuestRepository(
     suspend fun setAvailableMinutes(value: Int) = profileStore.setAvailableMinutes(value)
     suspend fun setFocusCategories(cats: Set<com.questloop.core.model.QuestCategory>) =
         profileStore.setFocusCategories(cats)
+
+    suspend fun setCalendarBudgetEnabled(value: Boolean) = profileStore.setCalendarBudgetEnabled(value)
 
     suspend fun addHabit(habit: Habit) = profileMutex.withLock {
         val current = profileStore.profile.first().habits

@@ -87,6 +87,37 @@ class QuestGeneratorTest {
     }
 
     @Test
+    fun `a calendar override enforces the budget without a check-in`() {
+        val candidates = (1..10).map { quest("q$it", minutes = 30) }
+        val plan = generator.generateDaily(
+            QuestGenerator.Request(
+                epochDay = 100,
+                profile = profile(UserPreferences(maxDailyQuests = 10)),
+                candidates = candidates,
+                availableMinutesOverride = 60, // ~2 quests' worth, no check-in
+            ),
+        )
+        assertTrue(plan.totalEstimatedMinutes <= 60 + 30)
+        assertTrue(plan.quests.size <= 3)
+    }
+
+    @Test
+    fun `the smaller of check-in and calendar budget wins`() {
+        val candidates = (1..10).map { quest("q$it", minutes = 30) }
+        val plan = generator.generateDaily(
+            QuestGenerator.Request(
+                epochDay = 100,
+                profile = profile(UserPreferences(maxDailyQuests = 10)),
+                candidates = candidates,
+                checkIn = EnergyCheckIn(100, energy = 3, availableMinutes = 240),
+                availableMinutesOverride = 30, // calendar says only 30 min free
+            ),
+        )
+        assertTrue(plan.totalEstimatedMinutes <= 30 + 30)
+        assertTrue(plan.quests.size <= 2)
+    }
+
+    @Test
     fun `urgent deadlines are prioritised`() {
         val candidates = listOf(
             quest("far", deadline = 200),

@@ -260,6 +260,8 @@ data class UserPreferences(
     val streakGraceDays: Int = 1,
     /** Categories the user wants to emphasise. */
     val focusCategories: Set<QuestCategory> = emptySet(),
+    /** Opt-in: use the device calendar's free time as today's time budget (SPEC §10). */
+    val calendarBudgetEnabled: Boolean = false,
 )
 
 @Serializable

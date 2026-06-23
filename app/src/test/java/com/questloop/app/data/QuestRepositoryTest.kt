@@ -570,6 +570,19 @@ class QuestRepositoryTest {
     }
 
     @Test
+    fun `calendar free time caps today's plan`() = runTest {
+        val reader = object : CalendarReader {
+            override suspend fun freeMinutesToday(): Int = 20 // only 20 minutes free today
+        }
+        val withCal = QuestRepository(db.questDao(), db.completionDao(), FakePrefs(), calendarReader = reader)
+        repeat(5) { withCal.addQuest(quest("q$it")) } // MEDIUM ~25 min each
+        val plan = withCal.todayPlan(epochDay = 1, dayPart = DayPart.MIDDAY)
+        // A hard 20-minute budget admits only the first quest (the generator never
+        // returns an empty day, but won't pile more on past the budget).
+        assertEquals(1, plan.quests.size)
+    }
+
+    @Test
     fun `completing admin steps does not manufacture an earned allowance`() = runTest {
         val funded = QuestRepository(db.questDao(), db.completionDao(), FakePrefs(cap = 50.0))
         funded.completeQuest(AdminFundFactory.openPotQuest(), epochDay = 1, result = CompletionResult.COMPLETED)

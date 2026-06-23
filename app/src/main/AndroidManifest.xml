@@ -13,6 +13,9 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Brief CPU wake lock so an in-flight AI request survives the screen turning off. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Opt-in only: read the device calendar's free/busy to budget today's plan
+         (SPEC §10). Read-only, on-device — no calendar data ever leaves the phone. -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
 
     <!-- Privacy posture (SPEC §9): the user's habit/goal/quest data and the AI key
          stay on this device. Backup is disabled so nothing is copied to cloud/adb

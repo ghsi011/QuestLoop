@@ -41,6 +41,9 @@ interface ProfilePreferences {
     suspend fun setFocusCategories(cats: Set<QuestCategory>)
     suspend fun setStreakGraceDays(value: Int)
     suspend fun setSensitiveOptIn(value: Boolean)
+    /** Opt-in to using the device calendar's free time as today's budget (SPEC §10).
+     *  Defaulted so test fakes need not implement it; [ProfileStore] persists it. */
+    suspend fun setCalendarBudgetEnabled(value: Boolean) {}
     suspend fun setHabits(habits: List<Habit>)
     suspend fun setBadHabits(badHabits: List<BadHabit>)
     suspend fun setGoals(goals: List<Goal>)
@@ -81,6 +84,7 @@ class ProfileStore(
         val BUDGET_CAP = doublePreferencesKey("monthly_reward_budget_cap")
         val GRACE_DAYS = intPreferencesKey("streak_grace_days")
         val SENSITIVE_OPT_IN = intPreferencesKey("sensitive_opt_in")
+        val CALENDAR_BUDGET = intPreferencesKey("calendar_budget_enabled")
         val FOCUS = stringSetPreferencesKey("focus_categories")
         val HABITS = stringPreferencesKey("habits_json")
         val BAD_HABITS = stringPreferencesKey("bad_habits_json")
@@ -111,6 +115,7 @@ class ProfileStore(
                 monthlyRewardBudgetCap = prefs[Keys.BUDGET_CAP] ?: 0.0,
                 streakGraceDays = prefs[Keys.GRACE_DAYS] ?: 1,
                 sensitiveNotificationsOptIn = (prefs[Keys.SENSITIVE_OPT_IN] ?: 0) == 1,
+                calendarBudgetEnabled = (prefs[Keys.CALENDAR_BUDGET] ?: 0) == 1,
                 focusCategories = (prefs[Keys.FOCUS] ?: emptySet())
                     .mapNotNull { runCatching { QuestCategory.valueOf(it) }.getOrNull() }
                     .toSet(),
@@ -143,6 +148,10 @@ class ProfileStore(
 
     override suspend fun setStreakGraceDays(value: Int) {
         dataStore.edit { it[Keys.GRACE_DAYS] = value.coerceIn(0, 7) }
+    }
+
+    override suspend fun setCalendarBudgetEnabled(value: Boolean) {
+        dataStore.edit { it[Keys.CALENDAR_BUDGET] = if (value) 1 else 0 }
     }
 
     override suspend fun setSensitiveOptIn(value: Boolean) {
