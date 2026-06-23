@@ -80,4 +80,47 @@ class FreeBusyCalculatorTest {
         assertEquals(0, FreeBusyCalculator.freeMinutes(emptyList(), DayWindow(at(22), at(8))))
         assertEquals(0, FreeBusyCalculator.freeMinutes(emptyList(), DayWindow(at(12), at(12))))
     }
+
+    @Test
+    fun `an inverted busy interval is ignored, never corrupts the merge`() {
+        // A malformed (end < start) event must not extend or shift neighbours.
+        val free = FreeBusyCalculator.freeMinutes(listOf(Interval(at(16), at(9)), busy(10, 11)))
+        assertEquals(fullDay - 60, free) // only the valid 10–11 block counts
+    }
+
+    @Test
+    fun `a meeting contained inside another does not add extra busy time`() {
+        // 09:00–17:00 with a 10:00–11:00 nested inside -> still 480 busy.
+        val free = FreeBusyCalculator.freeMinutes(listOf(busy(9, 17), busy(10, 11)))
+        assertEquals(fullDay - (8 * 60), free)
+    }
+
+    @Test
+    fun `zero-length and duplicate events are handled`() {
+        val zeroLen = FreeBusyCalculator.freeMinutes(listOf(Interval(at(10), at(10))))
+        assertEquals(fullDay, zeroLen)
+        val dup = FreeBusyCalculator.freeMinutes(listOf(busy(10, 11), busy(10, 11)))
+        assertEquals(fullDay - 60, dup) // counted once
+    }
+
+    @Test
+    fun `unsorted input is merged correctly`() {
+        val free = FreeBusyCalculator.freeMinutes(listOf(busy(14, 15), busy(10, 11)))
+        assertEquals(fullDay - 120, free)
+    }
+
+    @Test
+    fun `a one-minute window is one free minute when unbooked`() {
+        assertEquals(1, FreeBusyCalculator.freeMinutes(emptyList(), DayWindow(at(10), at(10) + 1)))
+    }
+
+    @Test
+    fun `remainingFrom clamps to a valid forward window`() {
+        // Before the waking day -> the full window.
+        assertEquals(fullDay, FreeBusyCalculator.freeMinutes(emptyList(), DayWindow.remainingFrom(at(6))))
+        // Midday -> only the hours left.
+        assertEquals(at(22) - at(14), FreeBusyCalculator.freeMinutes(emptyList(), DayWindow.remainingFrom(at(14))))
+        // Past the day's end -> nothing, never negative.
+        assertEquals(0, FreeBusyCalculator.freeMinutes(emptyList(), DayWindow.remainingFrom(at(23))))
+    }
 }

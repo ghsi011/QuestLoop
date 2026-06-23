@@ -24,6 +24,23 @@ data class DayWindow(
     companion object {
         const val DEFAULT_DAY_START_MINUTE = 8 * 60 // 08:00
         const val DEFAULT_DAY_END_MINUTE = 22 * 60 // 22:00
+
+        /**
+         * The waking time *remaining* from [nowMinute] (minutes from midnight)
+         * until the day's end — what "today" should budget against. Clamps so the
+         * result is never inverted: before the day starts you get the full window;
+         * once [nowMinute] reaches the day's end the window is empty (zero free
+         * minutes), never negative. Use this rather than constructing a window
+         * straight from "now", which could otherwise go inverted late in the day.
+         */
+        fun remainingFrom(
+            nowMinute: Int,
+            dayStart: Int = DEFAULT_DAY_START_MINUTE,
+            dayEnd: Int = DEFAULT_DAY_END_MINUTE,
+        ): DayWindow = DayWindow(
+            startMinute = nowMinute.coerceIn(dayStart, dayEnd),
+            endMinute = dayEnd,
+        )
     }
 }
 
