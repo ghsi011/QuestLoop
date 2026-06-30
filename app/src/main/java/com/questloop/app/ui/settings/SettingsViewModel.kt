@@ -171,6 +171,13 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
 
     fun setAvailableMinutes(value: Int) = update("Saved · ${value}m a day") { repository.setAvailableMinutes(value) }
 
+    /** Opt in/out of calendar-based time budgeting. The screen secures the
+     *  READ_CALENDAR permission before enabling; this just persists the choice. */
+    fun setCalendarBudget(enabled: Boolean) =
+        update(if (enabled) "Using your calendar for today's budget" else "Calendar budgeting off") {
+            repository.setCalendarBudgetEnabled(enabled)
+        }
+
     fun toggleFocus(category: QuestCategory) {
         val current = _state.value.prefs.focusCategories
         val next = if (category in current) current - category else current + category

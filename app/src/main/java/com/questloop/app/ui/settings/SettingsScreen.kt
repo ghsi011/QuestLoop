@@ -26,9 +26,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.core.content.ContextCompat
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -92,6 +94,22 @@ fun SettingsScreen(
             scope.launch {
                 snackbarHostState.showSnackbar(
                     "Allow notifications in system settings for reminders to show.",
+                    duration = SnackbarDuration.Long,
+                )
+            }
+        }
+    }
+
+    // Ask for calendar access when the user turns on calendar-based budgeting.
+    val calendarPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            viewModel.setCalendarBudget(true)
+        } else {
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    "Allow calendar access to use your calendar for budgeting.",
                     duration = SnackbarDuration.Long,
                 )
             }
@@ -189,6 +207,38 @@ fun SettingsScreen(
                 OutlinedButton(onClick = {
                     viewModel.setAvailableMinutes((prefs.defaultAvailableMinutes + 15).coerceAtMost(480))
                 }) { Text("+15") }
+            }
+        }
+
+        Card(Modifier.fillMaxWidth()) {
+            Row(
+                Modifier.fillMaxWidth().padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Use my calendar", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Today's plan fits the free time left around your events. Read-only, stays on your device.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = prefs.calendarBudgetEnabled,
+                    onCheckedChange = { want ->
+                        if (!want) {
+                            viewModel.setCalendarBudget(false)
+                        } else if (
+                            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALENDAR) ==
+                            PackageManager.PERMISSION_GRANTED
+                        ) {
+                            viewModel.setCalendarBudget(true)
+                        } else {
+                            calendarPermissionLauncher.launch(Manifest.permission.READ_CALENDAR)
+                        }
+                    },
+                )
             }
         }
 

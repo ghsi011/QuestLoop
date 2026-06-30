@@ -1,6 +1,7 @@
 package com.questloop.app.di
 
 import android.content.Context
+import com.questloop.app.data.AndroidCalendarReader
 import com.questloop.app.data.EncryptedKeyStore
 import com.questloop.app.data.FileAiDiagnostics
 import com.questloop.app.data.ProfileStore
@@ -24,6 +25,7 @@ class AppContainer(context: Context) {
         questDao = db.questDao(),
         completionDao = db.completionDao(),
         profileStore = profileStore,
+        calendarReader = AndroidCalendarReader(context.applicationContext, profileStore),
         aiDiagnostics = FileAiDiagnostics(context.applicationContext),
         aiCallGuard = WakeLockAiCallGuard(context.applicationContext),
     )

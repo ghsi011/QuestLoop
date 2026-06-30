@@ -37,6 +37,12 @@ class QuestGenerator(
          * partially-logged counting/timed quests can stay visible.
          */
         val dismissedToday: Set<String> = emptySet(),
+        /**
+         * A hard time budget derived from outside the check-in (e.g. the free time
+         * left on the user's calendar today). When set it bounds the plan just like
+         * a check-in's available minutes; if both are present the smaller wins.
+         */
+        val availableMinutesOverride: Int? = null,
     )
 
     data class DailyPlan(
@@ -50,12 +56,14 @@ class QuestGenerator(
     fun generateDaily(request: Request): DailyPlan {
         val prefs = request.profile.preferences
         val energy = request.checkIn?.energy
-        val availableMinutes = request.checkIn?.availableMinutes ?: prefs.defaultAvailableMinutes
-        // The time budget is only a hard limit when the user has actually told us
-        // how much time they have today (an energy/time check-in). Without one, the
+        // The time budget is a hard limit when we actually know how much time the
+        // user has today — either an energy/time check-in or a calendar-derived
+        // override (the smaller of the two if both are known). Without either, the
         // default minutes are a guess, so the user's "max quests per day" setting
         // governs the count and time is only advisory (a note if the plan runs long).
-        val enforceTimeBudget = request.checkIn != null
+        val availableMinutes = listOfNotNull(request.availableMinutesOverride, request.checkIn?.availableMinutes)
+            .minOrNull() ?: prefs.defaultAvailableMinutes
+        val enforceTimeBudget = request.availableMinutesOverride != null || request.checkIn != null
 
         val notes = mutableListOf<String>()
 
