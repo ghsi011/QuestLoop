@@ -111,6 +111,17 @@ class CoverageWalkTest {
         for (label in chips) tapText(label)
 
         typeInto("What do you want to get done?", "Coverage walk quest 7777")
+
+        // Deadline picker (SPEC §10): a manual date pick, then the calendar-event
+        // picker (no permission granted in this walk, so it falls back to its
+        // empty-state hint rather than a list).
+        tapText("Pick date")
+        tapText("OK")
+        awaitSafe { present("Clear") } // "Clear" only renders once a deadline is set
+        tapText("From calendar")
+        awaitSafe { present("Pick an event") }
+        tapText("Close")
+
         tapText("Add quest") // submit button (clickable; FAB shares the text)
         awaitSafe(15_000) { !present("New quest") }
     }

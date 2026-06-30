@@ -573,6 +573,7 @@ class QuestRepositoryTest {
     fun `calendar free time caps today's plan`() = runTest {
         val reader = object : CalendarReader {
             override suspend fun freeMinutesToday(): Int = 20 // only 20 minutes free today
+            override suspend fun upcomingEvents(daysAhead: Int): List<CalendarEventSummary> = emptyList()
         }
         val withCal = QuestRepository(db.questDao(), db.completionDao(), FakePrefs(), calendarReader = reader)
         repeat(5) { withCal.addQuest(quest("q$it")) } // MEDIUM ~25 min each

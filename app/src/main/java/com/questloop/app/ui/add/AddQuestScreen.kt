@@ -1,5 +1,6 @@
 package com.questloop.app.ui.add
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -7,20 +8,29 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.questloop.app.data.CalendarEventSummary
 import com.questloop.app.ui.components.SectionHeader
 import com.questloop.app.ui.components.pretty
 import com.questloop.core.model.CompletionStyle
@@ -41,6 +52,10 @@ import com.questloop.core.model.Priority
 import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.QuestFrequency
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
@@ -103,6 +118,16 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
             label = if (draft.completionStyle == CompletionStyle.DURATION) "Target minutes" else "Estimated minutes",
             range = 1..1440,
             modifier = Modifier.fillMaxWidth(),
+        )
+
+        DeadlineSection(
+            deadlineEpochDay = draft.deadlineEpochDay,
+            calendarEvents = state.calendarEvents,
+            loadingEvents = state.loadingCalendarEvents,
+            onPickDate = viewModel::setDeadline,
+            onClearDeadline = { viewModel.setDeadline(null) },
+            onOpenCalendarPicker = viewModel::loadCalendarEvents,
+            onPickEvent = viewModel::pickDeadlineFromEvent,
         )
 
         Button(
@@ -191,6 +216,110 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
                 )
             }
         }
+    }
+}
+
+private val deadlineDateFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d")
+
+/**
+ * Optional due date (SPEC §10): pick any date, or pick straight from an upcoming
+ * calendar event (which also tags the quest `calendar` and offers its title to
+ * pre-fill a still-blank Title field). Calendar permission is requested once, in
+ * Settings — here we just show what's available or a hint to enable it there.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DeadlineSection(
+    deadlineEpochDay: Long?,
+    calendarEvents: List<CalendarEventSummary>,
+    loadingEvents: Boolean,
+    onPickDate: (Long) -> Unit,
+    onClearDeadline: () -> Unit,
+    onOpenCalendarPicker: () -> Unit,
+    onPickEvent: (CalendarEventSummary) -> Unit,
+) {
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showEventPicker by remember { mutableStateOf(false) }
+
+    Text("Deadline (optional)", fontWeight = FontWeight.SemiBold)
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            deadlineEpochDay?.let { "Due ${LocalDate.ofEpochDay(it).format(deadlineDateFormat)}" } ?: "No deadline",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        if (deadlineEpochDay != null) {
+            TextButton(onClick = onClearDeadline) { Text("Clear") }
+        }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = { showDatePicker = true }) { Text("Pick date") }
+        OutlinedButton(onClick = { onOpenCalendarPicker(); showEventPicker = true }) { Text("From calendar") }
+    }
+
+    if (showDatePicker) {
+        // Material3's DatePickerState works in UTC-midnight millis by contract,
+        // regardless of the device's zone — converting through ZoneOffset.UTC
+        // (not the local zone) is what keeps the picked date exactly the day shown.
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = LocalDate.ofEpochDay(deadlineEpochDay ?: LocalDate.now().toEpochDay())
+                .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { millis ->
+                        onPickDate(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toEpochDay())
+                    }
+                    showDatePicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("Cancel") } },
+        ) {
+            DatePicker(state = pickerState)
+        }
+    }
+
+    if (showEventPicker) {
+        AlertDialog(
+            onDismissRequest = { showEventPicker = false },
+            title = { Text("Pick an event") },
+            text = {
+                when {
+                    loadingEvents -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                    calendarEvents.isEmpty() -> Text(
+                        "No upcoming events found. Turn on calendar access in Settings, or pick a date manually.",
+                    )
+                    else -> LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                        items(calendarEvents, key = { it.id }) { event ->
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onPickEvent(event)
+                                        showEventPicker = false
+                                    }
+                                    .padding(vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text(event.title, modifier = Modifier.weight(1f, fill = false))
+                                Text(
+                                    LocalDate.ofEpochDay(event.epochDay).format(deadlineDateFormat),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showEventPicker = false }) { Text("Close") } },
+        )
     }
 }
 

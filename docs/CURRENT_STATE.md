@@ -72,17 +72,28 @@ Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
   overdue / due-this-period deadlines, and groups by category with time
   subtotals. *Forward-looking calendar weeks/months only; per-day scheduling
   within the period and drag-to-reschedule aren't built.*
-- **Admin quests for reward funds** (§6) — one seed quest + static guidance on
-  the Rewards screen, not a dynamic flow.
+- **Admin quests for reward funds** (§6) — `AdminFundFactory` derives admin
+  quests from the fund's actual state (open a pot → fund monthly → claim),
+  surfaced as a live status card on the Rewards screen and in Today/Plan; no
+  longer a static one-off seed.
 - **Energy/mood check-in** (§7) — energy check-in shapes the plan and is now
   **persisted per day** (survives restarts); a dedicated mood check-in isn't
   added yet.
+- **Calendar integration** (§10) — opt-in, local-first: reads calendars already
+  synced on the device via `CalendarContract` (no Google API, no OAuth, no
+  network) to auto-budget today's plan (`FreeBusyCalculator`, a Settings
+  switch) and to let "Add quest" pick a deadline straight from an upcoming
+  event. *Read-only; no write-back, no health/todo-app integrations, and
+  `VerificationMethod.CALENDAR`/`TIMER`/`CHECKLIST` stay labels — deliberately
+  not auto-completing a quest just because a linked event ended, to keep the
+  XP ledger honest.*
 
 ## ✗ Not implemented (spec future / §10 deferred)
 
-- Calendar / health-app / todo-app integrations.
-- Location-based or passive completion; real timers / checklists / calendar
-  confirmation (the `TIMER`/`CHECKLIST` verification values are just labels).
+- Health-app / todo-app integrations; calendar write-back (blocking focus time).
+- Location-based or passive completion; real timers/checklists/calendar-based
+  auto-completion (the `TIMER`/`CHECKLIST`/`CALENDAR` verification values are
+  just labels by design — see above).
 - Social / party / household / accountability modes.
 - Seasonal events, narrative storylines, boss battles, template marketplace,
   deeper analytics.
@@ -92,5 +103,6 @@ Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
 
 ## Biggest gaps vs. spec
 Per-day scheduling/rescheduling within a week/month (the Plan view is a
-forward overview, not a calendar you can drag quests around in), a dynamic
-admin/reward-fund flow, a mood check-in, and all external integrations.
+forward overview, not a calendar you can drag quests around in), a mood
+check-in, and the remaining external integrations (health/todo apps, calendar
+write-back).
