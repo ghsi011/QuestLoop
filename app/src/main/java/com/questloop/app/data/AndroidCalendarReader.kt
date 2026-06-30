@@ -85,7 +85,10 @@ class AndroidCalendarReader(
      * Events (timed or all-day) overlapping `[from, to)`, mapped to the calendar
      * day they fall on. A recurring series yields one row per instance — by design,
      * so e.g. "Team standup" tomorrow and next week both show as separate pick
-     * targets — capped so a dense series can't blow up the picker list.
+     * targets. `Instances.query`'s cursor order isn't guaranteed chronological, so
+     * every matching row is collected and sorted *before* capping the list — a
+     * naive cap during iteration could keep an out-of-order later instance over a
+     * genuinely sooner one.
      */
     private fun queryEvents(from: Long, to: Long): List<CalendarEventSummary> {
         val projection = arrayOf(
@@ -98,7 +101,7 @@ class AndroidCalendarReader(
         val cursor = CalendarContract.Instances.query(context.contentResolver, projection, from, to)
             ?: return emptyList()
         cursor.use { c ->
-            while (c.moveToNext() && events.size < MAX_EVENTS) {
+            while (c.moveToNext()) {
                 val id = c.getString(0) ?: continue
                 val title = c.getString(1)?.takeIf { it.isNotBlank() } ?: "Untitled event"
                 val begin = c.getLong(2)
@@ -114,7 +117,7 @@ class AndroidCalendarReader(
                 events += CalendarEventSummary(id = id, title = title, epochDay = day)
             }
         }
-        return events.sortedBy { it.epochDay }
+        return events.sortedBy { it.epochDay }.take(MAX_EVENTS)
     }
 
     private companion object {

@@ -139,6 +139,18 @@ class AddQuestViewModelTest {
     }
 
     @Test
+    fun `a calendar-picked deadline and its tag are both persisted on the saved quest`() = runTest {
+        val vm = AddQuestViewModel(repo)
+        vm.pickDeadlineFromEvent(CalendarEventSummary(id = "e1", title = "Dentist", epochDay = 300L))
+        vm.addQuest {}
+
+        val saved = repo.questOverview(epochDay = 1, dayPart = com.questloop.core.model.DayPart.MORNING)
+            .first { it.quest.title == "Dentist" }
+        assertEquals(300L, saved.quest.deadlineEpochDay)
+        assertEquals(listOf("calendar"), saved.quest.tags)
+    }
+
+    @Test
     fun `loading calendar events populates state from the reader`() = runTest {
         val event = CalendarEventSummary(id = "e1", title = "Dentist", epochDay = 50L)
         val reader = object : CalendarReader {
