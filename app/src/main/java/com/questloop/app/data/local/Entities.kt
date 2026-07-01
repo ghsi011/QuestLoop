@@ -25,6 +25,8 @@ data class QuestEntity(
     val tags: String, // comma-separated
     val rationale: String?,
     val archived: Boolean = false,
+    /** Measured quests only: allow logging past the target for the interval (v3+). */
+    val allowOverCompletion: Boolean = false,
 )
 
 /** Projection: the last fully-completed day for a quest (recurrence scheduling). */

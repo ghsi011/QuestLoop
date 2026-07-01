@@ -34,6 +34,7 @@ fun QuestEntity.toModel(): Quest = Quest(
     unit = unit,
     tags = if (tags.isBlank()) emptyList() else tags.split(",").map { it.trim() },
     rationale = rationale,
+    allowOverCompletion = allowOverCompletion,
 )
 
 fun Quest.toEntity(archived: Boolean = false): QuestEntity = QuestEntity(
@@ -53,6 +54,7 @@ fun Quest.toEntity(archived: Boolean = false): QuestEntity = QuestEntity(
     tags = tags.joinToString(","),
     rationale = rationale,
     archived = archived,
+    allowOverCompletion = allowOverCompletion,
 )
 
 fun CompletionEntity.toModel(): CompletionRecord = CompletionRecord(

@@ -139,6 +139,36 @@ class AddQuestViewModelTest {
     }
 
     @Test
+    fun `over-completion flag saves only for measured styles`() = runTest {
+        val vm = AddQuestViewModel(repo)
+        // Quantitative + flag on -> persisted.
+        vm.updateDraft {
+            it.copy(
+                title = "Swim",
+                completionStyle = com.questloop.core.model.CompletionStyle.QUANTITATIVE,
+                allowOverCompletion = true,
+            )
+        }
+        vm.addQuest {}
+        val swim = repo.questOverview(epochDay = 1, dayPart = com.questloop.core.model.DayPart.MORNING)
+            .first { it.quest.title == "Swim" }
+        assertTrue(swim.quest.allowOverCompletion)
+
+        // Binary + flag on -> ignored (over-completion is meaningless there).
+        vm.updateDraft {
+            QuestDraft(
+                title = "Call mum",
+                completionStyle = com.questloop.core.model.CompletionStyle.BINARY,
+                allowOverCompletion = true,
+            )
+        }
+        vm.addQuest {}
+        val call = repo.questOverview(epochDay = 1, dayPart = com.questloop.core.model.DayPart.MORNING)
+            .first { it.quest.title == "Call mum" }
+        assertFalse(call.quest.allowOverCompletion)
+    }
+
+    @Test
     fun `a calendar-picked deadline and its tag are both persisted on the saved quest`() = runTest {
         val vm = AddQuestViewModel(repo)
         vm.pickDeadlineFromEvent(CalendarEventSummary(id = "e1", title = "Dentist", epochDay = 300L))

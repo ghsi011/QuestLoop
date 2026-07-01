@@ -54,6 +54,25 @@ class RewardEngineTest {
     }
 
     @Test
+    fun `over-completion earns a bounded diminishing bonus, not linear xp`() {
+        val target = engine.score(record(difficulty = Difficulty.MEDIUM, fraction = 1.0)).xp // 20
+        val doubled = engine.score(record(difficulty = Difficulty.MEDIUM, fraction = 2.0)).xp // 2x target
+        val quadruple = engine.score(record(difficulty = Difficulty.MEDIUM, fraction = 4.0)).xp
+        // Going past the target earns *more*, but nowhere near 2x/4x — the bonus is capped.
+        assertTrue(doubled > target, "over-completion should beat exactly hitting the target")
+        assertTrue(doubled < 2 * target, "over-completion must not be linear (double effort != double xp)")
+        // Default config caps the bonus at +50%, so even huge overshoots stay ≤ 1.5x base.
+        assertTrue(quadruple <= (target * 1.5).toLong() + 1, "bonus is capped at +50%")
+    }
+
+    @Test
+    fun `the over-completion bonus is zero for a normal completion`() {
+        assertEquals(0.0, engine.overCompletionBonus(1.0), 1e-9)
+        assertEquals(0.0, engine.overCompletionBonus(0.5), 1e-9)
+        assertTrue(engine.overCompletionBonus(1.5) > 0.0)
+    }
+
+    @Test
     fun `repeating same easy quest yields diminishing returns`() {
         val first = engine.score(record(difficulty = Difficulty.EASY, priority = Priority.NORMAL)).xp
         val second = engine.score(

@@ -168,12 +168,41 @@ class CoverageWalkTest {
     /** Render Reviews and Rewards and drive the Rewards budget field + details toggle. */
     @Test
     fun reviews_and_rewards_render_and_interact() {
+        // Seed a completed quest first so the Completed-history actions below have a
+        // real row to act on (Edit dialog, Re-add, Undo) — otherwise the screen is
+        // empty and those handlers never run.
+        awaitSafe { onToday() }
+        if (present("Complete")) {
+            tapText("Complete")
+            awaitSafe(15_000) { present("See all") || onToday() }
+        }
+
         tab("Reviews")
         awaitSafe { present("Reviews") }
         // Toggle the forward Plan view, then back to the retrospective Review.
         tapText("Plan")
         composeRule.waitForIdle()
         tapText("Review")
+        // Open the Completed-quests history, cycle a filter, then exercise the row
+        // actions: open the edit dialog and change difficulty + save, re-add a clone,
+        // and undo a completion. All best-effort (an empty window skips them).
+        tapText("Completed quests →")
+        awaitSafe { present("Completed") }
+        tapText("All time")
+        composeRule.waitForIdle()
+        if (present("Edit")) {
+            tapText("Edit")
+            awaitSafe { present("Edit quest") }
+            tapText("Hard") // re-score to a different difficulty
+            tapText("Save")
+            awaitSafe { !present("Edit quest") }
+        }
+        tapText("Re-add")
+        composeRule.waitForIdle()
+        tapText("Undo")
+        composeRule.waitForIdle()
+        back()
+        awaitSafe { present("Reviews") }
         tab("Rewards")
         awaitSafe { present("Save budget") }
         typeInto("Affordable monthly budget", "25")

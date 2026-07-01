@@ -4,6 +4,8 @@ import androidx.room.Room
 import com.questloop.app.data.local.QuestLoopDatabase
 import com.questloop.core.model.CompletionRecord
 import com.questloop.core.generation.AdminFundFactory
+import com.questloop.core.generation.QuestScheduler
+import com.questloop.core.generation.RoutineQuestFactory
 import com.questloop.core.model.CompletionResult
 import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.DayPart
@@ -26,6 +28,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -117,14 +120,17 @@ class QuestRepositoryTest {
         target: Int? = null,
         category: QuestCategory = QuestCategory.WORK_STUDY,
         difficulty: Difficulty = Difficulty.MEDIUM,
+        frequency: QuestFrequency = QuestFrequency.DAILY,
+        allowOverCompletion: Boolean = false,
     ) = Quest(
         id = id,
         title = "Quest $id",
         category = category,
-        frequency = QuestFrequency.DAILY,
+        frequency = frequency,
         difficulty = difficulty,
         completionStyle = style,
         targetCount = target,
+        allowOverCompletion = allowOverCompletion,
     )
 
     @Test
@@ -590,5 +596,153 @@ class QuestRepositoryTest {
         funded.completeQuest(AdminFundFactory.fundMonthQuest(), epochDay = 1, result = CompletionResult.COMPLETED)
         // Meta/admin completions are excluded, so nothing has been "earned".
         assertEquals(0.0, funded.allowance(fromEpochDay = 1, toEpochDay = 31).suggestedAllowance, 0.0001)
+    }
+
+    // A Monday, so week math is unambiguous (ISO week starts Monday).
+    private val monday = java.time.LocalDate.of(2026, 6, 22).toEpochDay()
+
+    private fun weeklySwim(allowOver: Boolean = false) = quest(
+        id = "swim",
+        style = CompletionStyle.QUANTITATIVE,
+        target = 2,
+        category = QuestCategory.HEALTH,
+        frequency = QuestFrequency.WEEKLY,
+        allowOverCompletion = allowOver,
+    )
+
+    @Test
+    fun `a weekly quantitative quest accumulates across the week then completes`() = runTest {
+        val swim = weeklySwim()
+        repo.addQuest(swim)
+        val wednesday = monday + 2
+
+        // One swim on Monday — still 1/2 when viewed on Wednesday (same week), not reset.
+        repo.completeMeasured(swim, monday, 1)
+        assertEquals(1, repo.todayProgress(wednesday)["swim"])
+
+        // A second swim hits the weekly target -> completed, leaves the plan.
+        repo.completeMeasured(swim, wednesday, 2)
+        assertEquals(2, repo.todayProgress(wednesday)["swim"])
+        assertFalse(repo.todayPlan(wednesday, DayPart.MIDDAY).quests.any { it.quest.id == "swim" })
+
+        // Next week resets: due again, no carried-over progress.
+        val nextMonday = monday + 7
+        assertEquals(null, repo.todayProgress(nextMonday)["swim"])
+        assertTrue(repo.todayPlan(nextMonday, DayPart.MIDDAY).quests.any { it.quest.id == "swim" })
+    }
+
+    @Test
+    fun `over-completion keeps a weekly quest loggable past its target and shows the raw count`() = runTest {
+        val swim = weeklySwim(allowOver = true)
+        repo.addQuest(swim)
+
+        repo.completeMeasured(swim, monday, 2) // hit the target
+        repo.completeMeasured(swim, monday, 3) // a third swim, over the target
+
+        assertEquals(3, repo.todayProgress(monday)["swim"]) // shows 3, not capped at 2
+        // Still in the plan — over-completion stays loggable for the interval.
+        assertTrue(repo.todayPlan(monday, DayPart.MIDDAY).quests.any { it.quest.id == "swim" })
+
+        // Over-completing earns a little more XP than exactly hitting the target,
+        // but the bonus is bounded (not linear).
+        val overXp = repo.totalXp()
+        repo.deleteAllData()
+        val plain = weeklySwim()
+        repo.addQuest(plain)
+        repo.completeMeasured(plain, monday, 2)
+        val targetXp = repo.totalXp()
+        assertTrue("over-completion should beat exactly hitting target", overXp > targetXp)
+        assertTrue("bonus must not be linear", overXp < targetXp * 2)
+    }
+
+    @Test
+    fun `a weekly measured completion is dated to the real log day, not the interval start`() = runTest {
+        val swim = weeklySwim()
+        repo.addQuest(swim)
+        val wednesday = monday + 2
+
+        repo.completeMeasured(swim, wednesday, 2) // hit the weekly target on Wednesday
+
+        // The record accumulates under the Monday interval slot (its instanceId), but
+        // is *dated* to Wednesday — so the completed-history row and the streak/active
+        // -day math reflect the real day, not the interval start (finding: don't shift
+        // epochDay to the slot, which would break the streak and mis-date history).
+        val entry = repo.completedHistory().first { it.record.questId == "swim" }
+        assertEquals(wednesday, entry.record.epochDay)
+        assertEquals("Wednesday must count as an active day", 1, repo.currentStreak(wednesday))
+    }
+
+    @Test
+    fun `a weekly measured quest resurfaces next interval even when the rolling window says not-due`() = runTest {
+        val swim = weeklySwim()
+        repo.addQuest(swim)
+        val sunday = monday + 6
+
+        // A single partial swim late in the week (1/2), dated to Sunday.
+        repo.completeMeasured(swim, sunday, 1)
+
+        // The next calendar week begins the very next day. The rolling isDue window
+        // (7 days from the last completion) would still hide it, but visibility for a
+        // measured weekly quest is governed by the calendar interval, so it comes back
+        // as a fresh, visible 0/2 (finding: don't let isDue gate the interval reset).
+        val nextMonday = monday + 7
+        assertFalse(
+            "isDue rolling window alone would still gate it",
+            QuestScheduler.isDue(QuestFrequency.WEEKLY, nextMonday, sunday),
+        )
+        assertEquals(null, repo.todayProgress(nextMonday)["swim"])
+        assertTrue(repo.todayPlan(nextMonday, DayPart.MIDDAY).quests.any { it.quest.id == "swim" })
+    }
+
+    @Test
+    fun `a weekly measured quest accumulates across separate log days into one interval record`() = runTest {
+        val swim = weeklySwim()
+        repo.addQuest(swim)
+        val wednesday = monday + 2
+
+        repo.completeMeasured(swim, monday, 1) // 1/2 on Monday
+        repo.completeMeasured(swim, wednesday, 2) // second swim on Wednesday -> 2/2
+
+        // Progress accumulates into the single weekly record (2/2), and — because a
+        // measured interval quest is one logical unit stored as one row — that row is
+        // dated to the most recent log day (Wednesday), keeping today's streak alive.
+        assertEquals(2, repo.todayProgress(wednesday)["swim"])
+        val entry = repo.completedHistory().single { it.record.questId == "swim" }
+        assertEquals(wednesday, entry.record.epochDay)
+    }
+
+    @Test
+    fun `editing a measured quest's frequency re-keys the record without inflating the reported total`() = runTest {
+        val daily = quest("a", style = CompletionStyle.QUANTITATIVE, target = 2, frequency = QuestFrequency.DAILY)
+        repo.addQuest(daily)
+        val day = monday + 2
+        repo.completeMeasured(daily, day, 2) // COMPLETED, keyed a@day
+        val xpBefore = repo.totalXp()
+
+        // Change to WEEKLY: the record re-keys from @day to @weekStart.
+        val outcome = repo.editQuestAndRescore(daily.copy(frequency = QuestFrequency.WEEKLY), "a@$day")!!
+
+        // The stale @day record is gone and a single @weekStart record remains: XP is
+        // unchanged (difficulty same), only one history row survives (no orphan), and
+        // the reported total matches the real ledger (no phantom level-up from an
+        // un-netted old grant).
+        assertEquals(xpBefore, repo.totalXp())
+        assertEquals(1, repo.completedHistory().count { it.record.questId == "a" })
+        assertEquals(repo.totalXp(), outcome.effect.newTotalXp)
+    }
+
+    @Test
+    fun `history marks stored quests editable and non-stored (routine) completions not`() = runTest {
+        // A routine quest is named for display but isn't in the quests table.
+        val routine = RoutineQuestFactory.all().first()
+        repo.completeQuest(routine, epochDay = 1, result = CompletionResult.COMPLETED)
+        val routineEntry = repo.completedHistory().first { it.record.questId == routine.id }
+        assertNotNull("routine still resolves a title", routineEntry.quest)
+        assertFalse("routine isn't editable/re-addable", routineEntry.editable)
+
+        repo.addQuest(quest("stored"))
+        repo.completeQuest(quest("stored"), epochDay = 1, result = CompletionResult.COMPLETED)
+        val storedEntry = repo.completedHistory().first { it.record.questId == "stored" }
+        assertTrue("a stored quest is editable/re-addable", storedEntry.editable)
     }
 }

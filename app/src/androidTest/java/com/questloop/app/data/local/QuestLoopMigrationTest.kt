@@ -35,18 +35,45 @@ class QuestLoopMigrationTest {
 
     @Test
     fun schema_and_migrations_are_in_sync() {
-        // Create the database at the current schema version from the exported
-        // JSON. This already fails if `schemas/<SCHEMA_VERSION>.json` is missing.
-        helper.createDatabase(dbName, QuestLoopDatabase.SCHEMA_VERSION).close()
+        // Create the database at the earliest exported schema (v2 — v1 predates
+        // schema export) so the shipping migrations are actually replayed forward.
+        // This fails if `schemas/2.json` is missing.
+        helper.createDatabase(dbName, EARLIEST_EXPORTED_VERSION).close()
 
-        // Replay the shipping migrations and validate the resulting schema matches
-        // the exported one. validateDroppedTables = true catches stragglers a
-        // hand-written migration might leave behind.
+        // Replay every shipping migration up to the current version and validate
+        // the result matches the exported schema. validateDroppedTables = true
+        // catches stragglers a hand-written migration might leave behind.
         helper.runMigrationsAndValidate(
             dbName,
             QuestLoopDatabase.SCHEMA_VERSION,
             true,
             *QuestLoopDatabase.MIGRATIONS,
         )
+    }
+
+    @Test
+    fun v2_to_v3_preserves_rows_and_adds_over_completion_column() {
+        // A quest row that exists at v2 must survive the ALTER and gain the new
+        // column defaulted to 0 (false) — i.e. no data loss on upgrade.
+        helper.createDatabase(dbName, 2).use { db ->
+            db.execSQL(
+                "INSERT INTO quests (id, title, category, frequency, difficulty, priority, origin, " +
+                    "estimatedMinutes, deadlineEpochDay, isReductionQuest, completionStyle, targetCount, " +
+                    "unit, tags, rationale, archived) VALUES " +
+                    "('q1','Swim','HEALTH','WEEKLY','MEDIUM','NORMAL','USER_CREATED',30,NULL,0," +
+                    "'QUANTITATIVE',2,'times','',NULL,0)",
+            )
+        }
+        val migrated = helper.runMigrationsAndValidate(
+            dbName, QuestLoopDatabase.SCHEMA_VERSION, true, *QuestLoopDatabase.MIGRATIONS,
+        )
+        migrated.query("SELECT allowOverCompletion FROM quests WHERE id = 'q1'").use { c ->
+            assert(c.moveToFirst())
+            assert(c.getInt(0) == 0) { "existing quests default to allowOverCompletion = false" }
+        }
+    }
+
+    private companion object {
+        const val EARLIEST_EXPORTED_VERSION = 2
     }
 }

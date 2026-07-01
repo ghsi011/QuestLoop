@@ -1,0 +1,150 @@
+package com.questloop.app.ui.completed
+
+import androidx.room.Room
+import com.questloop.app.data.AiConfig
+import com.questloop.app.data.ProfilePreferences
+import com.questloop.app.data.QuestRepository
+import com.questloop.app.data.ReminderConfig
+import com.questloop.app.data.local.QuestLoopDatabase
+import com.questloop.app.ui.AppClock
+import com.questloop.core.model.BadHabit
+import com.questloop.core.model.CompletionResult
+import com.questloop.core.model.Difficulty
+import com.questloop.core.model.EnergyCheckIn
+import com.questloop.core.model.Goal
+import com.questloop.core.model.Habit
+import com.questloop.core.model.Quest
+import com.questloop.core.model.QuestCategory
+import com.questloop.core.model.QuestFrequency
+import com.questloop.core.model.UserProfile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.Config
+import java.util.concurrent.Executor
+
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class CompletedViewModelTest {
+
+    private lateinit var db: QuestLoopDatabase
+    private lateinit var repo: QuestRepository
+
+    private class FakePrefs : ProfilePreferences {
+        private val state = MutableStateFlow(UserProfile())
+        override val profile: Flow<UserProfile> = state
+        override suspend fun setBudgetCap(value: Double) {}
+        override suspend fun setMaxDaily(value: Int) {}
+        override suspend fun setAvailableMinutes(value: Int) {}
+        override suspend fun setFocusCategories(cats: Set<QuestCategory>) {}
+        override suspend fun setStreakGraceDays(value: Int) {}
+        override suspend fun setSensitiveOptIn(value: Boolean) {}
+        override suspend fun setHabits(habits: List<Habit>) {}
+        override suspend fun setBadHabits(badHabits: List<BadHabit>) {}
+        override suspend fun setGoals(goals: List<Goal>) {}
+        override suspend fun setCheckIn(checkIn: EnergyCheckIn?) {}
+        override suspend fun getCheckIn(): EnergyCheckIn? = null
+        override suspend fun getAiConfig(): AiConfig = AiConfig()
+        override suspend fun setAiConfig(config: AiConfig) {}
+        override suspend fun isOnboardingComplete(): Boolean = true
+        override suspend fun setOnboardingComplete() {}
+        override suspend fun getReminderConfig(): ReminderConfig = ReminderConfig()
+        override suspend fun setReminderConfig(config: ReminderConfig) {}
+        override suspend fun clear() {}
+    }
+
+    @Before
+    fun setUp() {
+        Dispatchers.setMain(UnconfinedTestDispatcher())
+        val sync = Executor { it.run() }
+        db = Room.inMemoryDatabaseBuilder(
+            RuntimeEnvironment.getApplication(),
+            QuestLoopDatabase::class.java,
+        ).allowMainThreadQueries().setQueryExecutor(sync).setTransactionExecutor(sync).build()
+        repo = QuestRepository(db.questDao(), db.completionDao(), FakePrefs())
+    }
+
+    @After
+    fun tearDown() {
+        Dispatchers.resetMain()
+        db.close()
+    }
+
+    private val today = AppClock.todayEpochDay()
+
+    private fun quest(id: String, difficulty: Difficulty = Difficulty.EASY) = Quest(
+        id = id,
+        title = "Quest $id",
+        category = QuestCategory.WORK_STUDY,
+        frequency = QuestFrequency.DAILY,
+        difficulty = difficulty,
+    )
+
+    @Test
+    fun `history lists completed quests and undo removes them and their xp`() = runTest {
+        repo.addQuest(quest("a"))
+        repo.completeQuest(quest("a"), epochDay = today, result = CompletionResult.COMPLETED)
+        assertTrue(repo.totalXp() > 0)
+
+        val vm = CompletedViewModel(repo)
+        assertEquals(1, vm.state.value.entries.size)
+
+        vm.undo(vm.state.value.entries.first())
+        assertTrue(vm.state.value.entries.isEmpty())
+        assertEquals(0L, repo.totalXp())
+    }
+
+    @Test
+    fun `editing a completion to a harder difficulty raises its xp`() = runTest {
+        val easy = quest("a", difficulty = Difficulty.EASY)
+        repo.addQuest(easy)
+        repo.completeQuest(easy, epochDay = today, result = CompletionResult.COMPLETED)
+        val before = repo.totalXp()
+
+        val vm = CompletedViewModel(repo)
+        vm.startEdit(vm.state.value.entries.first())
+        vm.saveEdit(easy.copy(difficulty = Difficulty.EPIC))
+
+        assertTrue("EPIC should out-score EASY", repo.totalXp() > before)
+        assertEquals(null, vm.state.value.editing) // dialog closed
+    }
+
+    @Test
+    fun `re-add clones the quest as a fresh active quest`() = runTest {
+        repo.addQuest(quest("a"))
+        repo.completeQuest(quest("a"), epochDay = today, result = CompletionResult.COMPLETED)
+        val vm = CompletedViewModel(repo)
+
+        vm.readd(vm.state.value.entries.first())
+
+        // Original plus the clone -> two active quests with the same title.
+        val active = repo.questOverview(epochDay = today, dayPart = com.questloop.core.model.DayPart.MORNING)
+        assertEquals(2, active.count { it.quest.title == "Quest a" })
+    }
+
+    @Test
+    fun `the Today filter excludes completions from earlier days`() = runTest {
+        repo.addQuest(quest("old"))
+        repo.completeQuest(quest("old"), epochDay = today - 10, result = CompletionResult.COMPLETED)
+        val vm = CompletedViewModel(repo)
+
+        vm.setFilter(HistoryFilter.TODAY)
+        assertFalse(vm.state.value.entries.any { it.record.questId == "old" })
+        vm.setFilter(HistoryFilter.ALL)
+        assertTrue(vm.state.value.entries.any { it.record.questId == "old" })
+    }
+}
