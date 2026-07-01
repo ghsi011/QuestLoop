@@ -3,6 +3,7 @@ package com.questloop.app.ui.add
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.questloop.app.util.launchSafely
+import com.questloop.app.data.CalendarEventSummary
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.data.SampleData
 import com.questloop.app.ui.AppClock
@@ -28,6 +29,9 @@ data class AddUiState(
     val saving: Boolean = false,
     /** One-shot status/error message for the quick-add flow. */
     val message: String? = null,
+    /** Upcoming calendar events offered when picking a deadline. */
+    val calendarEvents: List<CalendarEventSummary> = emptyList(),
+    val loadingCalendarEvents: Boolean = false,
 )
 
 /** The in-progress new-quest form. Held in the ViewModel (and a process-scoped
@@ -44,6 +48,9 @@ data class QuestDraft(
     val unit: String = "",
     val quickText: String = "",
     val goalText: String = "",
+    /** Optional due date (SPEC §10), pickable manually or from a calendar event. */
+    val deadlineEpochDay: Long? = null,
+    val tags: List<String> = emptyList(),
 )
 
 class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
@@ -77,6 +84,8 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
             completionStyle = d.completionStyle,
             targetCount = if (isQuantitative) d.targetCount else null,
             unit = if (isQuantitative) d.unit.ifBlank { null } else null,
+            deadlineEpochDay = d.deadlineEpochDay,
+            tags = d.tags,
         )
         launchSafely {
             repository.addQuest(quest)
@@ -84,6 +93,33 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
             // Reset the manual form (keep any AI brain-dump / goal text).
             updateDraft { QuestDraft(quickText = it.quickText, goalText = it.goalText) }
             onDone()
+        }
+    }
+
+    /** Sets or clears the draft's deadline (the manual date-picker path). */
+    fun setDeadline(epochDay: Long?) = updateDraft { it.copy(deadlineEpochDay = epochDay) }
+
+    /** Loads upcoming calendar events for the "pick from calendar" deadline picker. */
+    fun loadCalendarEvents() {
+        launchSafely {
+            _state.update { it.copy(loadingCalendarEvents = true) }
+            val events = repository.upcomingCalendarEvents()
+            _state.update { it.copy(loadingCalendarEvents = false, calendarEvents = events) }
+        }
+    }
+
+    /**
+     * Sets the draft's deadline from a picked event, and — only if the user
+     * hasn't typed a title yet — pre-fills it from the event (never clobbers
+     * existing input). Tags the quest `calendar` so its origin stays visible.
+     */
+    fun pickDeadlineFromEvent(event: CalendarEventSummary) {
+        updateDraft {
+            it.copy(
+                deadlineEpochDay = event.epochDay,
+                title = it.title.ifBlank { event.title },
+                tags = if ("calendar" in it.tags) it.tags else it.tags + "calendar",
+            )
         }
     }
 

@@ -2,6 +2,8 @@ package com.questloop.app.ui.add
 
 import androidx.room.Room
 import com.questloop.app.data.AiConfig
+import com.questloop.app.data.CalendarEventSummary
+import com.questloop.app.data.CalendarReader
 import com.questloop.app.data.ProfilePreferences
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.data.ReminderConfig
@@ -21,6 +23,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -70,6 +73,9 @@ class AddQuestViewModelTest {
             QuestLoopDatabase::class.java,
         ).allowMainThreadQueries().setQueryExecutor(sync).setTransactionExecutor(sync).build()
         repo = QuestRepository(db.questDao(), db.completionDao(), FakePrefs())
+        // The draft is cached in a process-scoped companion var (so it survives
+        // navigating away from the screen) — reset it so tests don't leak state.
+        AddQuestViewModel.resetDraftCache()
     }
 
     @After
@@ -109,5 +115,90 @@ class AddQuestViewModelTest {
 
         assertTrue(vm.state.value.suggestions.isEmpty())
         assertEquals(2, repo.activeQuestIds().size)
+    }
+
+    @Test
+    fun `setting and clearing a deadline updates the draft`() = runTest {
+        val vm = AddQuestViewModel(repo)
+        vm.setDeadline(100L)
+        assertEquals(100L, vm.draft.value.deadlineEpochDay)
+        vm.setDeadline(null)
+        assertEquals(null, vm.draft.value.deadlineEpochDay)
+    }
+
+    @Test
+    fun `a manually set deadline is persisted on the saved quest`() = runTest {
+        val vm = AddQuestViewModel(repo)
+        vm.updateDraft { it.copy(title = "Renew passport") }
+        vm.setDeadline(200L)
+        vm.addQuest {}
+
+        val saved = repo.questOverview(epochDay = 1, dayPart = com.questloop.core.model.DayPart.MORNING)
+            .first { it.quest.title == "Renew passport" }
+        assertEquals(200L, saved.quest.deadlineEpochDay)
+    }
+
+    @Test
+    fun `a calendar-picked deadline and its tag are both persisted on the saved quest`() = runTest {
+        val vm = AddQuestViewModel(repo)
+        vm.pickDeadlineFromEvent(CalendarEventSummary(id = "e1", title = "Dentist", epochDay = 300L))
+        vm.addQuest {}
+
+        val saved = repo.questOverview(epochDay = 1, dayPart = com.questloop.core.model.DayPart.MORNING)
+            .first { it.quest.title == "Dentist" }
+        assertEquals(300L, saved.quest.deadlineEpochDay)
+        assertEquals(listOf("calendar"), saved.quest.tags)
+    }
+
+    @Test
+    fun `loading calendar events populates state from the reader`() = runTest {
+        val event = CalendarEventSummary(id = "e1", title = "Dentist", epochDay = 50L)
+        val reader = object : CalendarReader {
+            override suspend fun freeMinutesToday(): Int? = null
+            override suspend fun upcomingEvents(daysAhead: Int): List<CalendarEventSummary> = listOf(event)
+        }
+        val calRepo = QuestRepository(db.questDao(), db.completionDao(), FakePrefs(), calendarReader = reader)
+        val vm = AddQuestViewModel(calRepo)
+
+        vm.loadCalendarEvents()
+
+        assertFalse(vm.state.value.loadingCalendarEvents)
+        assertEquals(listOf(event), vm.state.value.calendarEvents)
+    }
+
+    @Test
+    fun `picking a deadline from an event sets the date, tags the quest, and fills a blank title`() = runTest {
+        val vm = AddQuestViewModel(repo)
+        val event = CalendarEventSummary(id = "e1", title = "Dentist", epochDay = 50L)
+
+        vm.pickDeadlineFromEvent(event)
+
+        val draft = vm.draft.value
+        assertEquals(50L, draft.deadlineEpochDay)
+        assertEquals("Dentist", draft.title) // blank title -> pre-filled
+        assertEquals(listOf("calendar"), draft.tags)
+    }
+
+    @Test
+    fun `picking a deadline from an event never overwrites an existing title`() = runTest {
+        val vm = AddQuestViewModel(repo)
+        vm.updateDraft { it.copy(title = "My own title") }
+        val event = CalendarEventSummary(id = "e1", title = "Dentist", epochDay = 50L)
+
+        vm.pickDeadlineFromEvent(event)
+
+        assertEquals("My own title", vm.draft.value.title)
+        assertEquals(50L, vm.draft.value.deadlineEpochDay)
+    }
+
+    @Test
+    fun `picking from an event twice does not duplicate the calendar tag`() = runTest {
+        val vm = AddQuestViewModel(repo)
+        val event = CalendarEventSummary(id = "e1", title = "Dentist", epochDay = 50L)
+        vm.pickDeadlineFromEvent(event)
+        vm.pickDeadlineFromEvent(event.copy(epochDay = 60L))
+
+        assertEquals(listOf("calendar"), vm.draft.value.tags)
+        assertEquals(60L, vm.draft.value.deadlineEpochDay)
     }
 }

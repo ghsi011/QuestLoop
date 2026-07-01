@@ -483,6 +483,10 @@ class QuestRepository(
         return RewardFundStatus(budgetSet = cap > 0.0, potOpened = potOpened, steps = steps)
     }
 
+    /** Upcoming calendar events for the Add-quest deadline picker (SPEC §10). */
+    suspend fun upcomingCalendarEvents(daysAhead: Int = 14): List<CalendarEventSummary> =
+        calendarReader.upcomingEvents(daysAhead)
+
     suspend fun safetySignals(today: Long): List<SafetyGuard.Signal> {
         val records = completionDao.since(today - safetyWindowDays).map { it.toModel() }
         val active = completionDao.activeDays().toSet()
