@@ -138,7 +138,11 @@ class QuestRepository(
             QuestStatus(
                 quest = quest,
                 inTodaysPlan = quest.id in inPlan,
-                dueToday = QuestScheduler.isDue(quest.frequency, epochDay, lastCompleted[quest.id]),
+                // Measured weekly/monthly quests are "due" any day of their interval
+                // until the target is hit (mirrors the plan's interval-based gate);
+                // everything else follows the rolling cadence window.
+                dueToday = if (hasCalendarInterval(quest)) quest.id !in dismissed
+                else QuestScheduler.isDue(quest.frequency, epochDay, lastCompleted[quest.id]),
                 done = quest.id in dismissed,
                 progress = progress[quest.id] ?: 0,
             )
@@ -183,17 +187,22 @@ class QuestRepository(
         // Only surface quests whose recurrence cadence makes them due today
         // (e.g. a weekly quest doesn't reappear every day after completion).
         val lastCompleted = completionDao.lastCompletedDays().associate { it.questId to it.lastDay }
+        // Style-aware "already done for now" set — computed once and reused for both
+        // the candidate filter and the generator request.
+        val dismissed = dismissedQuestIdsToday(epochDay)
         // User-created quests plus quests derived from habits/goals and the
         // reward-fund admin flow.
         val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals) +
             adminFundQuests(epochDay, profile, lastCompleted)
         val candidates = (questDao.getActive().map { it.toModel() } + derived)
-            // Surface a quest whose cadence makes it due today — plus over-completion
-            // quests, which stay loggable for the whole interval (their count just
-            // resets next interval) rather than leaving once the target is hit.
             .filter {
-                QuestScheduler.isDue(it.frequency, epochDay, lastCompleted[it.id]) ||
-                    (accumulates(it) && it.allowOverCompletion)
+                // Measured weekly/monthly quests reset on their calendar interval, so
+                // their visibility is governed by interval dismissal (target reached
+                // this week/month) — NOT the rolling isDue window, which keys off the
+                // last completion day and would otherwise keep a fresh interval hidden
+                // for up to a period. Everything else uses the normal cadence gate.
+                if (hasCalendarInterval(it)) it.id !in dismissed
+                else QuestScheduler.isDue(it.frequency, epochDay, lastCompleted[it.id])
             }
         // Recent history is only needed for avoidance scoring (skipped quests).
         val history = completionDao.since(epochDay - 14).map { it.toModel() }
@@ -208,7 +217,7 @@ class QuestRepository(
                 history = history,
                 checkIn = checkIn,
                 routineQuests = RoutineQuestFactory.routinesFor(dayPart),
-                dismissedToday = dismissedQuestIdsToday(epochDay),
+                dismissedToday = dismissed,
                 availableMinutesOverride = calendarMinutes,
             ),
         )
@@ -249,6 +258,18 @@ class QuestRepository(
     private fun accumulates(quest: Quest): Boolean =
         quest.completionStyle == CompletionStyle.QUANTITATIVE ||
             quest.completionStyle == CompletionStyle.DURATION
+
+    /**
+     * A *measured recurring* quest whose progress accumulates across a calendar
+     * interval (a week for WEEKLY, a month for MONTHLY) and resets at the boundary
+     * — e.g. "swim 2×/week". Daily/one-off/recurring measured quests keep their
+     * per-day semantics (their "interval" is just the day), so they're excluded.
+     * This is the set for which interval dismissal, not the rolling isDue window,
+     * governs visibility.
+     */
+    private fun hasCalendarInterval(quest: Quest): Boolean =
+        accumulates(quest) &&
+            (quest.frequency == QuestFrequency.WEEKLY || quest.frequency == QuestFrequency.MONTHLY)
 
     /**
      * The epoch-day that anchors a quest's completion record. For a *measured
@@ -330,34 +351,39 @@ class QuestRepository(
 
     // --- Completed-quest history (Completed screen) --------------------------
 
-    /** One completed entry for the history screen: the record, a display title,
-     *  and the backing quest (null if it no longer exists → edit/re-add disabled). */
+    /**
+     * One completed entry for the history screen: the record, a display title, the
+     * backing quest (null if we can't even name it), and whether it can be edited /
+     * re-added. Only *stored* quests (incl. archived) are [editable]: a derived
+     * habit/goal quest, a system routine, or an admin-fund step is named for display
+     * but can't be persisted through the editor, and a re-add would mint a stray
+     * duplicate — so those actions are disabled for them.
+     */
     data class CompletedEntry(
         val record: CompletionRecord,
         val title: String,
         val quest: Quest?,
+        val editable: Boolean = false,
     )
 
-    /** Every quest id we can still name — stored (incl. archived) + derived +
-     *  routine + admin — so history rows show a title even for non-stored quests. */
-    private suspend fun knownQuestsById(): Map<String, Quest> {
+    /**
+     * Completed quests for the history screen, newest first. [range] bounds the
+     * epoch-day window (Today/Week/Month); null is all-time. Only fully-completed
+     * records are shown (partials are in-progress, not history). Titles are resolved
+     * from stored (incl. archived) + derived + routine + admin quests so every row
+     * is named; only stored quests are marked [CompletedEntry.editable].
+     */
+    suspend fun completedHistory(range: LongRange? = null): List<CompletedEntry> {
+        val rows = if (range == null) completionDao.all() else completionDao.between(range.first, range.last)
         val profile = profileStore.profile.first()
+        val stored = questDao.getAll().map { it.toModel() }
+        val storedIds = stored.map { it.id }.toSet()
         val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals)
         val routines = RoutineQuestFactory.all()
         val admin = listOf(
             AdminFundFactory.openPotQuest(), AdminFundFactory.fundMonthQuest(), AdminFundFactory.claimQuest(),
         )
-        return (questDao.getAll().map { it.toModel() } + derived + routines + admin).associateBy { it.id }
-    }
-
-    /**
-     * Completed quests for the history screen, newest first. [range] bounds the
-     * epoch-day window (Today/Week/Month); null is all-time. Only fully-completed
-     * records are shown (partials are in-progress, not history).
-     */
-    suspend fun completedHistory(range: LongRange? = null): List<CompletedEntry> {
-        val rows = if (range == null) completionDao.all() else completionDao.between(range.first, range.last)
-        val quests = knownQuestsById()
+        val quests = (stored + derived + routines + admin).associateBy { it.id }
         return rows.map { it.toModel() }
             .filter { it.result == CompletionResult.COMPLETED }
             .sortedByDescending { it.epochDay }
@@ -365,7 +391,7 @@ class QuestRepository(
                 val quest = quests[rec.questId]
                 val title = quest?.title ?: rec.category.name.lowercase().replace('_', ' ')
                     .replaceFirstChar { it.uppercase() }
-                CompletedEntry(record = rec, title = title, quest = quest)
+                CompletedEntry(record = rec, title = title, quest = quest, editable = rec.questId in storedIds)
             }
     }
 
@@ -415,9 +441,10 @@ class QuestRepository(
 
     /**
      * Records a completion idempotently. The record is keyed by `instanceId`
-     * (`questId@epochDay`); re-logging the same instance replaces its prior grant
-     * via the ledger, so XP never double-counts (the prior `xpAwarded` is netted
-     * out before the new grant is applied).
+     * (`questId@slot`, where the slot is the day for most quests and the calendar
+     * interval start for a measured weekly/monthly quest); re-logging the same
+     * instance replaces its prior grant via the ledger, so XP never double-counts
+     * (the prior `xpAwarded` is netted out before the new grant is applied).
      */
     suspend fun completeQuest(
         quest: Quest,
@@ -437,9 +464,12 @@ class QuestRepository(
         fraction: Double,
         verification: VerificationMethod,
     ): CompleteOutcome {
-        // Measured recurring quests are keyed by their interval start (so weekly/
+        // Measured recurring quests are *keyed* by their interval start (so weekly/
         // monthly progress accumulates into one record and resets at the boundary);
-        // everything else stays keyed by the day, unchanged.
+        // everything else is keyed by the day, unchanged. The record's `epochDay`,
+        // however, is always the REAL log day — it drives streak / active-days /
+        // same-day anti-farm / history, none of which must be shifted to the interval
+        // start (that would break the streak and mis-date the completed-history row).
         val slot = completionSlot(quest, epochDay)
         val instanceId = "${quest.id}@$slot"
         val existing = completionDao.find(instanceId)
@@ -455,12 +485,12 @@ class QuestRepository(
             priority = quest.priority,
             result = result,
             verification = verification,
-            epochDay = slot,
+            epochDay = epochDay,
             fraction = fraction,
             isMeta = quest.category.isMeta,
         )
 
-        val sameDay = completionDao.between(slot, slot).map { it.toModel() }
+        val sameDay = completionDao.between(epochDay, epochDay).map { it.toModel() }
         val activeDays = completionDao.activeDays().toSet()
         // Score the streak bonus with the user's configured grace days, so the
         // streak driving the reward matches the one shown in the UI (which also

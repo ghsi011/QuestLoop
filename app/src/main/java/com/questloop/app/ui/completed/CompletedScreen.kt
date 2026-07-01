@@ -128,9 +128,10 @@ private fun CompletedCard(
             )
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 TextButton(onClick = onUndo) { Text("Undo") }
-                // Edit/Re-add need the quest to still exist.
-                TextButton(onClick = onEdit, enabled = entry.quest != null) { Text("Edit") }
-                TextButton(onClick = onReadd, enabled = entry.quest != null) { Text("Re-add") }
+                // Edit/Re-add only apply to stored quests (not derived habit/goal
+                // quests, routines, admin steps, or a definition that's since gone).
+                TextButton(onClick = onEdit, enabled = entry.editable) { Text("Edit") }
+                TextButton(onClick = onReadd, enabled = entry.editable) { Text("Re-add") }
             }
         }
     }

@@ -40,6 +40,11 @@ class CompletedViewModel(private val repository: QuestRepository) : ViewModel() 
     private val _state = MutableStateFlow(CompletedUiState())
     val state: StateFlow<CompletedUiState> = _state.asStateFlow()
 
+    // Guards the mutating actions (undo/edit/re-add) against a double-tap: without
+    // it, a fast second tap on Re-add mints a real duplicate quest (fresh UUID), and
+    // a second Undo/Edit fires a redundant re-load. Idempotency protects XP, not this.
+    private var inFlight = false
+
     init { load() }
 
     fun setFilter(filter: HistoryFilter) {
@@ -55,17 +60,29 @@ class CompletedViewModel(private val repository: QuestRepository) : ViewModel() 
         }
     }
 
-    /** Undo: remove the completion; XP re-derives from the ledger. */
-    fun undo(entry: QuestRepository.CompletedEntry) {
+    /** Runs one mutating action at a time; a re-entrant call while [inFlight] is a no-op. */
+    private fun guarded(block: suspend () -> Unit) {
+        if (inFlight) return
+        inFlight = true
         launchSafely {
-            repository.deleteCompletion(entry.record.instanceId)
-            load()
-            emit("Removed \"${entry.title}\" — XP updated.")
+            try {
+                block()
+            } finally {
+                inFlight = false
+            }
         }
     }
 
+    /** Undo: remove the completion; XP re-derives from the ledger. */
+    fun undo(entry: QuestRepository.CompletedEntry) = guarded {
+        repository.deleteCompletion(entry.record.instanceId)
+        reload()
+        emit("Removed \"${entry.title}\" — XP updated.")
+    }
+
     fun startEdit(entry: QuestRepository.CompletedEntry) {
-        val quest = entry.quest ?: return // can't edit a quest that no longer exists
+        // Only stored quests are editable; the dialog can't persist a derived one.
+        val quest = entry.quest?.takeIf { entry.editable } ?: return
         _state.update { it.copy(editing = EditTarget(quest, entry.record.instanceId)) }
     }
 
@@ -74,21 +91,27 @@ class CompletedViewModel(private val repository: QuestRepository) : ViewModel() 
     /** Save the edited quest and re-score the clicked completion with it. */
     fun saveEdit(updated: Quest) {
         val target = _state.value.editing ?: return
-        launchSafely {
+        guarded {
             repository.editQuestAndRescore(updated, target.instanceId)
             _state.update { it.copy(editing = null) }
-            load()
+            reload()
             emit("Updated \"${updated.title}\".")
         }
     }
 
     /** Re-add: clone the quest definition as a fresh active quest. */
     fun readd(entry: QuestRepository.CompletedEntry) {
-        val quest = entry.quest ?: return
-        launchSafely {
+        val quest = entry.quest?.takeIf { entry.editable } ?: return
+        guarded {
             repository.readdQuest(quest)
             emit("Added a new \"${quest.title}\".")
         }
+    }
+
+    /** Reload synchronously within an already-running guarded action (no nested launch). */
+    private suspend fun reload() {
+        val entries = repository.completedHistory(rangeFor(_state.value.filter))
+        _state.update { it.copy(loading = false, entries = entries) }
     }
 
     fun consumeMessage() = _state.update { it.copy(message = null) }
