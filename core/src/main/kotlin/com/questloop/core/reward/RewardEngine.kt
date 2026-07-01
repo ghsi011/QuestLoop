@@ -43,6 +43,16 @@ data class RewardConfig(
      * many-distinct-trivial-quests case (SPEC 6 & 8).
      */
     val lowEffortXpDailyCap: Long = 40,
+    /**
+     * Max multiplier bonus for logging *past* a measured quest's target when it
+     * allows over-completion (e.g. 0.5 = up to +50% for a big over-shoot). The
+     * bonus rises with the overshoot but is capped and diminishing, so it can't be
+     * farmed (SPEC §8).
+     */
+    val overCompletionMaxBonus: Double = 0.5,
+    /** Overshoot (in extra targets, i.e. `fraction - 1`) at which half the max
+     *  over-completion bonus is reached. 1.0 = one extra full target ⇒ +½ of max. */
+    val overCompletionHalfTargets: Double = 1.0,
 )
 
 /**
@@ -95,18 +105,23 @@ class RewardEngine(private val config: RewardConfig = RewardConfig()) {
     }
 
     private fun scorePositive(record: CompletionRecord, context: RewardContext): RewardOutcome {
-        val fraction = record.fraction.coerceIn(0.0, 1.0)
-        val base = (record.difficulty.baseXp * fraction)
+        // Effort toward the target earns base XP (capped at 100%); effort *past* the
+        // target (fraction > 1, only possible for over-completion quests) earns a
+        // separate diminishing bonus instead of unbounded linear XP.
+        val targetFraction = record.fraction.coerceIn(0.0, 1.0)
+        val base = (record.difficulty.baseXp * targetFraction)
         val priorityMult = record.priority.multiplier
         val consistencyMult = 1.0 + consistencyBonus(context.currentStreakDays)
         val antiFarmMult = antiFarmMultiplier(record, context.priorSameQuestCompletions)
+        val overMult = 1.0 + overCompletionBonus(record.fraction)
 
-        var xp = base * priorityMult * consistencyMult * antiFarmMult
+        var xp = base * priorityMult * consistencyMult * antiFarmMult * overMult
         val multipliers = linkedMapOf(
             "priority" to round2(priorityMult),
             "consistency" to round2(consistencyMult),
             "antiFarm" to round2(antiFarmMult),
         )
+        if (overMult > 1.0) multipliers["overCompletion"] = round2(overMult)
 
         var capReason: String? = null
         if (record.isMeta) {
@@ -209,6 +224,19 @@ class RewardEngine(private val config: RewardConfig = RewardConfig()) {
     }
 
     /**
+     * Bonus for logging past a measured quest's target (fraction > 1.0). Rises
+     * with the overshoot but is capped and diminishing — going 3× the target isn't
+     * 3× the reward — so over-completion can't be farmed (SPEC §8). Returns 0 for
+     * any normal completion (fraction ≤ 1.0).
+     */
+    internal fun overCompletionBonus(fraction: Double): Double {
+        val overshoot = (fraction - 1.0).coerceAtLeast(0.0)
+        if (overshoot <= 0.0) return 0.0
+        val half = config.overCompletionHalfTargets.coerceAtLeast(1e-6)
+        return config.overCompletionMaxBonus * (overshoot / (overshoot + half))
+    }
+
+    /**
      * Diminishing returns for repeating the same quest. The first completion in
      * the window earns full value; each repeat decays geometrically toward a
      * floor so easy farming can't dominate progression (SPEC 6 & 8).
@@ -230,6 +258,7 @@ class RewardEngine(private val config: RewardConfig = RewardConfig()) {
             "${record.category.name.lowercase().replace('_', ' ')} quest"
         if (record.priority.multiplier != 1.0) parts += "priority ×${multipliers["priority"]}"
         if ((multipliers["consistency"] ?: 1.0) > 1.0) parts += "streak ×${multipliers["consistency"]}"
+        multipliers["overCompletion"]?.let { parts += "over-completion ×$it (bonus for going past the target)" }
         if ((multipliers["antiFarm"] ?: 1.0) < 1.0) parts += "repeat ×${multipliers["antiFarm"]} (diminishing returns)"
         capReason?.let { parts += it }
         return parts.joinToString("; ") + "."

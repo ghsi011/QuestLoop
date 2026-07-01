@@ -37,4 +37,28 @@ class CompletionPolicyTest {
     fun `rescheduled keeps the quest available`() {
         assertFalse(CompletionPolicy.dismissedForToday(CompletionStyle.BINARY, CompletionResult.RESCHEDULED))
     }
+
+    @Test
+    fun `an over-completion measured quest stays visible even when completed`() {
+        assertFalse(
+            CompletionPolicy.dismissedForToday(
+                CompletionStyle.QUANTITATIVE, CompletionResult.COMPLETED, allowOverCompletion = true,
+            ),
+        )
+        assertFalse(
+            CompletionPolicy.dismissedForToday(
+                CompletionStyle.DURATION, CompletionResult.COMPLETED, allowOverCompletion = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `over-completion only applies to measured styles`() {
+        // A binary/subjective quest is still one-shot even with the flag set.
+        assertTrue(
+            CompletionPolicy.dismissedForToday(
+                CompletionStyle.BINARY, CompletionResult.COMPLETED, allowOverCompletion = true,
+            ),
+        )
+    }
 }

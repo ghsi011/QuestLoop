@@ -22,6 +22,7 @@ import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.DayPart
 import com.questloop.core.model.EnergyCheckIn
 import com.questloop.core.model.Quest
+import com.questloop.core.model.QuestFrequency
 import com.questloop.core.model.UserProfile
 import com.questloop.core.model.VerificationMethod
 import com.questloop.core.reward.Achievement
@@ -187,7 +188,13 @@ class QuestRepository(
         val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals) +
             adminFundQuests(epochDay, profile, lastCompleted)
         val candidates = (questDao.getActive().map { it.toModel() } + derived)
-            .filter { QuestScheduler.isDue(it.frequency, epochDay, lastCompleted[it.id]) }
+            // Surface a quest whose cadence makes it due today — plus over-completion
+            // quests, which stay loggable for the whole interval (their count just
+            // resets next interval) rather than leaving once the target is hit.
+            .filter {
+                QuestScheduler.isDue(it.frequency, epochDay, lastCompleted[it.id]) ||
+                    (accumulates(it) && it.allowOverCompletion)
+            }
         // Recent history is only needed for avoidance scoring (skipped quests).
         val history = completionDao.since(epochDay - 14).map { it.toModel() }
         // Free time left on the device calendar (null unless the user opted in and
@@ -238,39 +245,78 @@ class QuestRepository(
         return (questDao.getActive().map { it.toModel() } + derived).associateBy { it.id }
     }
 
+    /** Measured (count/duration) quests accumulate progress across their interval. */
+    private fun accumulates(quest: Quest): Boolean =
+        quest.completionStyle == CompletionStyle.QUANTITATIVE ||
+            quest.completionStyle == CompletionStyle.DURATION
+
+    /**
+     * The epoch-day that anchors a quest's completion record. For a *measured
+     * recurring* quest it's the start of its current calendar interval (week for
+     * WEEKLY, month for MONTHLY), so progress accumulates across the interval — e.g.
+     * "swim 2×/week" counts both swims toward one 2/2 — and resets at the boundary.
+     * For everything else (and daily quests, where the interval *is* the day) it's
+     * the day itself, so behaviour is unchanged.
+     */
+    private fun completionSlot(quest: Quest, epochDay: Long): Long =
+        if (accumulates(quest)) intervalStartFor(quest.frequency, epochDay) else epochDay
+
+    private fun intervalStartFor(frequency: QuestFrequency, epochDay: Long): Long = when (frequency) {
+        QuestFrequency.WEEKLY -> {
+            val d = LocalDate.ofEpochDay(epochDay)
+            d.minusDays((d.dayOfWeek.value - 1).toLong()).toEpochDay()
+        }
+        QuestFrequency.MONTHLY -> LocalDate.ofEpochDay(epochDay).withDayOfMonth(1).toEpochDay()
+        else -> epochDay
+    }
+
+    /** A measured quest's accumulated progress this interval (count or minutes). */
+    private suspend fun intervalProgress(quest: Quest, epochDay: Long): Int {
+        val target = when (quest.completionStyle) {
+            CompletionStyle.QUANTITATIVE -> quest.targetCount ?: return 0
+            CompletionStyle.DURATION -> quest.estimatedMinutes
+            else -> return 0
+        }
+        val rec = completionDao.find("${quest.id}@${completionSlot(quest, epochDay)}") ?: return 0
+        return (rec.fraction * target).roundToInt()
+    }
+
     /**
      * Quest ids that should not appear again today. Style-aware: a partially
      * logged QUANTITATIVE/DURATION quest is *not* dismissed so the user can keep
      * adding progress.
      */
     private suspend fun dismissedQuestIdsToday(epochDay: Long): Set<String> {
-        val styleById = candidateQuestsById().mapValues { it.value.completionStyle }
-        return completionDao.between(epochDay, epochDay)
-            .map { it.toModel() }
-            .filter { rec ->
-                val style = styleById[rec.questId] ?: CompletionStyle.BINARY
-                CompletionPolicy.dismissedForToday(style, rec.result)
+        val dismissed = mutableSetOf<String>()
+        for (quest in candidateQuestsById().values) {
+            // Read the quest's *current interval* record (the day for daily/binary
+            // quests, the week/month for measured recurring ones), so a weekly quest
+            // finished earlier this week stays hidden the rest of the interval.
+            val rec = completionDao.find("${quest.id}@${completionSlot(quest, epochDay)}") ?: continue
+            val result = rec.toModel().result
+            if (CompletionPolicy.dismissedForToday(quest.completionStyle, result, quest.allowOverCompletion)) {
+                dismissed += quest.id
             }
-            .map { it.questId }
-            .toSet()
+        }
+        return dismissed
     }
 
     /**
-     * Today's logged progress per quest (count for QUANTITATIVE, minutes for
-     * DURATION), so the UI can resume partial logging from where it left off.
+     * Accumulated progress per measured quest for its *current interval* (count for
+     * QUANTITATIVE, minutes for DURATION), so the UI resumes from where it left off
+     * — for a weekly quest that's the whole week's progress, not just today's.
      */
-    suspend fun todayProgress(epochDay: Long): Map<String, Int> {
-        val quests = candidateQuestsById()
-        return buildMap {
-            for (e in completionDao.between(epochDay, epochDay)) {
-                val quest = quests[e.questId] ?: continue
-                val target = when (quest.completionStyle) {
-                    CompletionStyle.QUANTITATIVE -> quest.targetCount ?: continue
-                    CompletionStyle.DURATION -> quest.estimatedMinutes
-                    else -> continue
-                }
-                put(quest.id, (e.fraction * target).roundToInt())
+    suspend fun todayProgress(epochDay: Long): Map<String, Int> = buildMap {
+        for (quest in candidateQuestsById().values) {
+            val target = when (quest.completionStyle) {
+                CompletionStyle.QUANTITATIVE -> quest.targetCount ?: continue
+                CompletionStyle.DURATION -> quest.estimatedMinutes
+                else -> continue
             }
+            // An entry exists iff this quest has a record this interval (even a
+            // zero-progress log), so the UI can resume/show 0 as before.
+            val rec = completionDao.find("${quest.id}@${completionSlot(quest, epochDay)}") ?: continue
+            put(quest.id, (rec.fraction * target).roundToInt())
         }
     }
 
@@ -315,7 +361,11 @@ class QuestRepository(
         fraction: Double,
         verification: VerificationMethod,
     ): CompleteOutcome {
-        val instanceId = "${quest.id}@$epochDay"
+        // Measured recurring quests are keyed by their interval start (so weekly/
+        // monthly progress accumulates into one record and resets at the boundary);
+        // everything else stays keyed by the day, unchanged.
+        val slot = completionSlot(quest, epochDay)
+        val instanceId = "${quest.id}@$slot"
         val existing = completionDao.find(instanceId)
         val ledgerSum = completionDao.totalXp()
         // The user's total as if this instance had never been logged.
@@ -329,12 +379,12 @@ class QuestRepository(
             priority = quest.priority,
             result = result,
             verification = verification,
-            epochDay = epochDay,
+            epochDay = slot,
             fraction = fraction,
             isMeta = quest.category.isMeta,
         )
 
-        val sameDay = completionDao.between(epochDay, epochDay).map { it.toModel() }
+        val sameDay = completionDao.between(slot, slot).map { it.toModel() }
         val activeDays = completionDao.activeDays().toSet()
         // Score the streak bonus with the user's configured grace days, so the
         // streak driving the reward matches the one shown in the UI (which also
@@ -373,12 +423,13 @@ class QuestRepository(
      * and credited proportionally — never penalised (SPEC §8).
      */
     suspend fun completeMeasured(quest: Quest, epochDay: Long, value: Int): CompleteOutcome = completionMutex.withLock {
-        val existingProgress = todayProgress(epochDay)[quest.id] ?: 0
+        val existingProgress = intervalProgress(quest, epochDay)
+        val allowOver = quest.allowOverCompletion
         val scaled = when (quest.completionStyle) {
             CompletionStyle.QUANTITATIVE ->
-                CompletionScaling.quantitative(maxOf(existingProgress, value), (quest.targetCount ?: 1).coerceAtLeast(1))
+                CompletionScaling.quantitative(maxOf(existingProgress, value), (quest.targetCount ?: 1).coerceAtLeast(1), allowOver)
             CompletionStyle.DURATION ->
-                CompletionScaling.duration(maxOf(existingProgress, value), quest.estimatedMinutes.coerceAtLeast(1))
+                CompletionScaling.duration(maxOf(existingProgress, value), quest.estimatedMinutes.coerceAtLeast(1), allowOver)
             CompletionStyle.SUBJECTIVE ->
                 CompletionScaling.subjective(value)
             CompletionStyle.BINARY ->

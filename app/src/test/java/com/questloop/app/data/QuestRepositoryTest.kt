@@ -117,14 +117,17 @@ class QuestRepositoryTest {
         target: Int? = null,
         category: QuestCategory = QuestCategory.WORK_STUDY,
         difficulty: Difficulty = Difficulty.MEDIUM,
+        frequency: QuestFrequency = QuestFrequency.DAILY,
+        allowOverCompletion: Boolean = false,
     ) = Quest(
         id = id,
         title = "Quest $id",
         category = category,
-        frequency = QuestFrequency.DAILY,
+        frequency = frequency,
         difficulty = difficulty,
         completionStyle = style,
         targetCount = target,
+        allowOverCompletion = allowOverCompletion,
     )
 
     @Test
@@ -590,5 +593,62 @@ class QuestRepositoryTest {
         funded.completeQuest(AdminFundFactory.fundMonthQuest(), epochDay = 1, result = CompletionResult.COMPLETED)
         // Meta/admin completions are excluded, so nothing has been "earned".
         assertEquals(0.0, funded.allowance(fromEpochDay = 1, toEpochDay = 31).suggestedAllowance, 0.0001)
+    }
+
+    // A Monday, so week math is unambiguous (ISO week starts Monday).
+    private val monday = java.time.LocalDate.of(2026, 6, 22).toEpochDay()
+
+    private fun weeklySwim(allowOver: Boolean = false) = quest(
+        id = "swim",
+        style = CompletionStyle.QUANTITATIVE,
+        target = 2,
+        category = QuestCategory.HEALTH,
+        frequency = QuestFrequency.WEEKLY,
+        allowOverCompletion = allowOver,
+    )
+
+    @Test
+    fun `a weekly quantitative quest accumulates across the week then completes`() = runTest {
+        val swim = weeklySwim()
+        repo.addQuest(swim)
+        val wednesday = monday + 2
+
+        // One swim on Monday — still 1/2 when viewed on Wednesday (same week), not reset.
+        repo.completeMeasured(swim, monday, 1)
+        assertEquals(1, repo.todayProgress(wednesday)["swim"])
+
+        // A second swim hits the weekly target -> completed, leaves the plan.
+        repo.completeMeasured(swim, wednesday, 2)
+        assertEquals(2, repo.todayProgress(wednesday)["swim"])
+        assertFalse(repo.todayPlan(wednesday, DayPart.MIDDAY).quests.any { it.quest.id == "swim" })
+
+        // Next week resets: due again, no carried-over progress.
+        val nextMonday = monday + 7
+        assertEquals(null, repo.todayProgress(nextMonday)["swim"])
+        assertTrue(repo.todayPlan(nextMonday, DayPart.MIDDAY).quests.any { it.quest.id == "swim" })
+    }
+
+    @Test
+    fun `over-completion keeps a weekly quest loggable past its target and shows the raw count`() = runTest {
+        val swim = weeklySwim(allowOver = true)
+        repo.addQuest(swim)
+
+        repo.completeMeasured(swim, monday, 2) // hit the target
+        repo.completeMeasured(swim, monday, 3) // a third swim, over the target
+
+        assertEquals(3, repo.todayProgress(monday)["swim"]) // shows 3, not capped at 2
+        // Still in the plan — over-completion stays loggable for the interval.
+        assertTrue(repo.todayPlan(monday, DayPart.MIDDAY).quests.any { it.quest.id == "swim" })
+
+        // Over-completing earns a little more XP than exactly hitting the target,
+        // but the bonus is bounded (not linear).
+        val overXp = repo.totalXp()
+        repo.deleteAllData()
+        val plain = weeklySwim()
+        repo.addQuest(plain)
+        repo.completeMeasured(plain, monday, 2)
+        val targetXp = repo.totalXp()
+        assertTrue("over-completion should beat exactly hitting target", overXp > targetXp)
+        assertTrue("bonus must not be linear", overXp < targetXp * 2)
     }
 }

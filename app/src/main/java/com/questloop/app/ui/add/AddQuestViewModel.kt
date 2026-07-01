@@ -7,6 +7,7 @@ import com.questloop.app.data.CalendarEventSummary
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.data.SampleData
 import com.questloop.app.ui.AppClock
+import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.Difficulty
 import com.questloop.core.model.Priority
 import com.questloop.core.model.Quest
@@ -48,6 +49,8 @@ data class QuestDraft(
     val unit: String = "",
     val quickText: String = "",
     val goalText: String = "",
+    /** Measured quests: let the user keep logging past the target for the interval. */
+    val allowOverCompletion: Boolean = false,
     /** Optional due date (SPEC §10), pickable manually or from a calendar event. */
     val deadlineEpochDay: Long? = null,
     val tags: List<String> = emptyList(),
@@ -84,6 +87,9 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
             completionStyle = d.completionStyle,
             targetCount = if (isQuantitative) d.targetCount else null,
             unit = if (isQuantitative) d.unit.ifBlank { null } else null,
+            // Over-completion only applies to measured (count/duration) quests.
+            allowOverCompletion = d.allowOverCompletion &&
+                (d.completionStyle == CompletionStyle.QUANTITATIVE || d.completionStyle == CompletionStyle.DURATION),
             deadlineEpochDay = d.deadlineEpochDay,
             tags = d.tags,
         )

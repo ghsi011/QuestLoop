@@ -28,6 +28,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
@@ -119,6 +120,30 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
             range = 1..1440,
             modifier = Modifier.fillMaxWidth(),
         )
+
+        // Over-completion only makes sense for measured (count/duration) quests.
+        if (draft.completionStyle == CompletionStyle.QUANTITATIVE ||
+            draft.completionStyle == CompletionStyle.DURATION
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Allow logging past the target", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Keep it on your list after you hit the goal (e.g. a 3rd swim on \"2×/week\"). Resets each interval.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = draft.allowOverCompletion,
+                    onCheckedChange = { on -> viewModel.updateDraft { it.copy(allowOverCompletion = on) } },
+                )
+            }
+        }
 
         DeadlineSection(
             deadlineEpochDay = draft.deadlineEpochDay,

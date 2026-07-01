@@ -36,6 +36,24 @@ class CompletionScalingTest {
     }
 
     @Test
+    fun `over-completion keeps the ratio past the target when allowed`() {
+        val s = CompletionScaling.quantitative(progress = 3, target = 2, allowOver = true)
+        assertEquals(CompletionResult.COMPLETED, s.result)
+        assertEquals(1.5, s.fraction) // 3/2, uncapped so the UI can show 3/2
+    }
+
+    @Test
+    fun `over-completion is bounded so an absurd value cannot store a huge ratio`() {
+        val s = CompletionScaling.quantitative(progress = 999, target = 2, allowOver = true)
+        assertEquals(CompletionScaling.MAX_OVER_FRACTION, s.fraction)
+    }
+
+    @Test
+    fun `without the flag the fraction still caps at the target`() {
+        assertEquals(1.0, CompletionScaling.quantitative(progress = 3, target = 2, allowOver = false).fraction)
+    }
+
+    @Test
     fun `duration scales by minutes`() {
         val s = CompletionScaling.duration(actualMinutes = 25, targetMinutes = 50)
         assertEquals(CompletionResult.PARTIAL, s.result)

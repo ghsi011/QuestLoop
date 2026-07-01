@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [QuestEntity::class, CompletionEntity::class],
@@ -22,7 +24,7 @@ abstract class QuestLoopDatabase : RoomDatabase() {
          * below and committing the exported `schemas/<n>.json`; the migration test
          * walks every version up to here, so a forgotten migration fails in CI.
          */
-        const val SCHEMA_VERSION = 2
+        const val SCHEMA_VERSION = 3
 
         /**
          * Migrations between schema versions. Add a [Migration] for every version
@@ -31,7 +33,16 @@ abstract class QuestLoopDatabase : RoomDatabase() {
          * the user's quests, XP and history. Visible to the androidTest migration
          * guard so the test exercises exactly what ships.
          */
-        internal val MIGRATIONS: Array<androidx.room.migration.Migration> = arrayOf()
+        /** v2 → v3: add `allowOverCompletion` to quests (measured over-completion). */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE quests ADD COLUMN allowOverCompletion INTEGER NOT NULL DEFAULT 0",
+                )
+            }
+        }
+
+        internal val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_2_3)
 
         @Volatile
         private var instance: QuestLoopDatabase? = null

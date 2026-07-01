@@ -157,6 +157,13 @@ data class Quest(
     val targetCount: Int? = null,
     /** Unit label for QUANTITATIVE quests (e.g. "glasses", "pages"). */
     val unit: String? = null,
+    /**
+     * For measured (QUANTITATIVE/DURATION) quests: allow logging *past* the target
+     * (e.g. a 3rd swim on a "swim 2×/week"). When true the quest stays loggable for
+     * the whole interval instead of leaving the list at the target; extra effort
+     * earns a small, diminishing bonus (SPEC §8, still anti-farm bounded).
+     */
+    val allowOverCompletion: Boolean = false,
     val tags: List<String> = emptyList(),
     /** Optional short rationale shown to the user (AI explainability, SPEC 5). */
     val rationale: String? = null,
