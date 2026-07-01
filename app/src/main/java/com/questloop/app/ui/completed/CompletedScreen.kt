@@ -43,7 +43,6 @@ import java.time.format.DateTimeFormatter
 
 private val historyDateFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE, MMM d")
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CompletedScreen(viewModel: CompletedViewModel, snackbarHostState: SnackbarHostState) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -55,6 +54,29 @@ fun CompletedScreen(viewModel: CompletedViewModel, snackbarHostState: SnackbarHo
         viewModel.consumeMessage()
     }
 
+    // Stateless body so it's driveable on the JVM (Robolectric) without a VM/lifecycle.
+    CompletedContent(
+        state = state,
+        onSetFilter = viewModel::setFilter,
+        onUndo = viewModel::undo,
+        onStartEdit = viewModel::startEdit,
+        onReadd = viewModel::readd,
+        onSaveEdit = viewModel::saveEdit,
+        onCancelEdit = viewModel::cancelEdit,
+    )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun CompletedContent(
+    state: CompletedUiState,
+    onSetFilter: (HistoryFilter) -> Unit,
+    onUndo: (QuestRepository.CompletedEntry) -> Unit,
+    onStartEdit: (QuestRepository.CompletedEntry) -> Unit,
+    onReadd: (QuestRepository.CompletedEntry) -> Unit,
+    onSaveEdit: (Quest) -> Unit,
+    onCancelEdit: () -> Unit,
+) {
     LazyColumn(
         Modifier.fillMaxSize().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -65,7 +87,7 @@ fun CompletedScreen(viewModel: CompletedViewModel, snackbarHostState: SnackbarHo
                 HistoryFilter.entries.forEach { f ->
                     FilterChip(
                         selected = state.filter == f,
-                        onClick = { viewModel.setFilter(f) },
+                        onClick = { onSetFilter(f) },
                         label = { Text(f.label) },
                     )
                 }
@@ -83,9 +105,9 @@ fun CompletedScreen(viewModel: CompletedViewModel, snackbarHostState: SnackbarHo
         items(state.entries, key = { it.record.instanceId }) { entry ->
             CompletedCard(
                 entry = entry,
-                onUndo = { viewModel.undo(entry) },
-                onEdit = { viewModel.startEdit(entry) },
-                onReadd = { viewModel.readd(entry) },
+                onUndo = { onUndo(entry) },
+                onEdit = { onStartEdit(entry) },
+                onReadd = { onReadd(entry) },
             )
         }
         item { androidx.compose.foundation.layout.Spacer(Modifier.padding(24.dp)) }
@@ -94,8 +116,8 @@ fun CompletedScreen(viewModel: CompletedViewModel, snackbarHostState: SnackbarHo
     state.editing?.let { target ->
         EditQuestDialog(
             original = target.quest,
-            onDismiss = viewModel::cancelEdit,
-            onSave = viewModel::saveEdit,
+            onDismiss = onCancelEdit,
+            onSave = onSaveEdit,
         )
     }
 }
@@ -142,55 +164,68 @@ private fun CompletedCard(
  * clicked completion's XP; title/frequency changes update the live quest. Fields
  * are kept minimal — the heavier measured-quest fields live on the Add screen.
  */
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * Compact full-quest editor. Changing difficulty/priority/category re-scores the
+ * clicked completion's XP; title/frequency changes update the live quest. The thin
+ * [AlertDialog] shell can't be driven under Robolectric (its Dialog window OOMs), so
+ * all the field logic lives in the window-free [EditQuestFields], which IS unit-tested.
+ */
 @Composable
 private fun EditQuestDialog(original: Quest, onDismiss: () -> Unit, onSave: (Quest) -> Unit) {
+    // The latest composed edit, updated by the fields; the Save button reads it.
+    var edited by remember(original.id) { mutableStateOf(original) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit quest") },
+        text = { EditQuestFields(original, onChange = { edited = it }) },
+        confirmButton = {
+            TextButton(enabled = edited.title.isNotBlank(), onClick = { onSave(edited) }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/**
+ * The editable field body (title + difficulty/priority/category/frequency chips).
+ * Owns its own field state and emits the composed [Quest] via [onChange] on every
+ * edit, so the enclosing dialog's Save can read the latest without a Dialog window.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun EditQuestFields(original: Quest, onChange: (Quest) -> Unit) {
     var title by remember(original.id) { mutableStateOf(original.title) }
     var difficulty by remember(original.id) { mutableStateOf(original.difficulty) }
     var priority by remember(original.id) { mutableStateOf(original.priority) }
     var category by remember(original.id) { mutableStateOf(original.category) }
     var frequency by remember(original.id) { mutableStateOf(original.frequency) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Edit quest") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                androidx.compose.material3.OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("Title") },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Text("Difficulty (sets XP)", style = MaterialTheme.typography.labelMedium)
-                ChipRow(Difficulty.entries, difficulty, { it.pretty() }) { difficulty = it }
-                Text("Priority", style = MaterialTheme.typography.labelMedium)
-                ChipRow(Priority.entries, priority, { it.name.lowercase().replaceFirstChar { c -> c.uppercase() } }) { priority = it }
-                Text("Category", style = MaterialTheme.typography.labelMedium)
-                ChipRow(QuestCategory.entries, category, { it.pretty() }) { category = it }
-                Text("Frequency", style = MaterialTheme.typography.labelMedium)
-                ChipRow(QuestFrequency.entries, frequency, { it.pretty() }) { frequency = it }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = title.isNotBlank(),
-                onClick = {
-                    onSave(
-                        original.copy(
-                            title = title.trim(),
-                            difficulty = difficulty,
-                            priority = priority,
-                            category = category,
-                            frequency = frequency,
-                            isReductionQuest = category == QuestCategory.BAD_HABIT_REDUCTION,
-                        ),
-                    )
-                },
-            ) { Text("Save") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    fun emit() = onChange(
+        original.copy(
+            title = title.trim(),
+            difficulty = difficulty,
+            priority = priority,
+            category = category,
+            frequency = frequency,
+            isReductionQuest = category == QuestCategory.BAD_HABIT_REDUCTION,
+        ),
     )
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        androidx.compose.material3.OutlinedTextField(
+            value = title,
+            onValueChange = { title = it; emit() },
+            label = { Text("Title") },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text("Difficulty (sets XP)", style = MaterialTheme.typography.labelMedium)
+        ChipRow(Difficulty.entries, difficulty, { it.pretty() }) { difficulty = it; emit() }
+        Text("Priority", style = MaterialTheme.typography.labelMedium)
+        ChipRow(Priority.entries, priority, { it.name.lowercase().replaceFirstChar { c -> c.uppercase() } }) { priority = it; emit() }
+        Text("Category", style = MaterialTheme.typography.labelMedium)
+        ChipRow(QuestCategory.entries, category, { it.pretty() }) { category = it; emit() }
+        Text("Frequency", style = MaterialTheme.typography.labelMedium)
+        ChipRow(QuestFrequency.entries, frequency, { it.pretty() }) { frequency = it; emit() }
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
