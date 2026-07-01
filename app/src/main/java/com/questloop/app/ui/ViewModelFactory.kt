@@ -6,6 +6,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.ui.achievements.AchievementsViewModel
 import com.questloop.app.ui.add.AddQuestViewModel
+import com.questloop.app.ui.completed.CompletedViewModel
 import com.questloop.app.ui.habits.HabitsViewModel
 import com.questloop.app.ui.quests.QuestBankViewModel
 import com.questloop.app.ui.quests.QuestsViewModel
@@ -25,4 +26,5 @@ fun appViewModelFactory(repository: QuestRepository): ViewModelProvider.Factory 
     initializer { SettingsViewModel(repository) }
     initializer { HabitsViewModel(repository) }
     initializer { AchievementsViewModel(repository) }
+    initializer { CompletedViewModel(repository) }
 }

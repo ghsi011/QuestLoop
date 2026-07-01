@@ -72,7 +72,7 @@ private enum class Dest(val route: String, val label: String, val icon: ImageVec
 private fun tabForRoute(route: String?): Dest? = when (route) {
     Dest.TODAY.route, "achievements" -> Dest.TODAY
     Dest.QUESTS.route, "quest-bank" -> Dest.QUESTS
-    Dest.REVIEWS.route -> Dest.REVIEWS
+    Dest.REVIEWS.route, "completed" -> Dest.REVIEWS
     Dest.REWARDS.route -> Dest.REWARDS
     Dest.SETTINGS.route, "habits" -> Dest.SETTINGS
     else -> null // "add" is a modal with no owning tab
@@ -134,12 +134,13 @@ private fun QuestLoopMain(repository: QuestRepository) {
     val currentRoute = backStackEntry?.destination
     val routeName = currentRoute?.route
     val isSubScreen = routeName == "add" || routeName == "habits" ||
-        routeName == "achievements" || routeName == "quest-bank"
+        routeName == "achievements" || routeName == "quest-bank" || routeName == "completed"
     val title = when (routeName) {
         "add" -> "Add quest"
         "habits" -> "Habits & goals"
         "achievements" -> "Achievements"
         "quest-bank" -> "Quest bank"
+        "completed" -> "Completed quests"
         else -> "QuestLoop"
     }
     // The tab a (possibly sub-) screen belongs to, so the right tab stays lit and
@@ -220,7 +221,11 @@ private fun QuestLoopMain(repository: QuestRepository) {
             }
             composable(Dest.REVIEWS.route) {
                 val vm: ReviewViewModel = viewModel(factory = factory)
-                ReviewScreen(vm)
+                ReviewScreen(vm, onOpenCompleted = { navController.openOnce("completed") })
+            }
+            composable("completed") {
+                val vm: com.questloop.app.ui.completed.CompletedViewModel = viewModel(factory = factory)
+                com.questloop.app.ui.completed.CompletedScreen(vm, snackbarHostState)
             }
             composable(Dest.REWARDS.route) {
                 val vm: RewardsViewModel = viewModel(factory = factory)

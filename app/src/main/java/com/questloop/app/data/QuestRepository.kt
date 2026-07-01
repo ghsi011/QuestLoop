@@ -328,6 +328,82 @@ class QuestRepository(
         val previousRecord: CompletionRecord?,
     )
 
+    // --- Completed-quest history (Completed screen) --------------------------
+
+    /** One completed entry for the history screen: the record, a display title,
+     *  and the backing quest (null if it no longer exists → edit/re-add disabled). */
+    data class CompletedEntry(
+        val record: CompletionRecord,
+        val title: String,
+        val quest: Quest?,
+    )
+
+    /** Every quest id we can still name — stored (incl. archived) + derived +
+     *  routine + admin — so history rows show a title even for non-stored quests. */
+    private suspend fun knownQuestsById(): Map<String, Quest> {
+        val profile = profileStore.profile.first()
+        val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals)
+        val routines = RoutineQuestFactory.all()
+        val admin = listOf(
+            AdminFundFactory.openPotQuest(), AdminFundFactory.fundMonthQuest(), AdminFundFactory.claimQuest(),
+        )
+        return (questDao.getAll().map { it.toModel() } + derived + routines + admin).associateBy { it.id }
+    }
+
+    /**
+     * Completed quests for the history screen, newest first. [range] bounds the
+     * epoch-day window (Today/Week/Month); null is all-time. Only fully-completed
+     * records are shown (partials are in-progress, not history).
+     */
+    suspend fun completedHistory(range: LongRange? = null): List<CompletedEntry> {
+        val rows = if (range == null) completionDao.all() else completionDao.between(range.first, range.last)
+        val quests = knownQuestsById()
+        return rows.map { it.toModel() }
+            .filter { it.result == CompletionResult.COMPLETED }
+            .sortedByDescending { it.epochDay }
+            .map { rec ->
+                val quest = quests[rec.questId]
+                val title = quest?.title ?: rec.category.name.lowercase().replace('_', ' ')
+                    .replaceFirstChar { it.uppercase() }
+                CompletedEntry(record = rec, title = title, quest = quest)
+            }
+    }
+
+    /** Undo a completion from the history screen: remove it entirely; XP re-derives. */
+    suspend fun deleteCompletion(instanceId: String) = completionMutex.withLock {
+        completionDao.delete(instanceId)
+    }
+
+    /**
+     * Edit (full quest editor) from the history screen: persist the updated quest
+     * definition and re-score the clicked completion with it, so a difficulty/
+     * priority change updates that record's XP too. Returns null if the completion
+     * is gone. Only stored quests are editable (derived/routine ones aren't).
+     */
+    suspend fun editQuestAndRescore(updatedQuest: Quest, instanceId: String): CompleteOutcome? =
+        completionMutex.withLock {
+            val existing = completionDao.find(instanceId)?.toModel() ?: return@withLock null
+            questDao.getAll().firstOrNull { it.id == updatedQuest.id }?.let { stored ->
+                questDao.upsert(updatedQuest.toEntity(archived = stored.archived))
+            }
+            // Re-log the same instance (same id/day) with the new definition; the
+            // ledger nets the old grant so XP reflects the edit, not a double-count.
+            val outcome = completeQuestLocked(
+                updatedQuest, existing.epochDay, existing.result, existing.fraction, existing.verification,
+            )
+            // An edit that changes the quest's interval (e.g. daily → weekly) re-keys
+            // the record; drop the stale original so it isn't left orphaned.
+            if (outcome.instanceId != instanceId) completionDao.delete(instanceId)
+            outcome
+        }
+
+    /** Re-add: clone a completed quest's definition as a fresh active quest. */
+    suspend fun readdQuest(source: Quest): Quest {
+        val copy = source.copy(id = "user-${java.util.UUID.randomUUID()}")
+        addQuest(copy)
+        return copy
+    }
+
     /**
      * Reverses a completion: restores the prior record if there was one (e.g. a
      * partial log), otherwise removes it. XP follows automatically because it's

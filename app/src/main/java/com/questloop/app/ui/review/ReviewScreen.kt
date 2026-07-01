@@ -37,7 +37,7 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReviewScreen(viewModel: ReviewViewModel) {
+fun ReviewScreen(viewModel: ReviewViewModel, onOpenCompleted: () -> Unit = {}) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     // Refresh on re-entry so stats reflect quests completed elsewhere.
@@ -48,6 +48,11 @@ fun ReviewScreen(viewModel: ReviewViewModel) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item { SectionHeader("Reviews") }
+        item {
+            OutlinedButton(onClick = onOpenCompleted, modifier = Modifier.fillMaxWidth()) {
+                Text("Completed quests →")
+            }
+        }
         item {
             // Toggle between the retrospective (Review) and the forward plan (Plan).
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {

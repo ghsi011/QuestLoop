@@ -174,6 +174,13 @@ class CoverageWalkTest {
         tapText("Plan")
         composeRule.waitForIdle()
         tapText("Review")
+        // Open the Completed-quests history, cycle a filter, then back.
+        tapText("Completed quests →")
+        awaitSafe { present("Completed") }
+        tapText("All time")
+        composeRule.waitForIdle()
+        back()
+        awaitSafe { present("Reviews") }
         tab("Rewards")
         awaitSafe { present("Save budget") }
         typeInto("Affordable monthly budget", "25")

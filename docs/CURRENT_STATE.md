@@ -21,7 +21,14 @@ Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
 - **Daily quest generation** (§3, §4) — time/energy budgeting, deadline
   urgency, avoidance resurfacing, category-variety caps.
 - **Completion tracking** (§8) — manual + non-binary (quantitative / duration /
-  subjective); partial progress credited, never penalised.
+  subjective); partial progress credited, never penalised. Measured recurring
+  quests **accumulate across their calendar interval** (e.g. "swim 2×/week"
+  counts both swims toward one 2/2 and resets weekly), with an opt-in
+  **over-completion** mode that keeps a quest loggable past its target for a
+  small capped bonus.
+- **Completed-quest history** — a filterable (Today / week / month / all-time)
+  screen off the Reviews tab with **undo**, **edit** (a full quest editor that
+  re-scores the completion's XP), and **re-add** (clone as a new quest).
 - **Minimal daily loop** — morning micro-quest + evening wrap-up via day-part
   routines.
 - **Recurrence scheduling** (§4) — `QuestScheduler` gates daily/weekly/monthly/
