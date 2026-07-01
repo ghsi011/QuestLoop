@@ -412,15 +412,18 @@ class QuestRepository(
             questDao.getAll().firstOrNull { it.id == updatedQuest.id }?.let { stored ->
                 questDao.upsert(updatedQuest.toEntity(archived = stored.archived))
             }
-            // Re-log the same instance (same id/day) with the new definition; the
-            // ledger nets the old grant so XP reflects the edit, not a double-count.
-            val outcome = completeQuestLocked(
+            // If the edit re-keys the record (a frequency change that moves the
+            // interval slot, e.g. daily → weekly), delete the stale original BEFORE
+            // re-scoring. That way the ledger baseline nets out its old grant, it isn't
+            // seen as a same-day sibling (a spurious anti-farm decay), no orphan is
+            // left behind, and the returned outcome's reported total/level are honest.
+            // A same-slot edit keeps the same instanceId, so completeQuestLocked nets
+            // the prior grant itself (nothing to delete).
+            val newInstanceId = "${updatedQuest.id}@${completionSlot(updatedQuest, existing.epochDay)}"
+            if (newInstanceId != instanceId) completionDao.delete(instanceId)
+            completeQuestLocked(
                 updatedQuest, existing.epochDay, existing.result, existing.fraction, existing.verification,
             )
-            // An edit that changes the quest's interval (e.g. daily → weekly) re-keys
-            // the record; drop the stale original so it isn't left orphaned.
-            if (outcome.instanceId != instanceId) completionDao.delete(instanceId)
-            outcome
         }
 
     /** Re-add: clone a completed quest's definition as a fresh active quest. */
@@ -470,6 +473,14 @@ class QuestRepository(
         // however, is always the REAL log day — it drives streak / active-days /
         // same-day anti-farm / history, none of which must be shifted to the interval
         // start (that would break the streak and mis-date the completed-history row).
+        //
+        // Trade-off: a measured interval quest is one logical unit stored as ONE row,
+        // so it contributes ONE active day per interval — the most recent log (which
+        // keeps *today's* streak alive). If it's logged on several days of the same
+        // interval, only the latest is recorded; the earlier days aren't independently
+        // marked active by this quest (other quests/routines on those days still are).
+        // This is the cost of clean interval accumulation + over-completion scoring
+        // (which needs a single record carrying the cumulative fraction).
         val slot = completionSlot(quest, epochDay)
         val instanceId = "${quest.id}@$slot"
         val existing = completionDao.find(instanceId)

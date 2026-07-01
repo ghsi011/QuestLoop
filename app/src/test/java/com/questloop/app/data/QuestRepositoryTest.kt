@@ -695,6 +695,43 @@ class QuestRepositoryTest {
     }
 
     @Test
+    fun `a weekly measured quest accumulates across separate log days into one interval record`() = runTest {
+        val swim = weeklySwim()
+        repo.addQuest(swim)
+        val wednesday = monday + 2
+
+        repo.completeMeasured(swim, monday, 1) // 1/2 on Monday
+        repo.completeMeasured(swim, wednesday, 2) // second swim on Wednesday -> 2/2
+
+        // Progress accumulates into the single weekly record (2/2), and — because a
+        // measured interval quest is one logical unit stored as one row — that row is
+        // dated to the most recent log day (Wednesday), keeping today's streak alive.
+        assertEquals(2, repo.todayProgress(wednesday)["swim"])
+        val entry = repo.completedHistory().single { it.record.questId == "swim" }
+        assertEquals(wednesday, entry.record.epochDay)
+    }
+
+    @Test
+    fun `editing a measured quest's frequency re-keys the record without inflating the reported total`() = runTest {
+        val daily = quest("a", style = CompletionStyle.QUANTITATIVE, target = 2, frequency = QuestFrequency.DAILY)
+        repo.addQuest(daily)
+        val day = monday + 2
+        repo.completeMeasured(daily, day, 2) // COMPLETED, keyed a@day
+        val xpBefore = repo.totalXp()
+
+        // Change to WEEKLY: the record re-keys from @day to @weekStart.
+        val outcome = repo.editQuestAndRescore(daily.copy(frequency = QuestFrequency.WEEKLY), "a@$day")!!
+
+        // The stale @day record is gone and a single @weekStart record remains: XP is
+        // unchanged (difficulty same), only one history row survives (no orphan), and
+        // the reported total matches the real ledger (no phantom level-up from an
+        // un-netted old grant).
+        assertEquals(xpBefore, repo.totalXp())
+        assertEquals(1, repo.completedHistory().count { it.record.questId == "a" })
+        assertEquals(repo.totalXp(), outcome.effect.newTotalXp)
+    }
+
+    @Test
     fun `history marks stored quests editable and non-stored (routine) completions not`() = runTest {
         // A routine quest is named for display but isn't in the quests table.
         val routine = RoutineQuestFactory.all().first()
