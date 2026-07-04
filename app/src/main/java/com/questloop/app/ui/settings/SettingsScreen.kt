@@ -70,9 +70,13 @@ fun SettingsScreen(
     var confirmDelete by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
-    // (Re)schedule reminder alarms whenever the config changes. Guarded because
-    // arming exact alarms can throw if the permission was revoked (Android 12+).
-    LaunchedEffect(state.reminders) {
+    // (Re)schedule reminder alarms whenever the config changes — but not while the
+    // initial load is in flight: state.reminders is still the placeholder default
+    // (disabled) then, and applying it would cancel the user's armed alarms (for
+    // good, if the load fails). runCatching because arming alarms can throw if the
+    // permission was revoked (Android 12+).
+    LaunchedEffect(state.loading, state.reminders) {
+        if (state.loading) return@LaunchedEffect
         runCatching { ReminderScheduler(context).apply(state.reminders) }
     }
 
