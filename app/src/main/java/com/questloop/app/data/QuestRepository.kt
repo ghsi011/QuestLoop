@@ -963,9 +963,16 @@ class QuestRepository(
      * [detail] is the raw transport failure behind a plain-copy [message] — appended
      * here so the exportable log keeps it while the UI never shows it.
      */
-    private suspend fun recordAiError(config: AiConfig, message: String, detail: String? = null) {
+    private suspend fun recordAiError(config: AiConfig, message: String, detail: String? = null) = withContext(Dispatchers.IO) {
         val logged = if (detail.isNullOrBlank()) message else "$message ($detail)"
-        withContext(Dispatchers.IO) { aiDiagnostics.record(config.activeModel, redactSecrets(logged, config)) }
+        // The OpenAI call can rotate + persist tokens mid-flight (freshOpenAiTokens),
+        // so the [config] snapshot taken before the call may no longer hold the
+        // credentials that were actually sent. Scrub with the snapshot AND a fresh
+        // read — best-effort, since logging an AI error must never itself throw.
+        var scrubbed = redactSecrets(logged, config)
+        runCatching { profileStore.getAiConfig() }.getOrNull()
+            ?.let { current -> scrubbed = redactSecrets(scrubbed, current) }
+        aiDiagnostics.record(config.activeModel, scrubbed)
     }
 
     /**
@@ -996,7 +1003,9 @@ internal fun redactApiKey(message: String, apiKey: String): String =
  * Scrubs every provider secret from a diagnostics message: the OpenRouter API key
  * and, for the OpenAI provider, the OAuth access + refresh tokens. Same rationale
  * as [redactApiKey] — the tokens shouldn't appear in error bodies, but this makes
- * sure they can never leak into an exported log.
+ * sure they can never leak into an exported log. Also strips anything shaped like
+ * an `Authorization: Bearer <token>` value, a catch-all for credentials [config]
+ * no longer holds (e.g. an access token that rotated mid-call).
  */
 internal fun redactSecrets(message: String, config: AiConfig): String {
     var out = redactApiKey(message, config.apiKey)
@@ -1004,5 +1013,12 @@ internal fun redactSecrets(message: String, config: AiConfig): String {
         out = redactApiKey(out, tokens.accessToken)
         out = redactApiKey(out, tokens.refreshToken)
     }
-    return out
+    return out.replace(BEARER_SHAPED_TOKEN, "Bearer ***")
 }
+
+/**
+ * `Bearer` followed by a long token-charset run (RFC 6750 shape). The length floor
+ * keeps prose such as "invalid Bearer token" readable — real credentials (JWTs,
+ * API keys) are far longer than 20 characters.
+ */
+private val BEARER_SHAPED_TOKEN = Regex("""Bearer\s+[A-Za-z0-9\-._~+/=]{20,}""", RegexOption.IGNORE_CASE)

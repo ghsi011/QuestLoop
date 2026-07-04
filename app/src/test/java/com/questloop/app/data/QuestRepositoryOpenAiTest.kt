@@ -20,6 +20,7 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -43,7 +44,15 @@ class QuestRepositoryOpenAiTest {
     private lateinit var server: MockWebServer
     private val prefs = FakePrefs()
     private val auth = FakeAuth()
+    private val diagnostics = RecordingDiagnostics()
     private lateinit var repo: QuestRepository
+
+    private class RecordingDiagnostics : AiDiagnostics {
+        val messages = mutableListOf<String>()
+        override fun record(model: String, message: String) { messages += message }
+        override fun dump(): String = messages.joinToString("\n")
+        override fun clear() = messages.clear()
+    }
 
     private class FakeAuth : OpenAiAuth {
         var refreshCount = 0
@@ -69,13 +78,6 @@ class QuestRepositoryOpenAiTest {
             }
             return Result.success(refreshed)
         }
-    }
-
-    private class RecordingDiagnostics : AiDiagnostics {
-        private val entries = mutableListOf<String>()
-        override fun record(model: String, message: String) { entries += "[$model] $message" }
-        override fun dump(): String = entries.joinToString("\n")
-        override fun clear() = entries.clear()
     }
 
     private class FakePrefs : ProfilePreferences {
@@ -114,6 +116,7 @@ class QuestRepositoryOpenAiTest {
             db.questDao(),
             db.completionDao(),
             prefs,
+            aiDiagnostics = diagnostics,
             openAiAuth = auth,
             openAiResponsesEndpoint = server.url("/codex/responses").toString(),
         )
@@ -264,5 +267,32 @@ class QuestRepositoryOpenAiTest {
         // The platform exception stays out of the UI but lands in the exportable log.
         assertTrue("log keeps the plain copy", diag.dump().contains("Couldn't reach the AI"))
         assertTrue("log keeps the raw detail", diag.dump().contains("Exception"))
+    }
+
+    @Test
+    fun `diagnostics scrub an access token that rotated mid-call`() = runTest {
+        // The refresh rotates to this token DURING the call, so the config snapshot
+        // taken before the call never held it — only a re-read at log time does.
+        val rotated = "rotated-access-token-0123456789abcdef"
+        auth.refreshed = OpenAiOAuth.OpenAiTokens(rotated, "rotated-rt", accountId = "acct", expiresAtEpochSec = Long.MAX_VALUE)
+        val nowSec = System.currentTimeMillis() / 1000
+        prefs.ai = AiConfig(
+            enabled = true,
+            provider = AiProvider.OPENAI,
+            openAiTokens = OpenAiOAuth.OpenAiTokens("stale", "rt", accountId = "acct", expiresAtEpochSec = nowSec - 100),
+            openAiModel = "gpt-5.4",
+        )
+        // The provider's error body echoes the (rotated) token it was sent.
+        server.enqueue(
+            MockResponse().setResponseCode(403)
+                .setBody("""{"error":{"message":"Session rejected for token $rotated (revoked)"}}"""),
+        )
+
+        val result = repo.suggestQuests(listOf("rent"))
+
+        assertNotNull("the failure must be surfaced to the caller", result.error)
+        val logged = diagnostics.messages.single()
+        assertFalse("the rotated token must not reach the exportable log", logged.contains(rotated))
+        assertTrue("the provider's reason itself is kept", logged.contains("OpenAI request failed (403)"))
     }
 }
