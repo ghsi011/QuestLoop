@@ -41,6 +41,10 @@ QuestLoop: a gamified quest/habit Android app. Gradle multi-module:
 - **Releases**: tag pushes are 403-blocked, so releases are cut server-side by
   putting **`[release]`** in the commit message (empty commit is fine). It
   refreshes the rolling `v0.1.0-experimental` prerelease APK (debug-signed).
+  The release job gates on `:core:test` + `:app:testDebugUnitTest` + `lintDebug`
+  before publishing (full-tests only fires after a release is public), and a
+  release-signed build also attaches R8's `mapping.txt` to the release so
+  obfuscated crash logs stay retraceable.
 - **Reading CI status**: `mcp__github__actions_list` output is large and exceeds
   the tool token limit — it's saved to a file; parse it with `python3 -c "import
   json; ..."` rather than reading raw.

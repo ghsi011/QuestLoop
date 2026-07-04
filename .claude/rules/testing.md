@@ -14,7 +14,8 @@ live in AGENTS.md — don't restate them here.)
   push via `smoke.yml`. The default home for logic / economy / generation /
   AI-parse / safety tests.
 - `:app` unit (`app/src/test`, JUnit4 + Robolectric + MockWebServer): runs in
-  `full-tests.yml` only (manual / nightly / release) — **not** on every push.
+  `full-tests.yml` (manual / nightly / release) and as `release.yml`'s
+  pre-publish gate — **not** on every push.
 - `:app` instrumented (`app/src/androidTest`): emulator only, in `full-tests.yml`'s
   emulator job (manual / nightly / release, or a commit with `[uitest]`).
 
