@@ -127,6 +127,18 @@ class RewardEngineTest {
     }
 
     @Test
+    fun `a skip is explained as skipped and a fail as missed, with the same gentle penalty`() {
+        // The Today snackbar echoes this explanation verbatim, so a "Skip" tap must
+        // not read back as "Missed" (label/outcome mismatch).
+        val skipped = engine.score(record(result = CompletionResult.SKIPPED))
+        val missed = engine.score(record(result = CompletionResult.FAILED))
+        assertEquals(-3L, skipped.xp)
+        assertEquals(missed.xp, skipped.xp)
+        assertTrue(skipped.explanation.startsWith("Skipped"), skipped.explanation)
+        assertTrue(missed.explanation.startsWith("Missed"), missed.explanation)
+    }
+
+    @Test
     fun `penalty cap prevents shame spiral`() {
         val out = engine.score(
             record(result = CompletionResult.SKIPPED),

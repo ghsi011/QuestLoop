@@ -33,6 +33,7 @@ import com.questloop.app.data.QuestRepository
 import com.questloop.app.ui.components.CategoryDot
 import com.questloop.app.ui.components.SectionHeader
 import com.questloop.app.ui.components.pretty
+import com.questloop.core.model.CompletionResult
 import com.questloop.core.model.Difficulty
 import com.questloop.core.model.Priority
 import com.questloop.core.model.Quest
@@ -134,17 +135,34 @@ private fun CompletedCard(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CategoryDot(entry.record.category)
                 Text(entry.title, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                if (entry.record.xpAwarded != 0L) {
+                val xp = entry.record.xpAwarded
+                if (xp != 0L) {
                     Text(
-                        "+${entry.record.xpAwarded} XP",
+                        // Skips carry a small negative grant; state it plainly, not
+                        // in an alarm color (non-shaming).
+                        (if (xp > 0) "+$xp" else "$xp") + " XP",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = if (xp > 0) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                     )
                 }
             }
+            // Skips are listed too (so they can still be undone later); name the
+            // outcome with the same word the button used.
+            val outcome = when {
+                entry.record.result != CompletionResult.SKIPPED -> null
+                entry.record.category == QuestCategory.BAD_HABIT_REDUCTION -> "Slipped"
+                else -> "Skipped"
+            }
             Text(
-                "${LocalDate.ofEpochDay(entry.record.epochDay).format(historyDateFormat)} · " +
+                listOfNotNull(
+                    LocalDate.ofEpochDay(entry.record.epochDay).format(historyDateFormat),
                     entry.record.difficulty.pretty(),
+                    outcome,
+                ).joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

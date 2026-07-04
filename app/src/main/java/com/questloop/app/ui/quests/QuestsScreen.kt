@@ -58,7 +58,9 @@ fun QuestsScreen(
         val result = snackbarHostState.showSnackbar(
             message = message,
             actionLabel = if (state.pendingUndo != null) "Undo" else null,
-            duration = SnackbarDuration.Short,
+            // Keep undoable messages up longer — ~4s is too short to read the
+            // outcome and still reverse a mis-tap.
+            duration = if (state.pendingUndo != null) SnackbarDuration.Long else SnackbarDuration.Short,
         )
         if (result == SnackbarResult.ActionPerformed) viewModel.undoLast() else viewModel.consumeToast()
     }

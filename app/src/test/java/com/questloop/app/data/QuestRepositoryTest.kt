@@ -875,6 +875,25 @@ class QuestRepositoryTest {
     }
 
     @Test
+    fun `history lists a skipped quest so its penalty can still be reversed later`() = runTest {
+        repo.addQuest(quest("earn"))
+        repo.completeQuest(quest("earn"), epochDay = 1, result = CompletionResult.COMPLETED)
+        val earned = repo.totalXp()
+
+        repo.addQuest(quest("a"))
+        repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.SKIPPED)
+        assertEquals(earned - 3, repo.totalXp())
+
+        // The skip appears in history, giving a recovery path once the snackbar's
+        // Undo window is gone: removing the record refunds the gentle penalty.
+        val entry = repo.completedHistory().single { it.record.questId == "a" }
+        assertEquals(CompletionResult.SKIPPED, entry.record.result)
+        repo.deleteCompletion(entry.record.instanceId)
+        assertEquals(earned, repo.totalXp())
+        assertTrue(repo.completedHistory().none { it.record.questId == "a" })
+    }
+
+    @Test
     fun `history marks stored quests editable and non-stored (routine) completions not`() = runTest {
         // A routine quest is named for display but isn't in the quests table.
         val routine = RoutineQuestFactory.all().first()

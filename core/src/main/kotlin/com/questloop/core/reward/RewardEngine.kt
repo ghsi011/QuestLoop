@@ -207,11 +207,14 @@ class RewardEngine(private val config: RewardConfig = RewardConfig()) {
             )
         }
         val penalty = config.missPenalty.coerceAtMost(remainingPenalty)
+        // Name the outcome the user actually chose: a "Skip" tap must not be echoed
+        // back as "Missed" (same gentle, capped penalty either way).
+        val label = if (record.result == CompletionResult.SKIPPED) "Skipped" else "Missed"
         return RewardOutcome(
             xp = -penalty,
             baseXp = 0,
             multipliers = emptyMap(),
-            explanation = "Missed — a gentle -$penalty XP. Tomorrow is a fresh start.",
+            explanation = "$label — a gentle -$penalty XP. Tomorrow is a fresh start.",
         )
     }
 
