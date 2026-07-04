@@ -1,5 +1,6 @@
 package com.questloop.app.ui.quests
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.questloop.app.util.launchSafely
@@ -52,7 +53,19 @@ class QuestBankViewModel(private val repository: QuestRepository) : ViewModel() 
         val s = _state.value
         if (quest.id in s.addedIds || quest.id in s.adding) return
         _state.update { it.copy(adding = it.adding + quest.id) }
-        launchSafely {
+        launchSafely(onError = { t ->
+            // On failure the quest never reaches addedIds, so the quests collector
+            // can't release the in-flight marker — clear it here and say so, or
+            // this row's Add button is silently dead for the rest of the visit.
+            runCatching { Log.e("QuestLoop", "Quest bank add failed", t) }
+            _state.update {
+                it.copy(
+                    adding = it.adding - quest.id,
+                    toast = "Something went wrong — try again.",
+                    toastId = it.toastId + 1,
+                )
+            }
+        }) {
             repository.addFromBank(quest, AppClock.todayEpochDay())
             // Intentionally do NOT clear `adding` here — the quests collector
             // clears it when the new quest appears in addedIds, so the button

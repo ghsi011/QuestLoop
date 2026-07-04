@@ -118,4 +118,20 @@ class QuestBankViewModelTest {
         vm.add(bankQuest)
         assertNull(vm.state.value.toast)
     }
+
+    @Test
+    fun `a failed add releases the in-flight guard and shows an error toast`() = runTest {
+        val vm = QuestBankViewModel(repo)
+        db.close() // the write will fail
+        val bankQuest = QuestBank.catalog.first()
+        vm.add(bankQuest)
+
+        val state = vm.state.value
+        assertTrue(state.adding.isEmpty())
+        assertNotNull(state.toast)
+
+        // The row isn't dead — a retry passes the guard and reports again.
+        vm.add(bankQuest)
+        assertTrue(vm.state.value.toastId > state.toastId)
+    }
 }

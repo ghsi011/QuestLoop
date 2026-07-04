@@ -75,10 +75,13 @@ class ReviewViewModel(private val repository: QuestRepository) : ViewModel() {
         if (_state.value.summarizing) return
         launchSafely {
             _state.update { it.copy(summarizing = true) }
-            val weeklySummary = repository.narrateReview(weekly).text
-            val monthlySummary = repository.narrateReview(monthly).text
-            _state.update {
-                it.copy(summarizing = false, weeklySummary = weeklySummary, monthlySummary = monthlySummary)
+            try {
+                val weeklySummary = repository.narrateReview(weekly).text
+                val monthlySummary = repository.narrateReview(monthly).text
+                _state.update { it.copy(weeklySummary = weeklySummary, monthlySummary = monthlySummary) }
+            } finally {
+                // Always re-enable the button — a failure keeps the factual summaries.
+                _state.update { it.copy(summarizing = false) }
             }
         }
     }

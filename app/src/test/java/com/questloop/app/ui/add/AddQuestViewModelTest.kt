@@ -24,6 +24,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -115,6 +116,31 @@ class AddQuestViewModelTest {
 
         assertTrue(vm.state.value.suggestions.isEmpty())
         assertEquals(2, repo.activeQuestIds().size)
+    }
+
+    @Test
+    fun `a failed generate clears the spinner and reports it`() = runTest {
+        val vm = AddQuestViewModel(repo)
+        db.close() // the dedup read inside suggestQuests will fail
+
+        vm.generate("Email landlord")
+
+        assertFalse(vm.state.value.generating)
+        assertEquals("Something went wrong — try again.", vm.state.value.message)
+    }
+
+    @Test
+    fun `a failed accept keeps the suggestion and re-enables the add buttons`() = runTest {
+        val vm = AddQuestViewModel(repo)
+        vm.generate("Email landlord")
+        db.close() // persisting will fail
+
+        vm.acceptSuggestion(vm.state.value.suggestions.single().id)
+
+        val state = vm.state.value
+        assertFalse(state.saving)
+        assertEquals(1, state.suggestions.size) // nothing silently dropped
+        assertNotNull(state.message)
     }
 
     @Test

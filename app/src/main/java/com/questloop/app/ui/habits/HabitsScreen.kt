@@ -43,13 +43,19 @@ fun HabitsScreen(viewModel: HabitsViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     // Title + the action to run if the user confirms the deletion.
     var pendingDelete by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
+    // Only claim "nothing yet" once the lists truly loaded empty — not mid-load,
+    // and not after a failed load (the user's real entries may still exist).
+    val listsLoaded = !state.loading && state.error == null
 
     Column(
         Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        state.error?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
         SectionHeader("Habits to build")
-        if (state.habits.isEmpty()) {
+        if (state.habits.isEmpty() && listsLoaded) {
             EmptyHint("No habits yet — add one below to start turning it into daily quests.")
         }
         state.habits.forEach { habit ->
@@ -62,7 +68,7 @@ fun HabitsScreen(viewModel: HabitsViewModel) {
         AddHabitForm(onAdd = viewModel::addHabit)
 
         SectionHeader("Habits to reduce")
-        if (state.badHabits.isEmpty()) {
+        if (state.badHabits.isEmpty() && listsLoaded) {
             EmptyHint("Nothing to reduce yet — tracking one honestly is rewarded, not punished.")
         }
         state.badHabits.forEach { bad ->
@@ -75,7 +81,7 @@ fun HabitsScreen(viewModel: HabitsViewModel) {
         AddBadHabitForm(onAdd = viewModel::addBadHabit)
 
         SectionHeader("Goals")
-        if (state.goals.isEmpty()) {
+        if (state.goals.isEmpty() && listsLoaded) {
             EmptyHint("No goals yet — add one to get a gentle weekly progress check-in.")
         }
         state.goals.forEach { goal ->
