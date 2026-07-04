@@ -52,9 +52,16 @@ class SettingsViewModelTest {
         ),
     ) : OpenAiAuth {
         var openedUrl: String? = null
-        override suspend fun signIn(timeoutMs: Long, openUrl: (String) -> Unit): Result<OpenAiOAuth.OpenAiTokens> {
+        override suspend fun signIn(
+            timeoutMs: Long,
+            onTokens: suspend (OpenAiOAuth.OpenAiTokens) -> Unit,
+            openUrl: (String) -> Unit,
+        ): Result<OpenAiOAuth.OpenAiTokens> {
             openUrl("https://auth.openai.test/authorize?x=1")
             openedUrl = "https://auth.openai.test/authorize?x=1"
+            // Mirror the real service: tokens are handed to the caller's hook
+            // (where the repository persists them) before returning success.
+            result.getOrNull()?.let { onTokens(it) }
             return result
         }
         override suspend fun refresh(tokens: OpenAiOAuth.OpenAiTokens) = Result.success(tokens)

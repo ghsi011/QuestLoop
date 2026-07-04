@@ -53,7 +53,14 @@ class QuestRepositoryOpenAiTest {
         var refreshGate: CompletableDeferred<Unit>? = null
         val refreshStarted = CompletableDeferred<Unit>()
 
-        override suspend fun signIn(timeoutMs: Long, openUrl: (String) -> Unit) = Result.success(refreshed)
+        override suspend fun signIn(
+            timeoutMs: Long,
+            onTokens: suspend (OpenAiOAuth.OpenAiTokens) -> Unit,
+            openUrl: (String) -> Unit,
+        ): Result<OpenAiOAuth.OpenAiTokens> {
+            onTokens(refreshed)
+            return Result.success(refreshed)
+        }
         override suspend fun refresh(tokens: OpenAiOAuth.OpenAiTokens): Result<OpenAiOAuth.OpenAiTokens> {
             refreshCount++
             refreshGate?.let { gate ->
