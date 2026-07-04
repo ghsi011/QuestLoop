@@ -31,8 +31,9 @@ interface SecureKeyStore {
 }
 
 /**
- * Default, plaintext store backed by the same DataStore — preserves the original
- * behaviour and keeps unit tests off the Android Keystore.
+ * Plaintext store backed by the same DataStore — for unit tests only, where the
+ * Android Keystore isn't available. Production paths get [EncryptedKeyStore] by
+ * default; never wire this one into a shipping path.
  */
 class DataStoreKeyStore(private val dataStore: DataStore<Preferences>) : SecureKeyStore {
     // Distinct from the legacy "ai_api_key" slot so setAiConfig's legacy scrub
@@ -60,8 +61,9 @@ class DataStoreKeyStore(private val dataStore: DataStore<Preferences>) : SecureK
 }
 
 /**
- * Production store: credentials are held in [EncryptedSharedPreferences] backed by
- * a Keystore master key, so they aren't readable in plaintext via adb backup / root.
+ * Production store, and the [ProfileStore] default: credentials are held in
+ * [EncryptedSharedPreferences] backed by a Keystore master key, so they aren't
+ * readable in plaintext via adb backup / root.
  */
 class EncryptedKeyStore(context: Context) : SecureKeyStore {
 

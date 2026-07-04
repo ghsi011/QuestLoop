@@ -54,7 +54,7 @@ class ProfileStoreTest {
     fun `malformed habits json decodes to an empty list and keeps defaults`() = runTest {
         val ds = realDataStore()
         ds.edit { it[stringPreferencesKey("habits_json")] = "{not valid json" }
-        val store = ProfileStore(ctx, ds)
+        val store = ProfileStore(ctx, ds, DataStoreKeyStore(ds))
         val profile = store.profile.first()
         assertEquals(emptyList<Habit>(), profile.habits)
         assertEquals(6, profile.preferences.maxDailyQuests)
@@ -63,13 +63,13 @@ class ProfileStoreTest {
     @Test
     fun `ai config round-trips and is not left in plaintext datastore`() = runTest {
         val ds = realDataStore()
-        val store = ProfileStore(ctx, ds)
+        val store = ProfileStore(ctx, ds, DataStoreKeyStore(ds))
         store.setAiConfig(AiConfig(enabled = true, apiKey = "sk-xyz", model = "model-1"))
         val cfg = store.getAiConfig()
         assertEquals(true, cfg.enabled)
         assertEquals("sk-xyz", cfg.apiKey)
         assertEquals("model-1", cfg.model)
-        // The default key store keeps the key out of the legacy plaintext slot.
+        // The test key store keeps the key out of the legacy plaintext slot.
         assertNull(ds.data.first()[androidx.datastore.preferences.core.stringPreferencesKey("ai_api_key")])
     }
 
@@ -89,7 +89,7 @@ class ProfileStoreTest {
     @Test
     fun `openai provider and oauth tokens round-trip`() = runTest {
         val ds = realDataStore()
-        val store = ProfileStore(ctx, ds)
+        val store = ProfileStore(ctx, ds, DataStoreKeyStore(ds))
         val tokens = com.questloop.core.ai.openai.OpenAiOAuth.OpenAiTokens(
             accessToken = "at-1",
             refreshToken = "rt-1",
@@ -110,7 +110,7 @@ class ProfileStoreTest {
     @Test
     fun `clearing the openai tokens unlinks the account`() = runTest {
         val ds = realDataStore()
-        val store = ProfileStore(ctx, ds)
+        val store = ProfileStore(ctx, ds, DataStoreKeyStore(ds))
         val tokens = com.questloop.core.ai.openai.OpenAiOAuth.OpenAiTokens("at", "rt", accountId = "a")
         store.setAiConfig(AiConfig(enabled = true, provider = AiProvider.OPENAI, openAiTokens = tokens))
         assertEquals(true, store.getAiConfig().openAiConnected)
@@ -120,7 +120,8 @@ class ProfileStoreTest {
 
     @Test
     fun `io error on read falls back to defaults without crashing`() = runTest {
-        val store = ProfileStore(ctx, throwingDataStore(IOException("corrupt")))
+        val ds = throwingDataStore(IOException("corrupt"))
+        val store = ProfileStore(ctx, ds, DataStoreKeyStore(ds))
         assertEquals(6, store.profile.first().preferences.maxDailyQuests)
         assertFalse(store.isOnboardingComplete())
         assertFalse(store.getAiConfig().usable)
@@ -128,7 +129,8 @@ class ProfileStoreTest {
 
     @Test
     fun `a non-io error on read is rethrown, not swallowed`() {
-        val store = ProfileStore(ctx, throwingDataStore(IllegalStateException("boom")))
+        val ds = throwingDataStore(IllegalStateException("boom"))
+        val store = ProfileStore(ctx, ds, DataStoreKeyStore(ds))
         assertThrows(IllegalStateException::class.java) {
             runBlocking { store.profile.first() }
         }
@@ -136,7 +138,8 @@ class ProfileStoreTest {
 
     @Test
     fun `streak grace days are clamped to the 0 to 7 range`() = runTest {
-        val store = ProfileStore(ctx, realDataStore())
+        val ds = realDataStore()
+        val store = ProfileStore(ctx, ds, DataStoreKeyStore(ds))
         // Above the cap clamps down to 7…
         store.setStreakGraceDays(99)
         assertEquals(7, store.profile.first().preferences.streakGraceDays)

@@ -67,7 +67,9 @@ interface ProfilePreferences {
 class ProfileStore(
     context: Context,
     private val dataStore: DataStore<Preferences> = context.dataStore,
-    private val keyStore: SecureKeyStore = DataStoreKeyStore(dataStore),
+    // Encrypted by default so a hand-wired ProfileStore(context) can never silently
+    // downgrade credentials to plaintext; tests pass DataStoreKeyStore explicitly.
+    private val keyStore: SecureKeyStore = EncryptedKeyStore(context),
 ) : ProfilePreferences {
 
     private val json = Json { ignoreUnknownKeys = true }

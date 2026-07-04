@@ -3,7 +3,7 @@ package com.questloop.app.reminders
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import com.questloop.app.data.ProfileStore
+import com.questloop.app.QuestLoopApplication
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -15,8 +15,12 @@ class BootReceiver : BroadcastReceiver() {
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val config = ProfileStore(context.applicationContext).getReminderConfig()
-                ReminderScheduler(context).apply(config)
+                runCatching {
+                    // Reuse the app's single wired repository (EncryptedKeyStore etc.)
+                    // instead of hand-wiring a divergent ProfileStore.
+                    val repo = (context.applicationContext as QuestLoopApplication).container.repository
+                    ReminderScheduler(context).apply(repo.reminderConfig())
+                }
             } finally {
                 pending.finish()
             }
