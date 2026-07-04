@@ -455,6 +455,32 @@ class QuestRepositoryTest {
     }
 
     @Test
+    fun `plan resolves the persisted check-in and an explicit one overrides it`() = runTest {
+        // An easy companion keeps the low-energy plan non-empty (an empty plan
+        // would trigger the easiest-quest fallback and resurface the hard one).
+        repo.addQuest(quest("gentle", difficulty = Difficulty.EASY))
+        repo.addQuest(quest("tough", difficulty = Difficulty.HARD))
+        // No check-in today: the hard quest is planned as usual.
+        assertTrue(repo.todayPlan(epochDay = 1, dayPart = DayPart.MIDDAY).quests.any { it.quest.id == "tough" })
+        // A persisted low-energy check-in caps difficulty at MEDIUM. todayPlan
+        // resolves it itself, so callers that don't thread it (widget, reminder
+        // receiver) see the same lighter plan as the Today screen.
+        repo.setCheckIn(com.questloop.core.model.EnergyCheckIn(epochDay = 1, energy = 2, availableMinutes = 60))
+        val lighter = repo.todayPlan(epochDay = 1, dayPart = DayPart.MIDDAY)
+        assertTrue(lighter.quests.any { it.quest.id == "gentle" })
+        assertFalse(lighter.quests.any { it.quest.id == "tough" })
+        // An explicitly passed check-in overrides the persisted one.
+        val energized = com.questloop.core.model.EnergyCheckIn(epochDay = 1, energy = 5, availableMinutes = 240)
+        assertTrue(
+            repo.todayPlan(epochDay = 1, dayPart = DayPart.MIDDAY, checkIn = energized)
+                .quests.any { it.quest.id == "tough" },
+        )
+        // A check-in persisted for another day never shapes today's plan.
+        repo.setCheckIn(com.questloop.core.model.EnergyCheckIn(epochDay = 3, energy = 2, availableMinutes = 60))
+        assertTrue(repo.todayPlan(epochDay = 1, dayPart = DayPart.MIDDAY).quests.any { it.quest.id == "tough" })
+    }
+
+    @Test
     fun `a goal becomes a weekly derived quest`() = runTest {
         repo.addGoal(
             com.questloop.core.model.Goal(id = "g1", title = "Learn guitar", category = QuestCategory.PERSONAL_GROWTH),

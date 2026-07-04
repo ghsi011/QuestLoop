@@ -128,8 +128,7 @@ class QuestRepository(
      * here because they're managed on the Habits screen, not individually.
      */
     suspend fun questOverview(epochDay: Long, dayPart: DayPart): List<QuestStatus> {
-        val checkIn = todayCheckIn(epochDay)
-        val plan = todayPlan(epochDay, dayPart, checkIn)
+        val plan = todayPlan(epochDay, dayPart)
         val inPlan = plan.quests.map { it.quest.id }.toSet()
         val lastCompleted = completionDao.lastCompletedDays().associate { it.questId to it.lastDay }
         // "Done" uses the same style-aware dismissal as the plan: a partially logged
@@ -179,12 +178,20 @@ class QuestRepository(
         questDao.archive(id)
     }
 
-    /** Build today's plan from active quests + recent history + the day's routine. */
+    /**
+     * Build today's plan from active quests + recent history + the day's routine.
+     *
+     * The day's persisted energy check-in shapes the plan (size, difficulty
+     * ceiling, time budget), so it's resolved here rather than by each caller —
+     * the widget and reminder receiver see the same plan as the Today screen.
+     * Pass [checkIn] only to override the persisted one.
+     */
     suspend fun todayPlan(
         epochDay: Long,
         dayPart: DayPart,
         checkIn: EnergyCheckIn? = null,
     ): QuestGenerator.DailyPlan {
+        val resolvedCheckIn = checkIn ?: todayCheckIn(epochDay)
         val profile = profileStore.profile.first()
         // Only surface quests whose recurrence cadence makes them due today
         // (e.g. a weekly quest doesn't reappear every day after completion).
@@ -217,7 +224,7 @@ class QuestRepository(
                 profile = profile,
                 candidates = candidates,
                 history = history,
-                checkIn = checkIn,
+                checkIn = resolvedCheckIn,
                 routineQuests = RoutineQuestFactory.routinesFor(dayPart),
                 dismissedToday = dismissed,
                 availableMinutesOverride = calendarMinutes,
