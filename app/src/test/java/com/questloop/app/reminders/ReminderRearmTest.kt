@@ -1,8 +1,10 @@
 package com.questloop.app.reminders
 
 import android.app.AlarmManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Looper
 import com.questloop.app.data.ProfileStore
 import com.questloop.app.data.ReminderConfig
@@ -39,6 +41,23 @@ class ReminderRearmTest {
         val deadline = System.currentTimeMillis() + 10_000
         while (!done() && System.currentTimeMillis() < deadline) {
             Thread.sleep(20)
+        }
+    }
+
+    /**
+     * Delivers [intent] to [receiver] via a real broadcast dispatch, the way the
+     * platform does — so `goAsync()`'s PendingResult is wired up and the receiver's
+     * `finally { pending.finish() }` doesn't NPE. Robolectric doesn't route an
+     * implicit system broadcast to a manifest-declared receiver, so register it for
+     * the delivery (the manifest intent-filter is what wires it in production).
+     */
+    private fun deliver(receiver: BroadcastReceiver, action: String) {
+        ctx.registerReceiver(receiver, IntentFilter(action))
+        try {
+            ctx.sendBroadcast(Intent(action))
+            shadowOf(Looper.getMainLooper()).idle()
+        } finally {
+            ctx.unregisterReceiver(receiver)
         }
     }
 
@@ -88,8 +107,7 @@ class ReminderRearmTest {
             assertNotEquals(expected, armedParisTimes())
 
             TimeZone.setDefault(TimeZone.getTimeZone("Europe/Paris"))
-            ctx.sendBroadcast(Intent(Intent.ACTION_TIMEZONE_CHANGED))
-            shadowOf(Looper.getMainLooper()).idle()
+            deliver(BootReceiver(), Intent.ACTION_TIMEZONE_CHANGED)
             awaitRearm { armedParisTimes() == expected }
 
             assertEquals(expected, armedParisTimes())
@@ -106,8 +124,7 @@ class ReminderRearmTest {
         assertTrue(shadow.scheduledAlarms.isEmpty())
 
         // ACTION_TIME_CHANGED is the "android.intent.action.TIME_SET" broadcast.
-        ctx.sendBroadcast(Intent(Intent.ACTION_TIME_CHANGED))
-        shadowOf(Looper.getMainLooper()).idle()
+        deliver(BootReceiver(), Intent.ACTION_TIME_CHANGED)
         awaitRearm { shadow.scheduledAlarms.size == 2 }
 
         assertEquals(2, shadow.scheduledAlarms.size)

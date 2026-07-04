@@ -130,12 +130,13 @@ class ProfileStoreTest {
     @Test
     fun `default datastore key store scrubs the legacy plaintext slot`() = runTest {
         val ds = realDataStore()
-        // The defaulted DataStoreKeyStore is itself plaintext (it writes
-        // "ai_api_key_v2" into the same DataStore) — only production's
-        // EncryptedKeyStore encrypts, covered by its instrumented test. This pins
-        // the narrower invariant the default can honour: the legacy "ai_api_key"
-        // slot stays scrubbed, so the one-time migration can't resurrect it.
-        val store = ProfileStore(ctx, ds)
+        // DataStoreKeyStore is itself plaintext (it writes "ai_api_key_v2" into the
+        // same DataStore) — only production's EncryptedKeyStore encrypts, covered by
+        // its instrumented test (AndroidKeyStore is absent under Robolectric, so the
+        // default EncryptedKeyStore can't be exercised here). Inject DataStoreKeyStore
+        // to pin the narrower invariant it can honour: the legacy "ai_api_key" slot
+        // stays scrubbed, so the one-time migration can't resurrect it.
+        val store = ProfileStore(ctx, ds, DataStoreKeyStore(ds))
         store.setAiConfig(AiConfig(enabled = true, apiKey = "sk-xyz", model = "model-1"))
         assertEquals("sk-xyz", store.getAiConfig().apiKey)
         assertNull(ds.data.first()[stringPreferencesKey("ai_api_key")])
@@ -144,7 +145,9 @@ class ProfileStoreTest {
     @Test
     fun `a lingering legacy plaintext copy is scrubbed once the secure store holds the key`() = runTest {
         val ds = realDataStore()
-        val store = ProfileStore(ctx, ds)
+        // Inject DataStoreKeyStore: the default EncryptedKeyStore needs AndroidKeyStore,
+        // absent under Robolectric. This test pins the legacy-slot scrub behaviour.
+        val store = ProfileStore(ctx, ds, DataStoreKeyStore(ds))
         store.setAiConfig(AiConfig(enabled = true, apiKey = "sk-xyz"))
         // Simulate a process death between the migration's verified secure write and
         // its plaintext remove: the legacy slot still holds a stale plaintext copy.

@@ -3,6 +3,7 @@ package com.questloop.app.reminders
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Looper
 import com.questloop.app.QuestLoopApplication
 import com.questloop.core.generation.RoutineQuestFactory
@@ -43,13 +44,24 @@ class ReminderActionReceiverTest {
         ReminderNotifications.show(app, ReminderSlot.MORNING)
         assertNotNull(shadowOf(notificationManager).getNotification(ReminderSlot.MORNING.notificationId))
 
-        app.sendBroadcast(
-            Intent(app, ReminderActionReceiver::class.java)
-                .setAction(ReminderActionReceiver.ACTION_DONE)
-                .putExtra(ReminderActionReceiver.EXTRA_SLOT, ReminderSlot.MORNING.name)
-                .putExtra(ReminderActionReceiver.EXTRA_DAY, day),
-        )
-        shadowOf(Looper.getMainLooper()).idle()
+        // Deliver via a real broadcast dispatch so goAsync()'s PendingResult is wired
+        // up (a direct onReceive() leaves it null, and the receiver's finally-block
+        // finish() then NPEs on its background thread). Robolectric doesn't route a
+        // sendBroadcast to the manifest-declared receiver, so register it for the
+        // delivery — the manifest registration is what wires it in production. The
+        // receiver still does its real work asynchronously on Dispatchers.IO.
+        val receiver = ReminderActionReceiver()
+        app.registerReceiver(receiver, IntentFilter(ReminderActionReceiver.ACTION_DONE))
+        try {
+            app.sendBroadcast(
+                Intent(ReminderActionReceiver.ACTION_DONE)
+                    .putExtra(ReminderActionReceiver.EXTRA_SLOT, ReminderSlot.MORNING.name)
+                    .putExtra(ReminderActionReceiver.EXTRA_DAY, day),
+            )
+            shadowOf(Looper.getMainLooper()).idle()
+        } finally {
+            app.unregisterReceiver(receiver)
+        }
 
         // The receiver works on Dispatchers.IO; cancelling the notification is its
         // last step, so waiting for that covers the whole completion path.

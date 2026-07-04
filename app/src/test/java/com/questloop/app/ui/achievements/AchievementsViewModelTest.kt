@@ -113,7 +113,11 @@ class AchievementsViewModelTest {
 
     @Test
     fun `a failed load shows a retryable error instead of an endless spinner`() = runTest {
-        db.close() // every query now fails -> the init load errors out
+        // Drop the ledger table so the init load's queries throw a real
+        // SQLiteException. NOT db.close(): closing cancels Room's query scope, and
+        // that CancellationException is cooperative cancellation the ViewModel
+        // correctly rethrows — so it would never reach the error handler.
+        db.openHelper.writableDatabase.execSQL("DROP TABLE completions")
         val vm = AchievementsViewModel(repo)
         val state = vm.state.value
         assertFalse(state.loading)

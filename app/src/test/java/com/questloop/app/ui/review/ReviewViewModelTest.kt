@@ -156,7 +156,11 @@ class ReviewViewModelTest {
 
     @Test
     fun `a failed load releases the spinner and surfaces an error`() = runTest {
-        db.close() // Make the store fail: the review queries throw.
+        // Drop the ledger table so the review queries throw a real SQLiteException.
+        // NOT db.close(): closing cancels Room's query scope, and that
+        // CancellationException is cooperative cancellation the ViewModel correctly
+        // rethrows — so it would never reach the error handler.
+        db.openHelper.writableDatabase.execSQL("DROP TABLE completions")
         val vm = ReviewViewModel(repo)
         vm.load()
         val state = vm.state.value

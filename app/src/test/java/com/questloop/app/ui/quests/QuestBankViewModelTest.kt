@@ -122,7 +122,11 @@ class QuestBankViewModelTest {
 
     @Test
     fun `a failed add releases the in-flight marker so retry still works`() = runTest {
-        db.close() // Make the store fail: the insert throws instead of persisting.
+        // Drop the quests table so the insert throws a real SQLiteException instead
+        // of persisting. NOT db.close(): closing cancels Room's query scope, and that
+        // CancellationException is cooperative cancellation the ViewModel correctly
+        // rethrows — so it would never reach the error handler.
+        db.openHelper.writableDatabase.execSQL("DROP TABLE quests")
         val vm = QuestBankViewModel(repo)
         val bankQuest = QuestBank.catalog.first()
         vm.add(bankQuest)

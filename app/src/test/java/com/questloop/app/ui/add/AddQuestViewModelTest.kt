@@ -121,7 +121,11 @@ class AddQuestViewModelTest {
     @Test
     fun `a failed generate clears the spinner and reports it`() = runTest {
         val vm = AddQuestViewModel(repo)
-        db.close() // the dedup read inside suggestQuests will fail
+        // Drop the quests table so the dedup read inside suggestQuests throws a real
+        // SQLiteException. NOT db.close(): closing cancels Room's query scope, and
+        // that CancellationException is cooperative cancellation the ViewModel
+        // correctly rethrows — so it would never reach the error handler.
+        db.openHelper.writableDatabase.execSQL("DROP TABLE quests")
 
         vm.generate("Email landlord")
 
@@ -133,7 +137,11 @@ class AddQuestViewModelTest {
     fun `a failed accept keeps the suggestion and re-enables the add buttons`() = runTest {
         val vm = AddQuestViewModel(repo)
         vm.generate("Email landlord")
-        db.close() // persisting will fail
+        // Drop the quests table so persisting throws a real SQLiteException. NOT
+        // db.close(): closing cancels Room's query scope, and that
+        // CancellationException is cooperative cancellation the ViewModel correctly
+        // rethrows — so it would never reach the error handler.
+        db.openHelper.writableDatabase.execSQL("DROP TABLE quests")
 
         vm.acceptSuggestion(vm.state.value.suggestions.single().id)
 
