@@ -5,7 +5,10 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.questloop.core.model.BadHabit
+import com.questloop.core.model.Goal
 import com.questloop.core.model.Habit
+import com.questloop.core.model.QuestCategory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,6 +22,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -58,6 +62,41 @@ class ProfileStoreTest {
         val profile = store.profile.first()
         assertEquals(emptyList<Habit>(), profile.habits)
         assertEquals(6, profile.preferences.maxDailyQuests)
+    }
+
+    @Test
+    fun `list setters refuse to overwrite a stored list that no longer decodes`() = runTest {
+        val ds = realDataStore()
+        ds.edit {
+            it[stringPreferencesKey("habits_json")] = "{not valid json"
+            it[stringPreferencesKey("bad_habits_json")] = "{not valid json"
+            it[stringPreferencesKey("goals_json")] = "{not valid json"
+        }
+        val store = ProfileStore(ctx, ds)
+        // The read side degrades to empty lists (test above), so a read-modify-write
+        // built on it would persist a near-empty list over the user's real data.
+        val habit = Habit(id = "h1", title = "Stretch", category = QuestCategory.HEALTH)
+        val bad = BadHabit(id = "b1", title = "Doomscrolling")
+        val goal = Goal(id = "g1", title = "Run a 5k", category = QuestCategory.HEALTH)
+        assertTrue(runCatching { store.setHabits(listOf(habit)) }.exceptionOrNull() is ProfileListCorruptException)
+        assertTrue(runCatching { store.setBadHabits(listOf(bad)) }.exceptionOrNull() is ProfileListCorruptException)
+        assertTrue(runCatching { store.setGoals(listOf(goal)) }.exceptionOrNull() is ProfileListCorruptException)
+        // The raw blobs survive for a fixed app version (or export) to recover.
+        val prefs = ds.data.first()
+        assertEquals("{not valid json", prefs[stringPreferencesKey("habits_json")])
+        assertEquals("{not valid json", prefs[stringPreferencesKey("bad_habits_json")])
+        assertEquals("{not valid json", prefs[stringPreferencesKey("goals_json")])
+    }
+
+    @Test
+    fun `list setters replace absent and decodable blobs normally`() = runTest {
+        val ds = realDataStore()
+        val store = ProfileStore(ctx, ds)
+        val first = Habit(id = "h1", title = "Stretch", category = QuestCategory.HEALTH)
+        val second = Habit(id = "h2", title = "Read", category = QuestCategory.PERSONAL_GROWTH)
+        store.setHabits(listOf(first)) // no blob yet
+        store.setHabits(listOf(first, second)) // a decodable blob stays replaceable
+        assertEquals(listOf("h1", "h2"), store.profile.first().habits.map { it.id })
     }
 
     @Test

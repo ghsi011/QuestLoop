@@ -1,6 +1,7 @@
 package com.questloop.app.data
 
 import android.content.Context
+import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.doublePreferencesKey
@@ -44,6 +45,9 @@ interface ProfilePreferences {
     /** Opt-in to using the device calendar's free time as today's budget (SPEC §10).
      *  Defaulted so test fakes need not implement it; [ProfileStore] persists it. */
     suspend fun setCalendarBudgetEnabled(value: Boolean) {}
+    /** The list setters refuse to overwrite a stored list that no longer decodes
+     *  ([ProfileStore] throws [ProfileListCorruptException]), so a decode failure
+     *  can't be compounded into permanent data loss by the next read-modify-write. */
     suspend fun setHabits(habits: List<Habit>)
     suspend fun setBadHabits(badHabits: List<BadHabit>)
     suspend fun setGoals(goals: List<Goal>)
@@ -58,6 +62,16 @@ interface ProfilePreferences {
     suspend fun setReminderConfig(config: ReminderConfig)
     suspend fun clear()
 }
+
+/**
+ * Thrown instead of overwriting a stored habit/bad-habit/goal list that no longer
+ * decodes (corrupt blob or an incompatible model change). The read side falls back
+ * to an empty list so the app still launches, but persisting a read-modify-write
+ * built on that fallback would erase the user's real data for good — so the
+ * setters refuse and keep the raw blob for a fixed app version to recover.
+ */
+class ProfileListCorruptException(what: String, cause: Throwable) :
+    IllegalStateException("Stored $what can't be read; refusing to overwrite them", cause)
 
 /**
  * Stores lightweight profile + preference state in DataStore: scalar settings as
@@ -122,15 +136,43 @@ class ProfileStore(
                     .mapNotNull { runCatching { QuestCategory.valueOf(it) }.getOrNull() }
                     .toSet(),
             ),
-            habits = decodeList(prefs[Keys.HABITS], Habit.serializer()),
-            badHabits = decodeList(prefs[Keys.BAD_HABITS], BadHabit.serializer()),
-            goals = decodeList(prefs[Keys.GOALS], Goal.serializer()),
+            habits = decodeList(prefs[Keys.HABITS], Habit.serializer(), "habits"),
+            badHabits = decodeList(prefs[Keys.BAD_HABITS], BadHabit.serializer(), "bad habits"),
+            goals = decodeList(prefs[Keys.GOALS], Goal.serializer(), "goals"),
         )
     }
 
-    private fun <T> decodeList(raw: String?, serializer: kotlinx.serialization.KSerializer<T>): List<T> =
+    private fun <T> decodeResult(raw: String, serializer: kotlinx.serialization.KSerializer<T>): Result<List<T>> =
+        runCatching { json.decodeFromString(ListSerializer(serializer), raw) }
+
+    private fun <T> decodeList(raw: String?, serializer: kotlinx.serialization.KSerializer<T>, what: String): List<T> =
         if (raw.isNullOrBlank()) emptyList()
-        else runCatching { json.decodeFromString(ListSerializer(serializer), raw) }.getOrDefault(emptyList())
+        else decodeResult(raw, serializer).getOrElse { e ->
+            // Degrade to empty so reading the profile never crashes launch, but
+            // don't stay silent: log it — never the blob itself, it's personal
+            // data. [replaceList] keeps the raw blob from being overwritten.
+            // (Log is wrapped like launchSafely's so plain-JVM tests don't fail.)
+            runCatching { Log.w("QuestLoop", "Stored $what no longer decode (${e.javaClass.simpleName}); showing none") }
+            emptyList()
+        }
+
+    /** Replaces a stored JSON list — unless the current blob no longer decodes,
+     *  meaning [value] was built from the empty-list read fallback and writing it
+     *  would destroy the user's data. Throwing aborts the edit unpersisted. */
+    private suspend fun <T> replaceList(
+        key: Preferences.Key<String>,
+        serializer: kotlinx.serialization.KSerializer<T>,
+        what: String,
+        value: List<T>,
+    ) {
+        dataStore.edit { prefs ->
+            val raw = prefs[key]
+            if (!raw.isNullOrBlank()) {
+                decodeResult(raw, serializer).getOrElse { e -> throw ProfileListCorruptException(what, e) }
+            }
+            prefs[key] = json.encodeToString(ListSerializer(serializer), value)
+        }
+    }
 
     override suspend fun setBudgetCap(value: Double) {
         dataStore.edit { it[Keys.BUDGET_CAP] = value.coerceAtLeast(0.0) }
@@ -160,19 +202,14 @@ class ProfileStore(
         dataStore.edit { it[Keys.SENSITIVE_OPT_IN] = if (value) 1 else 0 }
     }
 
-    override suspend fun setHabits(habits: List<Habit>) {
-        dataStore.edit { it[Keys.HABITS] = json.encodeToString(ListSerializer(Habit.serializer()), habits) }
-    }
+    override suspend fun setHabits(habits: List<Habit>) =
+        replaceList(Keys.HABITS, Habit.serializer(), "habits", habits)
 
-    override suspend fun setBadHabits(badHabits: List<BadHabit>) {
-        dataStore.edit {
-            it[Keys.BAD_HABITS] = json.encodeToString(ListSerializer(BadHabit.serializer()), badHabits)
-        }
-    }
+    override suspend fun setBadHabits(badHabits: List<BadHabit>) =
+        replaceList(Keys.BAD_HABITS, BadHabit.serializer(), "bad habits", badHabits)
 
-    override suspend fun setGoals(goals: List<Goal>) {
-        dataStore.edit { it[Keys.GOALS] = json.encodeToString(ListSerializer(Goal.serializer()), goals) }
-    }
+    override suspend fun setGoals(goals: List<Goal>) =
+        replaceList(Keys.GOALS, Goal.serializer(), "goals", goals)
 
     override suspend fun setCheckIn(checkIn: EnergyCheckIn?) {
         dataStore.edit { prefs ->
