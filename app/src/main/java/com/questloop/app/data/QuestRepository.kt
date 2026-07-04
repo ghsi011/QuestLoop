@@ -971,6 +971,8 @@ class QuestRepository(
         completionDao.clear()
         questDao.clear()
         profileStore.clear()
+        // The exportable AI error log is on-device data too — a full wipe removes it.
+        clearAiDiagnostics()
     }
 }
 

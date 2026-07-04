@@ -16,6 +16,7 @@ import com.questloop.core.model.Goal
 import com.questloop.core.model.Habit
 import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.UserProfile
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -285,9 +286,13 @@ class SettingsViewModelTest {
     @Test
     fun `delete all data clears state and invokes the callback`() = runTest {
         val vm = SettingsViewModel(repo)
-        var done = false
-        vm.deleteAllData { done = true }
-        assertTrue(done)
+        // deleteAllData hops to Dispatchers.IO (it removes the AI diagnostics
+        // file), which escapes the unconfined scheduler — so await the completion
+        // callback (fired after the confirmation is emitted) instead of asserting
+        // immediately (see the note above requestExport()).
+        val done = CompletableDeferred<Unit>()
+        vm.deleteAllData { done.complete(Unit) }
+        done.await()
         assertEquals("Your data has been deleted.", vm.state.value.savedMessage)
     }
 }

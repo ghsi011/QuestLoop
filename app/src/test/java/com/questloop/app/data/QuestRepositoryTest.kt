@@ -236,6 +236,19 @@ class QuestRepositoryTest {
     }
 
     @Test
+    fun `delete all data removes the ai diagnostics log`() = runTest {
+        val diagnostics = FileAiDiagnostics(RuntimeEnvironment.getApplication())
+        diagnostics.clear()
+        val repoWithLog = QuestRepository(db.questDao(), db.completionDao(), FakePrefs(), aiDiagnostics = diagnostics)
+        diagnostics.record("some-model", "provider error body")
+        assertTrue(repoWithLog.aiDiagnosticsDump().isNotBlank())
+
+        repoWithLog.deleteAllData()
+
+        assertTrue("a full wipe removes the AI error log", repoWithLog.aiDiagnosticsDump().isBlank())
+    }
+
+    @Test
     fun `total xp comes from the ledger`() = runTest {
         repo.addQuest(quest("a"))
         repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)
