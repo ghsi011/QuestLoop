@@ -54,6 +54,17 @@ class ProfileStoreTest {
             throw error
     }
 
+    /** Map-backed stand-in for the production [EncryptedKeyStore] — NOT DataStore-backed. */
+    private class FakeKeyStore : SecureKeyStore {
+        private var apiKey = ""
+        private var tokens = ""
+        override suspend fun getApiKey() = apiKey
+        override suspend fun setApiKey(value: String) { apiKey = value }
+        override suspend fun getOpenAiTokens() = tokens
+        override suspend fun setOpenAiTokens(value: String) { tokens = value }
+        override suspend fun clear() { apiKey = ""; tokens = "" }
+    }
+
     @Test
     fun `malformed habits json decodes to an empty list and keeps defaults`() = runTest {
         val ds = realDataStore()
@@ -100,16 +111,34 @@ class ProfileStoreTest {
     }
 
     @Test
-    fun `ai config round-trips and is not left in plaintext datastore`() = runTest {
+    fun `ai config round-trips and the key never touches the plaintext datastore`() = runTest {
         val ds = realDataStore()
-        val store = ProfileStore(ctx, ds, DataStoreKeyStore(ds))
+        // Inject a non-DataStore-backed key store (production wires EncryptedKeyStore
+        // the same way) so the leak assertion below really proves ProfileStore routes
+        // the key through the secure store — not merely out of the legacy slot.
+        val store = ProfileStore(ctx, ds, FakeKeyStore())
         store.setAiConfig(AiConfig(enabled = true, apiKey = "sk-xyz", model = "model-1"))
         val cfg = store.getAiConfig()
         assertEquals(true, cfg.enabled)
         assertEquals("sk-xyz", cfg.apiKey)
         assertEquals("model-1", cfg.model)
-        // The test key store keeps the key out of the legacy plaintext slot.
-        assertNull(ds.data.first()[androidx.datastore.preferences.core.stringPreferencesKey("ai_api_key")])
+        // No DataStore preference value anywhere may contain the key.
+        val plaintextValues = ds.data.first().asMap().values.map { it.toString() }
+        assertFalse(plaintextValues.any { it.contains("sk-xyz") })
+    }
+
+    @Test
+    fun `default datastore key store scrubs the legacy plaintext slot`() = runTest {
+        val ds = realDataStore()
+        // The defaulted DataStoreKeyStore is itself plaintext (it writes
+        // "ai_api_key_v2" into the same DataStore) — only production's
+        // EncryptedKeyStore encrypts, covered by its instrumented test. This pins
+        // the narrower invariant the default can honour: the legacy "ai_api_key"
+        // slot stays scrubbed, so the one-time migration can't resurrect it.
+        val store = ProfileStore(ctx, ds)
+        store.setAiConfig(AiConfig(enabled = true, apiKey = "sk-xyz", model = "model-1"))
+        assertEquals("sk-xyz", store.getAiConfig().apiKey)
+        assertNull(ds.data.first()[stringPreferencesKey("ai_api_key")])
     }
 
     @Test

@@ -132,10 +132,9 @@ private val appCoverageExclusions = listOf(
     "**/MainActivity*.*", "**/QuestLoopApplication*.*",
     "**/di/**", "**/ui/theme/**", "**/widget/**",
     "**/reminders/BootReceiver*.*", "**/reminders/ReminderActionReceiver*.*",
-    // The production encrypted store is backed by the Android Keystore, which
-    // isn't available under Robolectric or the emulator; DataStoreKeyStore (the
-    // test double's backing) IS covered.
-    "**/EncryptedKeyStore*.*",
+    // EncryptedKeyStore is NOT excluded: emulator images ship a software-backed
+    // Keystore (only Robolectric lacks one), so EncryptedKeyStoreTest drives it
+    // for real in the emulator job that gates this coverage.
 )
 
 private fun coverageClassDirs() = files(
@@ -185,7 +184,8 @@ tasks.register<JacocoCoverageVerification>("jacocoCoverageVerification") {
                 // metric dilution (not a regression) that settled the suite at ~0.574;
                 // and (2) the OpenAI ChatGPT-OAuth provider adds surface that can't be
                 // driven in unit OR emulator tests — the loopback browser sign-in and
-                // the auth-only UI effects (EncryptedKeyStore is excluded above). The
+                // the auth-only UI effects (EncryptedKeyStore itself is covered by
+                // its own instrumented test). The
                 // testable OAuth parts ARE covered (OpenAiOAuth/codec in :core,
                 // OpenAiClient + OpenAiAuthService loopback + the OAuth repository path
                 // + AiSection). 0.55 keeps a non-flaky margin; raising it needs more
