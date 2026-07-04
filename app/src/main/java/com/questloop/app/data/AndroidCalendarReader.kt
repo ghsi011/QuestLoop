@@ -8,7 +8,9 @@ import androidx.core.content.ContextCompat
 import com.questloop.core.calendar.DayWindow
 import com.questloop.core.calendar.FreeBusyCalculator
 import com.questloop.core.calendar.Interval
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -19,6 +21,8 @@ import java.time.ZoneOffset
  * and turns them into the free time left today (SPEC §10). Off unless the user
  * opted in *and* granted `READ_CALENDAR`; otherwise returns null so the planner
  * imposes no calendar budget. Read-only and on-device — nothing leaves the phone.
+ * Provider queries are blocking cross-process IPC, so both entry points hop to
+ * [Dispatchers.IO] — callers launch from the main dispatcher.
  */
 class AndroidCalendarReader(
     private val context: Context,
@@ -27,16 +31,16 @@ class AndroidCalendarReader(
     private val now: () -> Long = System::currentTimeMillis,
 ) : CalendarReader {
 
-    override suspend fun freeMinutesToday(): Int? {
-        if (!prefs.profile.first().preferences.calendarBudgetEnabled) return null
-        if (!hasPermission()) return null
+    override suspend fun freeMinutesToday(): Int? = withContext(Dispatchers.IO) {
+        if (!prefs.profile.first().preferences.calendarBudgetEnabled) return@withContext null
+        if (!hasPermission()) return@withContext null
 
         val dayStartMillis = LocalDate.now(zone).atStartOfDay(zone).toInstant().toEpochMilli()
         val dayEndMillis = dayStartMillis + DAY_MILLIS
         val busy = queryBusy(dayStartMillis, dayEndMillis)
 
         val nowMinute = ((now() - dayStartMillis) / MINUTE_MILLIS).toInt()
-        return FreeBusyCalculator.freeMinutes(busy, DayWindow.remainingFrom(nowMinute))
+        FreeBusyCalculator.freeMinutes(busy, DayWindow.remainingFrom(nowMinute))
     }
 
     /**
@@ -45,11 +49,11 @@ class AndroidCalendarReader(
      * is enough; the user need not also opt into calendar-based budgeting just to
      * pick a deadline from an event.
      */
-    override suspend fun upcomingEvents(daysAhead: Int): List<CalendarEventSummary> {
-        if (!hasPermission()) return emptyList()
+    override suspend fun upcomingEvents(daysAhead: Int): List<CalendarEventSummary> = withContext(Dispatchers.IO) {
+        if (!hasPermission()) return@withContext emptyList()
         val from = now()
         val to = from + daysAhead.coerceAtLeast(1) * DAY_MILLIS
-        return queryEvents(from, to)
+        queryEvents(from, to)
     }
 
     private fun hasPermission(): Boolean =
