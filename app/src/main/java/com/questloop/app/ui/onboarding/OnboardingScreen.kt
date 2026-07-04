@@ -49,7 +49,7 @@ fun OnboardingScreen(onGetStarted: () -> Unit) {
         )
         InfoCard(
             title = "🔒 Private by default",
-            body = "Everything stays on-device. Export or delete anytime in Settings.",
+            body = "Your quests and history stay on-device. Export or delete anytime in Settings.",
         )
         InfoCard(
             title = "✨ Optional AI",

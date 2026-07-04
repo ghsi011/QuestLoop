@@ -290,7 +290,9 @@ fun SettingsScreen(
         SectionHeader("Privacy")
         InfoCard(
             title = "Your data stays on this device",
-            body = "Nothing is uploaded.",
+            body = "Your quests, history, and XP never leave it. If you turn on AI " +
+                "suggestions, only the to-dos and goals you type are sent to your " +
+                "chosen provider to generate ideas — nothing else.",
         )
         OutlinedButton(onClick = viewModel::requestExport, modifier = Modifier.fillMaxWidth()) {
             Text("Export my data")
