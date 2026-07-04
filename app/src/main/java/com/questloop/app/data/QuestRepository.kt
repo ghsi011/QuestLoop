@@ -86,6 +86,12 @@ class QuestRepository(
     // re-persist credentials the user just cleared.
     private val aiAuthMutex = Mutex()
 
+    // Bumped (under aiAuthMutex) whenever credentials are deliberately cleared
+    // (sign-out / delete-all). connectOpenAi snapshots it before the browser
+    // handshake; the sign-in's onTokens persist aborts if it advanced meanwhile,
+    // so a sign-in that finishes AFTER a wipe can't resurrect credentials.
+    private var credentialClearGeneration = 0L
+
     /** Days of history considered for safety signals. */
     private val safetyWindowDays = 30L
 
@@ -813,8 +819,11 @@ class QuestRepository(
      * [openUrl] is invoked with the browser URL the user must open. Returns the
      * failure reason (for the UI) when the handshake doesn't complete.
      */
-    suspend fun connectOpenAi(openUrl: (String) -> Unit): Result<Unit> =
-        openAiAuth.signIn(
+    suspend fun connectOpenAi(openUrl: (String) -> Unit): Result<Unit> {
+        // Snapshot the clear generation before the (long, user-driven) handshake so
+        // onTokens can tell whether a sign-out/delete-all landed while it ran.
+        val genAtStart = aiAuthMutex.withLock { credentialClearGeneration }
+        return openAiAuth.signIn(
             // Runs inside the sign-in's non-cancellable completion: once the browser
             // says "You're signed in", the link is persisted even if this coroutine
             // was cancelled (screen closed) mid-handshake. Persisting can throw if
@@ -822,11 +831,21 @@ class QuestRepository(
             // failure (so the caller shows a message + clears its busy state)
             // rather than letting it propagate past the caller's cleanup.
             onTokens = { tokens ->
-                val config = profileStore.getAiConfig()
-                profileStore.setAiConfig(config.copy(enabled = true, provider = AiProvider.OPENAI, openAiTokens = tokens))
+                // Persist under the same mutex as refresh/sign-out/wipe, and abort if
+                // credentials were cleared during the handshake: a stale browser
+                // callback must not resurrect tokens (and re-enable AI) after an
+                // explicit "delete all my data" or sign-out.
+                aiAuthMutex.withLock {
+                    if (credentialClearGeneration != genAtStart) {
+                        throw java.io.IOException("Sign-in was cancelled. Please sign in again in Settings.")
+                    }
+                    val config = profileStore.getAiConfig()
+                    profileStore.setAiConfig(config.copy(enabled = true, provider = AiProvider.OPENAI, openAiTokens = tokens))
+                }
             },
             openUrl = openUrl,
         ).map { }
+    }
 
     /**
      * Unlinks the OpenAI account (drops the stored tokens); leaves OpenRouter config
@@ -834,6 +853,7 @@ class QuestRepository(
      * can't re-persist the tokens after the sign-out.
      */
     suspend fun disconnectOpenAi() = aiAuthMutex.withLock {
+        credentialClearGeneration++
         val config = profileStore.getAiConfig()
         profileStore.setAiConfig(config.copy(openAiTokens = null))
     }
@@ -999,6 +1019,7 @@ class QuestRepository(
      * AI credentials after the wipe.
      */
     suspend fun deleteAllData() = aiAuthMutex.withLock {
+        credentialClearGeneration++
         completionDao.clear()
         questDao.clear()
         profileStore.clear()

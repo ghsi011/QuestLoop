@@ -70,6 +70,13 @@ class AppSmokeTest {
         // row to render — exercising the cards + row actions, not just the empty state.
         tapIfPresent("Complete")
 
+        // Achievements sub-screen, reached from the Today strip's "See all" chip. Nav
+        // is hard-asserted (a broken strip fails the test); the bottom nav stays
+        // visible on sub-screens, so the walk resumes from the tabs below.
+        composeRule.onNodeWithText("See all").performScrollTo().performClick()
+        awaitText("Achievements")
+        shoot("02b-achievements")
+
         composeRule.onNodeWithText("Quests").performClick()
         awaitText("Browse quest bank")
         shoot("03-quests")

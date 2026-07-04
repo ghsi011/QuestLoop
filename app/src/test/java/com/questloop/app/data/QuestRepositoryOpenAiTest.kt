@@ -62,11 +62,20 @@ class QuestRepositoryOpenAiTest {
         var refreshGate: CompletableDeferred<Unit>? = null
         val refreshStarted = CompletableDeferred<Unit>()
 
+        /** When set, [signIn] signals [signInStarted] then suspends until it completes
+         *  BEFORE invoking onTokens — lets a test land a wipe mid-handshake. */
+        var signInGate: CompletableDeferred<Unit>? = null
+        val signInStarted = CompletableDeferred<Unit>()
+
         override suspend fun signIn(
             timeoutMs: Long,
             onTokens: suspend (OpenAiOAuth.OpenAiTokens) -> Unit,
             openUrl: (String) -> Unit,
         ): Result<OpenAiOAuth.OpenAiTokens> {
+            signInGate?.let { gate ->
+                signInStarted.complete(Unit)
+                gate.await()
+            }
             onTokens(refreshed)
             return Result.success(refreshed)
         }
@@ -220,6 +229,26 @@ class QuestRepositoryOpenAiTest {
         // SPEC §9: after "delete all my data", no credential survives the race.
         assertNull(prefs.ai.openAiTokens)
         assertEquals("", prefs.ai.apiKey)
+    }
+
+    @Test
+    fun `delete-all during an in-flight sign-in does not resurrect credentials`() = runTest {
+        // Signed out; a "Sign in with ChatGPT" handshake is in flight.
+        prefs.ai = AiConfig()
+        val gate = CompletableDeferred<Unit>()
+        auth.signInGate = gate
+
+        val call = launch { runCatching { repo.connectOpenAi { /* open browser */ } } }
+        auth.signInStarted.await()
+        // The user wipes everything while the browser handshake is still open.
+        repo.deleteAllData()
+        // The browser now reports success; the stale callback must not re-link the account.
+        gate.complete(Unit)
+        call.join()
+
+        // A wipe during sign-in wins: no tokens re-persisted, AI stays off.
+        assertNull("sign-in landing after a wipe must not resurrect tokens", prefs.ai.openAiTokens)
+        assertFalse("AI must stay off after the wipe", prefs.ai.enabled)
     }
 
     @Test
