@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Looper
+import androidx.core.content.ContextCompat
 import com.questloop.app.QuestLoopApplication
 import com.questloop.core.generation.RoutineQuestFactory
 import com.questloop.core.model.CompletionResult
@@ -51,7 +52,12 @@ class ReminderActionReceiverTest {
         // delivery — the manifest registration is what wires it in production. The
         // receiver still does its real work asynchronously on Dispatchers.IO.
         val receiver = ReminderActionReceiver()
-        app.registerReceiver(receiver, IntentFilter(ReminderActionReceiver.ACTION_DONE))
+        ContextCompat.registerReceiver(
+            app,
+            receiver,
+            IntentFilter(ReminderActionReceiver.ACTION_DONE),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         try {
             app.sendBroadcast(
                 Intent(ReminderActionReceiver.ACTION_DONE)

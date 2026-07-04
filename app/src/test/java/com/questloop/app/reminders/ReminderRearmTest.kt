@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Looper
+import androidx.core.content.ContextCompat
 import com.questloop.app.data.ProfileStore
 import com.questloop.app.data.ReminderConfig
 import kotlinx.coroutines.runBlocking
@@ -52,7 +53,7 @@ class ReminderRearmTest {
      * the delivery (the manifest intent-filter is what wires it in production).
      */
     private fun deliver(receiver: BroadcastReceiver, action: String) {
-        ctx.registerReceiver(receiver, IntentFilter(action))
+        ContextCompat.registerReceiver(ctx, receiver, IntentFilter(action), ContextCompat.RECEIVER_NOT_EXPORTED)
         try {
             ctx.sendBroadcast(Intent(action))
             shadowOf(Looper.getMainLooper()).idle()
