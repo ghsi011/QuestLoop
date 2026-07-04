@@ -36,7 +36,11 @@ data class ReviewUiState(
     val error: String? = null,
 )
 
-class ReviewViewModel(private val repository: QuestRepository) : ViewModel() {
+class ReviewViewModel(
+    private val repository: QuestRepository,
+    /** Injectable "today" so tests can pin the date; defaults to the shared [AppClock]. */
+    private val todayEpochDay: () -> Long = AppClock::todayEpochDay,
+) : ViewModel() {
 
     private val _state = MutableStateFlow(ReviewUiState())
     val state: StateFlow<ReviewUiState> = _state.asStateFlow()
@@ -44,7 +48,7 @@ class ReviewViewModel(private val repository: QuestRepository) : ViewModel() {
     fun load() {
         launchSafely(onError = ::loadFailed) {
             _state.update { it.copy(loading = true, error = null) }
-            val today = AppClock.todayEpochDay()
+            val today = todayEpochDay()
             // Reviews look back (start-of-period → today); plans look forward
             // (today → end-of-period) over the same calendar week/month.
             val weekly = repository.review("This week", AppClock.startOfWeek(today), today)

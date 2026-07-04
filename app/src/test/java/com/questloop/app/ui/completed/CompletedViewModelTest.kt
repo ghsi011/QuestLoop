@@ -6,7 +6,6 @@ import com.questloop.app.data.ProfilePreferences
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.data.ReminderConfig
 import com.questloop.app.data.local.QuestLoopDatabase
-import com.questloop.app.ui.AppClock
 import com.questloop.core.model.BadHabit
 import com.questloop.core.model.CompletionResult
 import com.questloop.core.model.Difficulty
@@ -34,6 +33,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import java.time.LocalDate
 import java.util.concurrent.Executor
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -89,7 +89,9 @@ class CompletedViewModelTest {
         db.close()
     }
 
-    private val today = AppClock.todayEpochDay()
+    // Fixed "today": Sunday 2026-03-01, the 1st of the month — so the WEEK window
+    // reaches back into February while the MONTH window is just this one day.
+    private val today = LocalDate.of(2026, 3, 1).toEpochDay()
 
     private fun quest(id: String, difficulty: Difficulty = Difficulty.EASY) = Quest(
         id = id,
@@ -105,7 +107,7 @@ class CompletedViewModelTest {
         repo.completeQuest(quest("a"), epochDay = today, result = CompletionResult.COMPLETED)
         assertTrue(repo.totalXp() > 0)
 
-        val vm = CompletedViewModel(repo)
+        val vm = CompletedViewModel(repo, todayEpochDay = { today })
         assertEquals(1, vm.state.value.entries.size)
 
         vm.undo(vm.state.value.entries.first())
@@ -120,7 +122,7 @@ class CompletedViewModelTest {
         repo.completeQuest(easy, epochDay = today, result = CompletionResult.COMPLETED)
         val before = repo.totalXp()
 
-        val vm = CompletedViewModel(repo)
+        val vm = CompletedViewModel(repo, todayEpochDay = { today })
         vm.startEdit(vm.state.value.entries.first())
         vm.saveEdit(easy.copy(difficulty = Difficulty.EPIC))
 
@@ -132,7 +134,7 @@ class CompletedViewModelTest {
     fun `re-add clones the quest as a fresh active quest`() = runTest {
         repo.addQuest(quest("a"))
         repo.completeQuest(quest("a"), epochDay = today, result = CompletionResult.COMPLETED)
-        val vm = CompletedViewModel(repo)
+        val vm = CompletedViewModel(repo, todayEpochDay = { today })
 
         vm.readd(vm.state.value.entries.first())
 
@@ -145,11 +147,46 @@ class CompletedViewModelTest {
     fun `the Today filter excludes completions from earlier days`() = runTest {
         repo.addQuest(quest("old"))
         repo.completeQuest(quest("old"), epochDay = today - 10, result = CompletionResult.COMPLETED)
-        val vm = CompletedViewModel(repo)
+        val vm = CompletedViewModel(repo, todayEpochDay = { today })
 
         vm.setFilter(HistoryFilter.TODAY)
         assertFalse(vm.state.value.entries.any { it.record.questId == "old" })
         vm.setFilter(HistoryFilter.ALL)
         assertTrue(vm.state.value.entries.any { it.record.questId == "old" })
+    }
+
+    @Test
+    fun `week and month filters use calendar boundaries, not a rolling window`() = runTest {
+        // Today's ISO week starts Monday 2026-02-23; the month window starts today (Mar 1).
+        val monday = LocalDate.of(2026, 2, 23).toEpochDay()
+        repo.addQuest(quest("mon"))
+        repo.completeQuest(quest("mon"), epochDay = monday, result = CompletionResult.COMPLETED)
+        repo.addQuest(quest("sun"))
+        repo.completeQuest(quest("sun"), epochDay = monday - 1, result = CompletionResult.COMPLETED)
+        val vm = CompletedViewModel(repo, todayEpochDay = { today })
+
+        vm.setFilter(HistoryFilter.WEEK)
+        val week = vm.state.value.entries.map { it.record.questId }
+        assertTrue("start of week is inclusive", "mon" in week)
+        assertFalse("the Sunday before is outside the week", "sun" in week)
+
+        vm.setFilter(HistoryFilter.MONTH)
+        val month = vm.state.value.entries.map { it.record.questId }
+        assertFalse("this week but last month -> outside the month window", "mon" in month)
+    }
+
+    @Test
+    fun `day rollover in an open session moves a completion out of the Today filter`() = runTest {
+        var now = today
+        repo.addQuest(quest("a"))
+        repo.completeQuest(quest("a"), epochDay = now, result = CompletionResult.COMPLETED)
+        val vm = CompletedViewModel(repo, todayEpochDay = { now })
+
+        vm.setFilter(HistoryFilter.TODAY)
+        assertEquals(1, vm.state.value.entries.size)
+
+        now += 1 // midnight passes while the screen stays open
+        vm.load()
+        assertTrue(vm.state.value.entries.isEmpty())
     }
 }

@@ -24,6 +24,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -34,6 +35,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import java.time.LocalDate
 import java.util.concurrent.Executor
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -87,6 +89,10 @@ class ReviewViewModelTest {
         db.close()
     }
 
+    // Fixed "today": Wednesday 2026-06-17, mid-week and mid-month — a completion
+    // today deterministically lands inside both review windows.
+    private val today = LocalDate.of(2026, 6, 17).toEpochDay()
+
     private fun quest() = Quest(
         id = "a",
         title = "Write the report",
@@ -98,13 +104,16 @@ class ReviewViewModelTest {
     @Test
     fun `load produces weekly and monthly reviews with factual summaries`() = runTest {
         repo.addQuest(quest())
-        repo.completeQuest(quest(), epochDay = com.questloop.app.ui.AppClock.todayEpochDay(), result = CompletionResult.COMPLETED)
-        val vm = ReviewViewModel(repo)
+        repo.completeQuest(quest(), epochDay = today, result = CompletionResult.COMPLETED)
+        val vm = ReviewViewModel(repo, todayEpochDay = { today })
         vm.load()
         val state = vm.state.value
         assertFalse(state.loading)
         assertNotNull(state.weekly)
         assertNotNull(state.monthly)
+        // With the clock pinned, the completion counts in both windows deterministically.
+        assertEquals(1, state.weekly!!.totalCompleted)
+        assertEquals(1, state.monthly!!.totalCompleted)
         assertNotNull(state.weeklySummary)
         assertNotNull(state.monthlySummary)
         // AI is off in the fake prefs, so the AI action is unavailable.
@@ -114,7 +123,7 @@ class ReviewViewModelTest {
     @Test
     fun `load builds weekly and monthly plans and mode toggles`() = runTest {
         repo.addQuest(quest()) // a daily quest -> should populate the forward plan
-        val vm = ReviewViewModel(repo)
+        val vm = ReviewViewModel(repo, todayEpochDay = { today })
         vm.load()
         val state = vm.state.value
         assertNotNull(state.weeklyPlan)
@@ -128,7 +137,7 @@ class ReviewViewModelTest {
 
     @Test
     fun `summarize with ai falls back to deterministic text when ai is off`() = runTest {
-        val vm = ReviewViewModel(repo)
+        val vm = ReviewViewModel(repo, todayEpochDay = { today })
         vm.load()
         vm.summarizeWithAi()
         val state = vm.state.value
@@ -139,7 +148,7 @@ class ReviewViewModelTest {
 
     @Test
     fun `summarize with ai is a no-op before load`() = runTest {
-        val vm = ReviewViewModel(repo)
+        val vm = ReviewViewModel(repo, todayEpochDay = { today })
         // No load yet -> weekly/monthly null -> early return, no crash.
         vm.summarizeWithAi()
         assertTrue(vm.state.value.loading)
