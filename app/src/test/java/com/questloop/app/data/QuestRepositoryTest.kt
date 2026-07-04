@@ -743,6 +743,53 @@ class QuestRepositoryTest {
         assertEquals(wednesday, entry.record.epochDay)
     }
 
+    private fun oneOffRead() = quest(
+        id = "read",
+        style = CompletionStyle.QUANTITATIVE,
+        target = 100,
+        category = QuestCategory.PERSONAL_GROWTH,
+        frequency = QuestFrequency.ONE_OFF,
+    )
+
+    @Test
+    fun `a one-off quantitative quest accumulates across days then completes for good`() = runTest {
+        val read = oneOffRead()
+        repo.addQuest(read)
+
+        // 30 pages on day 1 — the next day it's still 30/100 (not reset) and still offered.
+        repo.completeMeasured(read, epochDay = 1, value = 30)
+        assertEquals(30, repo.todayProgress(2)["read"])
+        assertTrue(repo.todayPlan(2, DayPart.MIDDAY).quests.any { it.quest.id == "read" })
+
+        // Reaching the cumulative target days later completes it — and a one-off has
+        // no next interval, so it leaves the plan for good (isDue via lastCompleted).
+        repo.completeMeasured(read, epochDay = 4, value = 100)
+        val done = repo.questOverview(5, DayPart.MIDDAY).first { it.quest.id == "read" }
+        assertTrue(done.done)
+        assertFalse(done.dueToday)
+        assertFalse(repo.todayPlan(5, DayPart.MIDDAY).quests.any { it.quest.id == "read" })
+        assertFalse(repo.todayPlan(40, DayPart.MIDDAY).quests.any { it.quest.id == "read" })
+    }
+
+    @Test
+    fun `a one-off measured quest logged across days nets one grant, not one per day`() = runTest {
+        val read = oneOffRead()
+        repo.addQuest(read)
+
+        // Progress logged over three days accumulates into ONE ledger row whose grant
+        // is re-netted on each log — day-keyed records used to score every partial
+        // day independently and mint more XP than finishing the quest is worth.
+        repo.completeMeasured(read, epochDay = 1, value = 30)
+        repo.completeMeasured(read, epochDay = 2, value = 60)
+        repo.completeMeasured(read, epochDay = 3, value = 100)
+
+        val rows = db.completionDao().all().filter { it.questId == "read" }
+        assertEquals(1, rows.size)
+        assertEquals(CompletionResult.COMPLETED.name, rows.single().result)
+        // Total XP is exactly that single grant — nothing stacked across the days.
+        assertEquals(rows.single().xpAwarded, repo.totalXp())
+    }
+
     @Test
     fun `editing a measured quest's frequency re-keys the record without inflating the reported total`() = runTest {
         val daily = quest("a", style = CompletionStyle.QUANTITATIVE, target = 2, frequency = QuestFrequency.DAILY)

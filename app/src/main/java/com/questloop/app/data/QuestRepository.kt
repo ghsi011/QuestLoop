@@ -115,7 +115,7 @@ class QuestRepository(
         val dueToday: Boolean,
         /** Finished for today (binary completed, or a counting/timed target reached). */
         val done: Boolean,
-        /** Today's logged count/minutes, for resuming a partial log. */
+        /** The current interval's logged count/minutes, for resuming a partial log. */
         val progress: Int,
     )
 
@@ -265,25 +265,35 @@ class QuestRepository(
     /**
      * A *measured recurring* quest whose progress accumulates across a calendar
      * interval (a week for WEEKLY, a month for MONTHLY) and resets at the boundary
-     * — e.g. "swim 2×/week". Daily/one-off/recurring measured quests keep their
-     * per-day semantics (their "interval" is just the day), so they're excluded.
-     * This is the set for which interval dismissal, not the rolling isDue window,
-     * governs visibility.
+     * — e.g. "swim 2×/week". This is the set for which interval dismissal, not the
+     * rolling isDue window, governs visibility. Daily/recurring measured quests
+     * keep their per-day semantics (their "interval" is just the day), and a
+     * measured one-off accumulates over its whole lifetime with no reset boundary
+     * (see [completionSlot]) — for those, the isDue cadence gate is already right,
+     * so they're excluded.
      */
     private fun hasCalendarInterval(quest: Quest): Boolean =
         accumulates(quest) &&
             (quest.frequency == QuestFrequency.WEEKLY || quest.frequency == QuestFrequency.MONTHLY)
 
     /**
-     * The epoch-day that anchors a quest's completion record. For a *measured
-     * recurring* quest it's the start of its current calendar interval (week for
-     * WEEKLY, month for MONTHLY), so progress accumulates across the interval — e.g.
-     * "swim 2×/week" counts both swims toward one 2/2 — and resets at the boundary.
-     * For everything else (and daily quests, where the interval *is* the day) it's
-     * the day itself, so behaviour is unchanged.
+     * The slot that anchors a quest's completion record (`instanceId = questId@slot`).
+     * For a *measured recurring* quest it's the start of its current calendar
+     * interval (week for WEEKLY, month for MONTHLY), so progress accumulates across
+     * the interval — e.g. "swim 2×/week" counts both swims toward one 2/2 — and
+     * resets at the boundary. A *measured one-off*'s target is cumulative over the
+     * quest's whole lifetime (one unbounded interval), so it gets a single fixed
+     * slot: progress accumulates day to day into one record — each re-log nets the
+     * prior grant, so spreading "read 100 pages" over several days can't mint more
+     * XP than finishing it — until the target is reached once and the quest retires
+     * via lastCompleted. For everything else (and daily quests, where the interval
+     * *is* the day) it's the day itself, so behaviour is unchanged.
      */
-    private fun completionSlot(quest: Quest, epochDay: Long): Long =
-        if (accumulates(quest)) intervalStartFor(quest.frequency, epochDay) else epochDay
+    private fun completionSlot(quest: Quest, epochDay: Long): String = when {
+        !accumulates(quest) -> epochDay.toString()
+        quest.frequency == QuestFrequency.ONE_OFF -> "oneoff"
+        else -> intervalStartFor(quest.frequency, epochDay).toString()
+    }
 
     private fun intervalStartFor(frequency: QuestFrequency, epochDay: Long): Long = when (frequency) {
         QuestFrequency.WEEKLY -> {
@@ -447,10 +457,11 @@ class QuestRepository(
 
     /**
      * Records a completion idempotently. The record is keyed by `instanceId`
-     * (`questId@slot`, where the slot is the day for most quests and the calendar
-     * interval start for a measured weekly/monthly quest); re-logging the same
-     * instance replaces its prior grant via the ledger, so XP never double-counts
-     * (the prior `xpAwarded` is netted out before the new grant is applied).
+     * (`questId@slot`, where the slot is the day for most quests, the calendar
+     * interval start for a measured weekly/monthly quest, and a fixed lifetime
+     * slot for a measured one-off); re-logging the same instance replaces its
+     * prior grant via the ledger, so XP never double-counts (the prior
+     * `xpAwarded` is netted out before the new grant is applied).
      */
     suspend fun completeQuest(
         quest: Quest,
@@ -471,14 +482,17 @@ class QuestRepository(
         verification: VerificationMethod,
     ): CompleteOutcome {
         // Measured recurring quests are *keyed* by their interval start (so weekly/
-        // monthly progress accumulates into one record and resets at the boundary);
-        // everything else is keyed by the day, unchanged. The record's `epochDay`,
+        // monthly progress accumulates into one record and resets at the boundary),
+        // and a measured one-off by its single lifetime slot (accumulates until the
+        // target is reached once, never resets); everything else is keyed by the
+        // day, unchanged. The record's `epochDay`,
         // however, is always the REAL log day — it drives streak / active-days /
         // same-day anti-farm / history, none of which must be shifted to the interval
         // start (that would break the streak and mis-date the completed-history row).
         //
         // Trade-off: a measured interval quest is one logical unit stored as ONE row,
-        // so it contributes ONE active day per interval — the most recent log (which
+        // so it contributes ONE active day per interval (a one-off's interval is its
+        // whole lifetime) — the most recent log (which
         // keeps *today's* streak alive). If it's logged on several days of the same
         // interval, only the latest is recorded; the earlier days aren't independently
         // marked active by this quest (other quests/routines on those days still are).
