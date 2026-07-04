@@ -42,8 +42,9 @@ Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
 - **Daily reminders** (§3; UX H1) — opt-in morning & evening local notifications
   at user-set hours (AlarmManager, inexact), with a **"Mark done"** action that
   completes the routine from the notification, and **boot-persistence** (re-armed
-  on reboot + on app open). *Delivery is device-only — not CI-verifiable — so it's
-  covered by a pure schedule-math unit test and needs on-device testing.*
+  on reboot, timezone/clock changes, and app open). *Delivery is device-only —
+  not CI-verifiable — so it's covered by a pure schedule-math unit test and
+  needs on-device testing.*
 - **Home-screen widget** (Glance) — shows today's top quests at a glance and
   opens the app on tap. *Device-only; not CI-verifiable beyond compile.*
 - **First-run onboarding** — a one-time intro covering the quest/XP model, the

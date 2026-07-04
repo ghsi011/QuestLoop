@@ -126,8 +126,10 @@ QuestLoop: a gamified quest/habit Android app. Gradle multi-module:
   `intent.action`.
 
 **Reminders**
-- Self-healing one-shot alarms that re-arm on each fire (plus boot + app-open),
-  not `setInexactRepeating`. Stamp the firing epoch-day into the "Mark done"
+- Self-healing one-shot alarms that re-arm on each fire (plus boot, app-open,
+  and timezone/clock changes — armed triggers are fixed epoch instants, so a
+  zone change would otherwise fire them at the old zone's wall time), not
+  `setInexactRepeating`. Stamp the firing epoch-day into the "Mark done"
   intent so a late tap credits the right day.
 
 ## Voice & content
