@@ -291,8 +291,9 @@ fun SettingsScreen(
         InfoCard(
             title = "Your data stays on this device",
             body = "Your quests, history, and XP never leave it. If you turn on AI " +
-                "suggestions, only the to-dos and goals you type are sent to your " +
-                "chosen provider to generate ideas — nothing else.",
+                "suggestions, the to-dos and goals you type — plus your daily time " +
+                "budget and chosen focus areas — are sent to your chosen provider to " +
+                "generate ideas.",
         )
         OutlinedButton(onClick = viewModel::requestExport, modifier = Modifier.fillMaxWidth()) {
             Text("Export my data")

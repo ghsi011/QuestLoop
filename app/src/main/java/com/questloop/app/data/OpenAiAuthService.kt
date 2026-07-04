@@ -128,7 +128,7 @@ class OpenAiAuthService(
         postForm(OpenAiOAuth.tokenExchangeForm(code, verifier), priorRefresh = "")
 
     private suspend fun postForm(form: Map<String, String>, priorRefresh: String): Result<OpenAiOAuth.OpenAiTokens> =
-        runCatching {
+        try {
             val body = FormBody.Builder().apply { form.forEach { (k, v) -> add(k, v) } }.build()
             val request = Request.Builder()
                 .url(tokenEndpoint)
@@ -141,8 +141,18 @@ class OpenAiAuthService(
             if (!reply.isSuccessful) {
                 throw IOException("OpenAI sign-in failed (${reply.code}).")
             }
-            OpenAiOAuth.parseTokenResponse(reply.body, nowEpochSec(), priorRefresh)
-                ?: throw IOException("OpenAI sign-in returned an unreadable response.")
+            Result.success(
+                OpenAiOAuth.parseTokenResponse(reply.body, nowEpochSec(), priorRefresh)
+                    ?: throw IOException("OpenAI sign-in returned an unreadable response."),
+            )
+        } catch (c: CancellationException) {
+            // Rethrow so a cancelled refresh keeps cancelling instead of being
+            // repackaged as a failure the caller mistakes for "sign-in expired"
+            // (refresh runs under IO, not NonCancellable). Same idiom as :core's
+            // runCatchingCancellable and the app's launchSafely.
+            throw c
+        } catch (t: Throwable) {
+            Result.failure(t)
         }
 
     private data class Callback(val code: String?, val state: String?, val error: String?)

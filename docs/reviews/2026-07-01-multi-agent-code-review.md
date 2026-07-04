@@ -1276,9 +1276,20 @@ fix in code where a botched merge is worse than a temporary gap. All remain trac
 
 ### Validation
 
-`:core:test` passes. The wave's tests were written but never executed by the implementer
-agents (they were sandboxed off gradle), so the first full `:app:testDebugUnitTest` run
-surfaced test-only failures in the new tests (async/dispatcher timing, a Robolectric
-`AndroidKeyStore` gap exposed by W32's encrypted-default change, timezone setup); these
-are being fixed before the branch is proposed for merge. CI (`[uitest]`) runs the app
-build, lint, R8 release, and the emulator suite as the authoritative gate.
+`:core:test` and `:app:testDebugUnitTest` pass (592 tests, 0 failures) and `:app:lintDebug`
+is clean. The wave's tests were written but never executed by the implementer agents (they
+were sandboxed off gradle), so the first full `:app` run surfaced test-only failures in the
+new tests (a `JobCancellationException` from `db.close()` that `launchSafely` correctly
+rethrows, a Robolectric `AndroidKeyStore` gap exposed by W32's encrypted-default change,
+Robolectric broadcast delivery, a lint `RegisterReceiverFlag` error) — all fixed, no
+production bug among them.
+
+A **combined-diff re-review** (5 risk-focused reviewers over the full changeset + one
+adversarial skeptic per finding) then hunted for regressions introduced by stacking and the
+hand-merges. It surfaced 3 low-severity issues, all fixed: (1) dead `CompletionDao` queries
+orphaned by the W33↔W38 merge (deleted); (2) `OpenAiAuthService.postForm` laundering a
+cancelled token refresh into a spurious "sign-in expired" error — the W30 rethrow convention
+hadn't reached the app layer (fixed with the `runCatchingCancellable` idiom); (3) the W02
+privacy copy still saying "nothing else" when the AI request also sends the time budget and
+focus areas (reworded). CI (`[uitest]`) runs the app build, lint, R8 release, and the
+emulator suite as the authoritative gate.
