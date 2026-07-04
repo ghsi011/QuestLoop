@@ -46,6 +46,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.questloop.app.data.CalendarEventSummary
 import com.questloop.app.ui.components.SectionHeader
+import com.questloop.app.ui.components.pickableCategories
+import com.questloop.app.ui.components.pickableFrequencies
 import com.questloop.app.ui.components.pretty
 import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.Difficulty
@@ -79,7 +81,7 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
         )
 
         Text("Category", fontWeight = FontWeight.SemiBold)
-        ChipGroup(QuestCategory.entries, draft.category) { sel -> viewModel.updateDraft { it.copy(category = sel) } }
+        ChipGroup(pickableCategories, draft.category) { sel -> viewModel.updateDraft { it.copy(category = sel) } }
 
         Text("Difficulty", fontWeight = FontWeight.SemiBold)
         ChipGroup(Difficulty.entries, draft.difficulty) { sel ->
@@ -90,7 +92,7 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
         ChipGroup(Priority.entries, draft.priority) { sel -> viewModel.updateDraft { it.copy(priority = sel) } }
 
         Text("Frequency", fontWeight = FontWeight.SemiBold)
-        ChipGroup(QuestFrequency.entries, draft.frequency) { sel -> viewModel.updateDraft { it.copy(frequency = sel) } }
+        ChipGroup(pickableFrequencies, draft.frequency) { sel -> viewModel.updateDraft { it.copy(frequency = sel) } }
 
         Text("How is it completed?", fontWeight = FontWeight.SemiBold)
         ChipGroup(CompletionStyle.entries, draft.completionStyle) { sel ->
@@ -369,7 +371,7 @@ private fun SuggestionCard(
             )
 
             Text("Category", style = MaterialTheme.typography.labelMedium)
-            ChipGroup(QuestCategory.entries, quest.category) {
+            ChipGroup(pickableCategories, quest.category) {
                 onChange(quest.copy(category = it, isReductionQuest = it == QuestCategory.BAD_HABIT_REDUCTION))
             }
 
@@ -377,7 +379,7 @@ private fun SuggestionCard(
             ChipGroup(Difficulty.entries, quest.difficulty) { onChange(quest.copy(difficulty = it)) }
 
             Text("Frequency", style = MaterialTheme.typography.labelMedium)
-            ChipGroup(QuestFrequency.entries, quest.frequency) { onChange(quest.copy(frequency = it)) }
+            ChipGroup(pickableFrequencies, quest.frequency) { onChange(quest.copy(frequency = it)) }
 
             Text("How is it completed?", style = MaterialTheme.typography.labelMedium)
             ChipGroup(CompletionStyle.entries, quest.completionStyle) {
@@ -449,8 +451,11 @@ private fun SuggestionCard(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun <T> ChipGroup(options: List<T>, selected: T, label: (T) -> String = { prettyOf(it) }, onSelect: (T) -> Unit) {
+    // Some stored/AI values are valid but not offered as choices (e.g. a seasonal
+    // cadence) — keep the active one visible so the row never looks unselected.
+    val shown = if (selected in options) options else options + selected
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        options.forEach { option ->
+        shown.forEach { option ->
             FilterChip(
                 selected = option == selected,
                 onClick = { onSelect(option) },
@@ -462,6 +467,8 @@ private fun <T> ChipGroup(options: List<T>, selected: T, label: (T) -> String = 
 
 private fun <T> prettyOf(value: T): String = when (value) {
     is QuestCategory -> value.pretty()
+    is QuestFrequency -> value.pretty()
+    is CompletionStyle -> value.pretty()
     is Enum<*> -> value.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
     else -> value.toString()
 }

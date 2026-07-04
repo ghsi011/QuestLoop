@@ -22,8 +22,10 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.Difficulty
 import com.questloop.core.model.QuestCategory
+import com.questloop.core.model.QuestFrequency
 
 @Composable
 fun SectionHeader(text: String, modifier: Modifier = Modifier) {
@@ -136,6 +138,29 @@ fun com.questloop.core.model.QuestFrequency.pretty(): String = when (this) {
     com.questloop.core.model.QuestFrequency.ONE_OFF -> "One-off"
     com.questloop.core.model.QuestFrequency.SEASONAL -> "Seasonal"
 }
+
+/** Plain-words label for how a quest is completed — never the enum name
+ *  (docs/CONTENT_STYLE.md: no developer language). */
+fun CompletionStyle.pretty(): String = when (this) {
+    CompletionStyle.BINARY -> "Done or not"
+    CompletionStyle.QUANTITATIVE -> "Count"
+    CompletionStyle.DURATION -> "Time"
+    CompletionStyle.SUBJECTIVE -> "Rate 1-5"
+}
+
+/** Categories offered in the add/edit pickers. Meta maintenance is the app's own
+ *  upkeep bucket (XP-capped), so it isn't offered — existing quests keep it. */
+val pickableCategories: List<QuestCategory> = QuestCategory.entries.filterNot { it.isMeta }
+
+/** Cadences offered in the add/edit pickers. RECURRING schedules exactly like
+ *  DAILY and SEASONAL is internal, so neither is offered — both stay valid on
+ *  existing quests and AI suggestions. */
+val pickableFrequencies: List<QuestFrequency> = listOf(
+    QuestFrequency.DAILY,
+    QuestFrequency.WEEKLY,
+    QuestFrequency.MONTHLY,
+    QuestFrequency.ONE_OFF,
+)
 
 /** Difficulty shown as filled pips (e.g. ●●●○○) instead of a word. The pip count
  *  is visual-only, so the tier is exposed as a content description for TalkBack. */

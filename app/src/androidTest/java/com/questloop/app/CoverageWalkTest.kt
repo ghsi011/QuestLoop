@@ -91,8 +91,8 @@ class CoverageWalkTest {
 
     /**
      * Biggest lever: open the Add modal via the FAB, click each option chip in
-     * every group, and submit. Selecting Quantitative/Duration/Subjective also
-     * reveals the conditional count/unit fields.
+     * every group, and submit. Selecting the count/time completion styles also
+     * reveals the conditional target/unit fields.
      */
     @Test
     fun add_form_exercises_every_option_group_and_submits() {
@@ -102,11 +102,11 @@ class CoverageWalkTest {
 
         val chips = listOf(
             "Health", "Life admin", "Chores", "Work study", "Social",
-            "Personal growth", "Bad habit reduction", "Meta maintenance",
+            "Personal growth", "Bad habit reduction",
             "Trivial", "Easy", "Medium", "Hard", "Epic",
             "Low", "Normal", "High", "Critical",
-            "Daily", "Weekly", "Monthly", "Recurring", "One off", "Seasonal",
-            "Quantitative", "Duration", "Subjective", "Binary",
+            "Daily", "Weekly", "Monthly", "One-off",
+            "Count", "Time", "Rate 1-5", "Done or not",
         )
         for (label in chips) tapText(label)
 

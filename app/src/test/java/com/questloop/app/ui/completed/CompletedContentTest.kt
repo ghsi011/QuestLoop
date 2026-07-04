@@ -170,4 +170,22 @@ class CompletedContentTest {
         assertEquals(QuestCategory.BAD_HABIT_REDUCTION, edited?.category)
         assertTrue("reduction category should flag the quest", edited?.isReductionQuest == true)
     }
+
+    // Internal enum values (CONTENT_STYLE: no developer vocabulary) are hidden from
+    // the pickers, but a quest that already carries one still shows it as selected.
+    @Test
+    fun `edit pickers hide internal values but keep an existing one visible`() {
+        var edited: Quest? = null
+        composeRule.setContent {
+            EditQuestFields(
+                original = quest("a", "Water the plants").copy(frequency = QuestFrequency.RECURRING),
+                onChange = { edited = it },
+            )
+        }
+        composeRule.onNodeWithText("Meta maintenance").assertDoesNotExist()
+        composeRule.onNodeWithText("Seasonal").assertDoesNotExist()
+        composeRule.onNodeWithText("Recurring").assertIsDisplayed()
+        composeRule.onNodeWithText("Weekly").performClick()
+        assertEquals(QuestFrequency.WEEKLY, edited?.frequency)
+    }
 }
