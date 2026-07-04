@@ -5,13 +5,17 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.SocketPolicy
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -71,6 +75,23 @@ class OpenAiAuthServiceTest {
         server.enqueue(MockResponse().setResponseCode(400).setBody("""{"error":"invalid_grant"}"""))
         val result = service().refresh(OpenAiOAuth.OpenAiTokens("a", "r"))
         assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun `cancelling the caller aborts an in-flight refresh instead of blocking to the read timeout`() = runBlocking {
+        // The server accepts the request and then never responds. runBlocking (real
+        // time, not runTest's virtual time) because this races a cancel against real IO.
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+
+        val job = launch(Dispatchers.IO) { runCatching { service().refresh(OpenAiOAuth.OpenAiTokens("a", "r")) } }
+        server.takeRequest() // request is on the wire → the client is now awaiting the response
+        job.cancel()
+        // Without cancellation propagating into OkHttp, join would block for the
+        // full 30s read timeout; with it, the call aborts near-instantly.
+        assertNotNull(
+            "cancelling the coroutine must cancel the OkHttp call",
+            withTimeoutOrNull(10_000) { job.join() },
+        )
     }
 
     /**

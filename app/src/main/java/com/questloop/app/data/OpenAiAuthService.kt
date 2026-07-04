@@ -124,10 +124,10 @@ class OpenAiAuthService(
                 .map { if (it.accountId.isBlank()) it.copy(accountId = tokens.accountId) else it }
         }
 
-    private fun exchange(code: String, verifier: String): Result<OpenAiOAuth.OpenAiTokens> =
+    private suspend fun exchange(code: String, verifier: String): Result<OpenAiOAuth.OpenAiTokens> =
         postForm(OpenAiOAuth.tokenExchangeForm(code, verifier), priorRefresh = "")
 
-    private fun postForm(form: Map<String, String>, priorRefresh: String): Result<OpenAiOAuth.OpenAiTokens> =
+    private suspend fun postForm(form: Map<String, String>, priorRefresh: String): Result<OpenAiOAuth.OpenAiTokens> =
         runCatching {
             val body = FormBody.Builder().apply { form.forEach { (k, v) -> add(k, v) } }.build()
             val request = Request.Builder()
@@ -135,14 +135,14 @@ class OpenAiAuthService(
                 .addHeader("User-Agent", OpenAiOAuth.USER_AGENT)
                 .post(body)
                 .build()
-            http.newCall(request).execute().use { response ->
-                val text = response.body?.string().orEmpty()
-                if (!response.isSuccessful) {
-                    throw IOException("OpenAI sign-in failed (${response.code}).")
-                }
-                OpenAiOAuth.parseTokenResponse(text, nowEpochSec(), priorRefresh)
-                    ?: throw IOException("OpenAI sign-in returned an unreadable response.")
+            // awaitReply (not execute) so cancelling the caller aborts the call
+            // instead of blocking an IO thread until the read timeout.
+            val reply = http.newCall(request).awaitReply()
+            if (!reply.isSuccessful) {
+                throw IOException("OpenAI sign-in failed (${reply.code}).")
             }
+            OpenAiOAuth.parseTokenResponse(reply.body, nowEpochSec(), priorRefresh)
+                ?: throw IOException("OpenAI sign-in returned an unreadable response.")
         }
 
     private data class Callback(val code: String?, val state: String?, val error: String?)

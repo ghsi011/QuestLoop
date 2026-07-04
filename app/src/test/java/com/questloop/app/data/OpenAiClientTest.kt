@@ -2,11 +2,17 @@ package com.questloop.app.data
 
 import com.questloop.core.ai.AiQuestService
 import com.questloop.core.ai.openai.OpenAiOAuth
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.SocketPolicy
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -100,6 +106,24 @@ class OpenAiClientTest {
         val msg = error?.message.orEmpty()
         assertTrue(msg.contains("429"))
         assertTrue(msg.contains("rate limited"))
+    }
+
+    @Test
+    fun `cancelling the caller aborts the in-flight call instead of blocking to the read timeout`() = runBlocking {
+        // The server accepts the request and then never responds. runBlocking (real
+        // time, not runTest's virtual time) because this races a cancel against real IO.
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+        val client = OpenAiClient("gpt-5", endpoint = server.url("/codex/responses").toString()) { tokens() }
+
+        val job = launch(Dispatchers.IO) { runCatching { client.complete("s", "u") } }
+        server.takeRequest() // request is on the wire → the client is now awaiting the response
+        job.cancel()
+        // Without cancellation propagating into OkHttp, join would block for the
+        // full 120s read timeout; with it, the call aborts near-instantly.
+        assertNotNull(
+            "cancelling the coroutine must cancel the OkHttp call",
+            withTimeoutOrNull(10_000) { job.join() },
+        )
     }
 
     @Test

@@ -46,24 +46,24 @@ class OpenRouterClient(
             .post(payload.toRequestBody(JSON_MEDIA))
             .build()
 
-        http.newCall(request).execute().use { response ->
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful) {
-                // Surface the model/provider's own reason (e.g. an unknown model on a
-                // 404) instead of a bare status code, so the user can act on it.
-                val detail = providerError(body)
-                throw IOException(
-                    "OpenRouter request failed (${response.code})" +
-                        if (detail.isNotBlank()) " for model \"$model\": $detail" else " for model \"$model\".",
-                )
-            }
-            // A 200 with a non-JSON body (proxy page, truncated stream) would throw
-            // SerializationException; normalise to IOException so callers degrade.
-            runCatching {
-                json.decodeFromString(ChatResponse.serializer(), body)
-                    .choices.firstOrNull()?.message?.content.orEmpty()
-            }.getOrElse { throw IOException("OpenRouter returned an unreadable response.", it) }
+        // awaitReply (not execute) so cancelling the caller aborts the call
+        // instead of blocking an IO thread until the 60s read timeout.
+        val reply = http.newCall(request).awaitReply()
+        if (!reply.isSuccessful) {
+            // Surface the model/provider's own reason (e.g. an unknown model on a
+            // 404) instead of a bare status code, so the user can act on it.
+            val detail = providerError(reply.body)
+            throw IOException(
+                "OpenRouter request failed (${reply.code})" +
+                    if (detail.isNotBlank()) " for model \"$model\": $detail" else " for model \"$model\".",
+            )
         }
+        // A 200 with a non-JSON body (proxy page, truncated stream) would throw
+        // SerializationException; normalise to IOException so callers degrade.
+        runCatching {
+            json.decodeFromString(ChatResponse.serializer(), reply.body)
+                .choices.firstOrNull()?.message?.content.orEmpty()
+        }.getOrElse { throw IOException("OpenRouter returned an unreadable response.", it) }
     }
 
     /** Extracts OpenRouter's `{ "error": { "message": ... } }` text, or a trimmed body. */
