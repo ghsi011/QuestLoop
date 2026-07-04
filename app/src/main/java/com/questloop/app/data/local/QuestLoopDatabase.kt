@@ -24,7 +24,7 @@ abstract class QuestLoopDatabase : RoomDatabase() {
          * below and committing the exported `schemas/<n>.json`; the migration test
          * walks every version up to here, so a forgotten migration fails in CI.
          */
-        const val SCHEMA_VERSION = 3
+        const val SCHEMA_VERSION = 4
 
         /**
          * Migrations between schema versions. Add a [Migration] for every version
@@ -42,7 +42,27 @@ abstract class QuestLoopDatabase : RoomDatabase() {
             }
         }
 
-        internal val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_2_3)
+        /**
+         * v3 → v4: secondary indexes on completions (epochDay / questId / result)
+         * so the windowed and aggregate ledger queries stop full-scanning. Names
+         * must match what Room derives for `@Entity(indices = ...)` or the
+         * migrated DB fails validation against the exported schema.
+         */
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_completions_epochDay` ON `completions` (`epochDay`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_completions_questId` ON `completions` (`questId`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_completions_result` ON `completions` (`result`)",
+                )
+            }
+        }
+
+        internal val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_2_3, MIGRATION_3_4)
 
         @Volatile
         private var instance: QuestLoopDatabase? = null

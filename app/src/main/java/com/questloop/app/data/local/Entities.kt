@@ -1,6 +1,7 @@
 package com.questloop.app.data.local
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
@@ -35,7 +36,13 @@ data class LastCompletion(
     val lastDay: Long,
 )
 
-@Entity(tableName = "completions")
+// The ledger grows without bound and each Today refresh runs ~10 windowed/
+// aggregate queries over it (epochDay windows, GROUP BY questId, result-filtered
+// counts) — index those columns so the queries don't full-scan the table (v4+).
+@Entity(
+    tableName = "completions",
+    indices = [Index("epochDay"), Index("questId"), Index("result")],
+)
 data class CompletionEntity(
     @PrimaryKey val instanceId: String,
     val questId: String,
