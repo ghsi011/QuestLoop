@@ -77,7 +77,7 @@ class AiQuestService(
             focusAreas = input.focusAreas.map { it.name },
         ) + "\n\n" + SCHEMA_INSTRUCTION
 
-        val attempt = runCatching {
+        val attempt = runCatchingCancellable {
             client.complete(PromptLibrary.QUEST_GENERATION_SYSTEM, userPrompt)
         }
         if (attempt.isFailure) {
@@ -103,7 +103,7 @@ class AiQuestService(
         val trimmed = goal.trim()
         if (trimmed.isBlank()) return Suggestion(emptyList(), fromAi = false, error = "Add a goal to break down.")
         val payload = PromptLibrary.goalDecompositionUserPayload(trimmed) + "\n\n" + SCHEMA_INSTRUCTION
-        val attempt = runCatching { client.complete(PromptLibrary.GOAL_DECOMPOSITION_SYSTEM, payload) }
+        val attempt = runCatchingCancellable { client.complete(PromptLibrary.GOAL_DECOMPOSITION_SYSTEM, payload) }
         if (attempt.isFailure) {
             val failure = describeFailure(attempt.exceptionOrNull())
             return goalFallback(trimmed, failure.message, failure.detail)
@@ -165,7 +165,7 @@ class AiQuestService(
             currentQuestJson = json.encodeToString(AiQuestDto.serializer(), dtoFrom(quest)),
             instruction = instruction,
         ) + "\n\n" + SCHEMA_INSTRUCTION
-        val attempt = runCatching { client.complete(PromptLibrary.QUEST_REFINE_SYSTEM, payload) }
+        val attempt = runCatchingCancellable { client.complete(PromptLibrary.QUEST_REFINE_SYSTEM, payload) }
         if (attempt.isFailure) {
             val failure = describeFailure(attempt.exceptionOrNull())
             return RefineResult(null, failure.message, failure.detail)

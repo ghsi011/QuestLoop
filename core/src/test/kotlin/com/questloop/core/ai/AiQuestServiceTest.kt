@@ -10,8 +10,10 @@ import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import kotlinx.coroutines.test.runTest
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -19,9 +21,10 @@ import kotlin.test.assertTrue
 
 class AiQuestServiceTest {
 
-    private fun service(response: String? = null, fail: Boolean = false, failWith: Throwable? = null) = AiQuestService(
+    private fun service(response: String? = null, fail: Boolean = false, failWith: Throwable? = null, cancel: Boolean = false) = AiQuestService(
         client = object : LlmClient {
             override suspend fun complete(systemPrompt: String, userPrompt: String): String {
+                if (cancel) throw CancellationException("cancelled")
                 failWith?.let { throw it }
                 if (fail) throw RuntimeException("network down")
                 return response ?: ""
@@ -173,6 +176,21 @@ class AiQuestServiceTest {
     fun `a failure with no message still reports something human`() = runTest {
         val result = service(failWith = IOException()).suggest(AiQuestService.Input(todos = listOf("x")))
         assertEquals("AI request failed: couldn't reach the model", result.error)
+    }
+
+    @Test
+    fun `cancellation is rethrown instead of becoming a fallback`() = runTest {
+        val svc = service(cancel = true)
+        assertFailsWith<CancellationException> { svc.suggest(AiQuestService.Input(todos = listOf("Call mom"))) }
+        assertFailsWith<CancellationException> { svc.decomposeGoal("Run a 10k") }
+        val original = Quest(
+            id = "x",
+            title = "Call mum",
+            category = QuestCategory.SOCIAL,
+            frequency = QuestFrequency.ONE_OFF,
+            difficulty = Difficulty.EASY,
+        )
+        assertFailsWith<CancellationException> { svc.refine(original, "make it harder") }
     }
 
     @Test

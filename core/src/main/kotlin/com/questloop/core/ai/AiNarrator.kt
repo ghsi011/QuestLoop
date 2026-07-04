@@ -77,7 +77,7 @@ class AiNarrator(private val client: LlmClient) {
      *   text is shown (still falling back on a transport failure or empty output).
      */
     suspend fun narrateReview(review: ReviewGenerator.Review, sanitize: Boolean = true): Narration {
-        val attempt = runCatching {
+        val attempt = runCatchingCancellable {
             client.complete(PromptLibrary.REVIEW_NARRATION_SYSTEM, reviewPayload(review))
         }
         if (attempt.isFailure) return Narration(reviewFallback(review), false, failNote(attempt))
@@ -92,7 +92,7 @@ class AiNarrator(private val client: LlmClient) {
     }
 
     suspend fun rationale(facts: PlanFacts, sanitize: Boolean = true): Narration {
-        val attempt = runCatching {
+        val attempt = runCatchingCancellable {
             client.complete(PromptLibrary.PLAN_RATIONALE_SYSTEM, planPayload(facts))
         }
         if (attempt.isFailure) return Narration(planFallback(facts), false, failNote(attempt))
