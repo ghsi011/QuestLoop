@@ -888,4 +888,23 @@ class QuestRepositoryTest {
         val storedEntry = repo.completedHistory().first { it.record.questId == "stored" }
         assertTrue("a stored quest is editable/re-addable", storedEntry.editable)
     }
+
+    @Test
+    fun `history is newest-first, shows only full completions, and respects the window`() = runTest {
+        repo.addQuest(quest("a"))
+        repo.addQuest(quest("b"))
+        repo.addQuest(quest("c"))
+        repo.completeQuest(quest("a"), epochDay = 10, result = CompletionResult.COMPLETED)
+        repo.completeQuest(quest("b"), epochDay = 12, result = CompletionResult.COMPLETED)
+        repo.completeQuest(quest("c"), epochDay = 11, result = CompletionResult.FAILED)
+        repo.completeQuest(quest("c"), epochDay = 13, result = CompletionResult.PARTIAL, fraction = 0.5)
+
+        // All-time: only fully-completed records, newest first (the filter and the
+        // ordering live in SQL now — pin the contract the Completed screen relies on).
+        val allTime = repo.completedHistory()
+        assertEquals(listOf("b" to 12L, "a" to 10L), allTime.map { it.record.questId to it.record.epochDay })
+
+        // Windowed: the range bounds the slice, and the result filter still applies.
+        assertEquals(listOf("b"), repo.completedHistory(range = 11L..13L).map { it.record.questId })
+    }
 }

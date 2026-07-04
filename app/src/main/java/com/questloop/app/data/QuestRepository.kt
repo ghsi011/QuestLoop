@@ -33,6 +33,7 @@ import com.questloop.core.reward.RewardAllowanceCalculator
 import com.questloop.core.reward.StreakTracker
 import com.questloop.core.review.ReviewGenerator
 import com.questloop.core.safety.SafetyGuard
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -65,6 +66,8 @@ class QuestRepository(
     private val openAiAuth: OpenAiAuth = OpenAiAuthService(),
     // Injectable so tests can point the OpenAI client at a local MockWebServer.
     private val openAiResponsesEndpoint: String = com.questloop.core.ai.openai.OpenAiOAuth.API_RESPONSES_URL,
+    // Injectable so ViewModel tests can keep the completed-history mapping inline (synchronous).
+    private val historyDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
     private val exportJson = kotlinx.serialization.json.Json { prettyPrint = true; ignoreUnknownKeys = true }
 
@@ -353,31 +356,36 @@ class QuestRepository(
     /**
      * Completed quests for the history screen, newest first. [range] bounds the
      * epoch-day window (Today/Week/Month); null is all-time. Only fully-completed
-     * records are shown (partials are in-progress, not history). Titles are resolved
-     * from stored (incl. archived) + derived + routine + admin quests so every row
-     * is named; only stored quests are marked [CompletedEntry.editable].
+     * records are shown (partials are in-progress, not history) — that filter and
+     * the newest-first ordering live in SQL, and the row→entry mapping runs on
+     * [historyDispatcher], so the all-time slice doesn't transform the whole ledger
+     * on Main on every load/reload. Titles are resolved from stored (incl. archived)
+     * + derived + routine + admin quests so every row is named; only stored quests
+     * are marked [CompletedEntry.editable].
      */
-    suspend fun completedHistory(range: LongRange? = null): List<CompletedEntry> {
-        val rows = if (range == null) completionDao.all() else completionDao.between(range.first, range.last)
-        val profile = profileStore.profile.first()
-        val stored = questDao.getAll().map { it.toModel() }
-        val storedIds = stored.map { it.id }.toSet()
-        val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals)
-        val routines = RoutineQuestFactory.all()
-        val admin = listOf(
-            AdminFundFactory.openPotQuest(), AdminFundFactory.fundMonthQuest(), AdminFundFactory.claimQuest(),
-        )
-        val quests = (stored + derived + routines + admin).associateBy { it.id }
-        return rows.map { it.toModel() }
-            .filter { it.result == CompletionResult.COMPLETED }
-            .sortedByDescending { it.epochDay }
-            .map { rec ->
+    suspend fun completedHistory(range: LongRange? = null): List<CompletedEntry> =
+        withContext(historyDispatcher) {
+            val rows = if (range == null) {
+                completionDao.completedNewestFirst()
+            } else {
+                completionDao.completedBetween(range.first, range.last)
+            }
+            val profile = profileStore.profile.first()
+            val stored = questDao.getAll().map { it.toModel() }
+            val storedIds = stored.map { it.id }.toSet()
+            val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals)
+            val routines = RoutineQuestFactory.all()
+            val admin = listOf(
+                AdminFundFactory.openPotQuest(), AdminFundFactory.fundMonthQuest(), AdminFundFactory.claimQuest(),
+            )
+            val quests = (stored + derived + routines + admin).associateBy { it.id }
+            rows.map { it.toModel() }.map { rec ->
                 val quest = quests[rec.questId]
                 val title = quest?.title ?: rec.category.name.lowercase().replace('_', ' ')
                     .replaceFirstChar { it.uppercase() }
                 CompletedEntry(record = rec, title = title, quest = quest, editable = rec.questId in storedIds)
             }
-    }
+        }
 
     /** Undo a completion from the history screen: remove it entirely; XP re-derives. */
     suspend fun deleteCompletion(instanceId: String) = completionMutex.withLock {

@@ -44,6 +44,17 @@ interface CompletionDao {
     @Query("SELECT * FROM completions ORDER BY epochDay")
     suspend fun all(): List<CompletionEntity>
 
+    /** Fully-completed records, newest first — the Completed screen's all-time slice. */
+    @Query("SELECT * FROM completions WHERE result = 'COMPLETED' ORDER BY epochDay DESC")
+    suspend fun completedNewestFirst(): List<CompletionEntity>
+
+    /** Fully-completed records in an epoch-day window, newest first (Completed screen). */
+    @Query(
+        "SELECT * FROM completions WHERE result = 'COMPLETED' " +
+            "AND epochDay BETWEEN :start AND :end ORDER BY epochDay DESC",
+    )
+    suspend fun completedBetween(start: Long, end: Long): List<CompletionEntity>
+
     /** Recent records, for reward context / safety / streak (avoids loading all rows). */
     @Query("SELECT * FROM completions WHERE epochDay >= :sinceEpochDay")
     suspend fun since(sinceEpochDay: Long): List<CompletionEntity>

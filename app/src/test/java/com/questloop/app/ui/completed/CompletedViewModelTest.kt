@@ -75,7 +75,12 @@ class CompletedViewModelTest {
             RuntimeEnvironment.getApplication(),
             QuestLoopDatabase::class.java,
         ).allowMainThreadQueries().setQueryExecutor(sync).setTransactionExecutor(sync).build()
-        repo = QuestRepository(db.questDao(), db.completionDao(), FakePrefs())
+        // Unconfined history mapping: like the sync DB executors above, it keeps the
+        // VM's fire-and-forget loads fully inline so state can be asserted right away.
+        repo = QuestRepository(
+            db.questDao(), db.completionDao(), FakePrefs(),
+            historyDispatcher = Dispatchers.Unconfined,
+        )
     }
 
     @After
