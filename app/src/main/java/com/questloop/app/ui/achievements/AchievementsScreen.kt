@@ -25,7 +25,12 @@ import com.questloop.app.ui.components.SectionHeader
 @Composable
 fun AchievementsScreen(viewModel: AchievementsViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    AchievementsContent(state, onRetry = viewModel::load)
+}
 
+/** Stateless body — driven directly in tests (loading / error / list states). */
+@Composable
+fun AchievementsContent(state: AchievementsUiState, onRetry: () -> Unit) {
     if (state.loading) {
         Column(
             Modifier.fillMaxSize(),
@@ -43,7 +48,7 @@ fun AchievementsScreen(viewModel: AchievementsViewModel) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(error)
-            Button(onClick = viewModel::load) { Text("Try again") }
+            Button(onClick = onRetry) { Text("Try again") }
         }
         return
     }

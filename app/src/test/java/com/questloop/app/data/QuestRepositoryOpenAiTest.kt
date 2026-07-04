@@ -252,6 +252,31 @@ class QuestRepositoryOpenAiTest {
     }
 
     @Test
+    fun `a completed sign-in links the OpenAI account and enables AI`() = runTest {
+        prefs.ai = AiConfig() // signed out
+        val result = repo.connectOpenAi { /* open browser */ }
+
+        assertTrue("a clean handshake succeeds", result.isSuccess)
+        assertEquals("fresh-at", prefs.ai.openAiTokens?.accessToken)
+        assertEquals(AiProvider.OPENAI, prefs.ai.provider)
+        assertTrue("linking the account turns AI on", prefs.ai.enabled)
+    }
+
+    @Test
+    fun `disconnect drops the OpenAI tokens but keeps the OpenRouter key`() = runTest {
+        prefs.ai = AiConfig(
+            enabled = true,
+            provider = AiProvider.OPENAI,
+            apiKey = "or-key",
+            openAiTokens = OpenAiOAuth.OpenAiTokens("at", "rt", accountId = "acct", expiresAtEpochSec = Long.MAX_VALUE),
+        )
+        repo.disconnectOpenAi()
+
+        assertNull("sign-out drops the ChatGPT tokens", prefs.ai.openAiTokens)
+        assertEquals("the OpenRouter key is left intact", "or-key", prefs.ai.apiKey)
+    }
+
+    @Test
     fun `refresh aborts rather than re-persisting credentials cleared mid-flight`() = runTest {
         prefs.ai = expiredTokenConfig()
         val gate = CompletableDeferred<Unit>()
