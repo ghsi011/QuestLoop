@@ -1228,3 +1228,57 @@ Missed areas it named (each got a targeted follow-up review + skeptics, producin
 
 No finding was refuted outright. Two independent reasons make this credible rather than suspicious: reviewers were required to anchor every claim in file:line citations they had read (generic advice was banned), and the skeptic-in-chief independently re-checked ~30 findings — including every high — reproducing each core claim. Where skeptics found overstatement they said so: 11 findings carry corrections, one was reclassified as a documented tradeoff, and several severity ratings moved in both directions.
 
+
+---
+
+## Implementation status (applied on `claude/codebase-review-multi-agent-0hnmfy`)
+
+The fix wave was implemented by 40 per-fix agents (one isolated worktree each) with a
+dedicated reviewer per patch. **37 of 40 fixes are applied** to this branch; each was
+generated against the reviewed tree and applied in order with conflicts resolved by
+hand. Several conflicts were genuine semantic merges, not pick-a-side — notably:
+
+- **W19 ↔ W04** — W19 moved the interval-slot math to a new `:core` `CompletionSlots`
+  authority, but its moved copy used the base one-off semantics and would have silently
+  reverted W04's fix ([52]). W04's `"oneoff"` lifetime-slot behaviour was ported into
+  `CompletionSlots.completionSlot` (now returns the slot token as a `String`) and its
+  `:core` tests updated, so both the refactor and the correctness fix survive.
+- **W38 ↔ W33** — the "show skips in history" feature ([40]) and the "map the Completed
+  slice off the main thread" perf fix ([36]) both rewrote `completedHistory`; merged so
+  the SKIPPED-inclusion runs inside the `historyDispatcher` `withContext`.
+- **W05/W06, W15/W08, W16, W26/W03, W28/W27, W36/W20, W37** — reconciled by hand
+  (helper-extraction vs inline, added constructor params, union-of-imports, both-sides
+  test additions, injected clock).
+
+**W02** (privacy copy, [39]) was rejected by its reviewer for over-claiming that existing
+quest titles are sent to the AI provider — they are not (dedup runs on-device in
+`AiQuestValidator`). It was re-implemented by hand to disclose the opt-in upload
+accurately: only the to-dos and goals the user types are sent.
+
+### Deferred to a clean follow-up (3)
+
+These were skipped rather than force-merged, because each collides with a higher-priority
+fix in code where a botched merge is worse than a temporary gap. All remain tracked here:
+
+- **W21 — N+1 `DayContext` refactor ([4]/[11]/[34], perf, medium).** Eight conflict hunks
+  through the economy-critical status/dismissal code that the correctness fixes (W01/W19)
+  already rewrote. Deferred so it can be rebuilt cleanly on top of them; no behaviour
+  change is lost, only a performance optimization.
+- **W29 — Mark-done/double-tap/snackbar pinning tests ([21]/[22], test-only).** Add/add
+  conflict with W11's rewrite of the same receiver test; W29's "open-the-app fallback"
+  test encodes receiver behaviour that contradicts W11's trampoline fix. W11's receiver
+  tests remain in place.
+- **W31 — OAuth forged-callback CSRF guard ([31], low, partially-correct).** Five
+  interleaved conflict regions with W15's cancellation-aware rewrite of the same
+  `signIn`/`awaitCallback`/`acceptOnce` methods in security-critical auth code. W15 (the
+  confirmed, higher-severity fix) is applied; W31's state-validation is deferred to
+  reimplement on top of it rather than risk a hand-merge of two auth rewrites.
+
+### Validation
+
+`:core:test` passes. The wave's tests were written but never executed by the implementer
+agents (they were sandboxed off gradle), so the first full `:app:testDebugUnitTest` run
+surfaced test-only failures in the new tests (async/dispatcher timing, a Robolectric
+`AndroidKeyStore` gap exposed by W32's encrypted-default change, timezone setup); these
+are being fixed before the branch is proposed for merge. CI (`[uitest]`) runs the app
+build, lint, R8 release, and the emulator suite as the authoritative gate.
