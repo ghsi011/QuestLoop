@@ -135,4 +135,14 @@ class RewardsViewModelTest {
         vm.consumeSavedMessage()
         assertNull(vm.state.value.savedMessage)
     }
+
+    @Test
+    fun `a failed load finishes loading and surfaces an error message`() = runTest {
+        db.close() // Make the store fail: the allowance query throws.
+        val vm = RewardsViewModel(repo)
+        val state = vm.state.value
+        assertFalse(state.loading)
+        assertNotNull(state.savedMessage)
+        assertTrue(state.messageId > 0)
+    }
 }

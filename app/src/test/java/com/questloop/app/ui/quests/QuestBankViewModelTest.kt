@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -120,18 +121,18 @@ class QuestBankViewModelTest {
     }
 
     @Test
-    fun `a failed add releases the in-flight guard and shows an error toast`() = runTest {
+    fun `a failed add releases the in-flight marker so retry still works`() = runTest {
+        db.close() // Make the store fail: the insert throws instead of persisting.
         val vm = QuestBankViewModel(repo)
-        db.close() // the write will fail
         val bankQuest = QuestBank.catalog.first()
         vm.add(bankQuest)
-
         val state = vm.state.value
-        assertTrue(state.adding.isEmpty())
-        assertNotNull(state.toast)
-
-        // The row isn't dead — a retry passes the guard and reports again.
+        // The id must not stay stranded in `adding` (that would dead-end the row).
+        assertFalse(bankQuest.id in state.adding)
+        assertTrue(state.toast!!.contains(bankQuest.title))
+        // And a retry tap is not silently swallowed by the in-flight guard.
+        vm.consumeToast()
         vm.add(bankQuest)
-        assertTrue(vm.state.value.toastId > state.toastId)
+        assertNotNull(vm.state.value.toast)
     }
 }

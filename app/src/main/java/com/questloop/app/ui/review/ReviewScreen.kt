@@ -69,6 +69,17 @@ fun ReviewScreen(viewModel: ReviewViewModel, onOpenCompleted: () -> Unit = {}) {
             }
         }
 
+        state.error?.let { message ->
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(message, color = MaterialTheme.colorScheme.error)
+                    OutlinedButton(onClick = { viewModel.load() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Try again")
+                    }
+                }
+            }
+        }
+
         when (state.mode) {
             ReviewMode.REVIEW -> reviewContent(state, viewModel)
             ReviewMode.PLAN -> planContent(state)
@@ -100,7 +111,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.reviewContent(
     }
     state.weekly?.let { item { ReviewCard(it, state.weeklySummary) } }
     state.monthly?.let { item { ReviewCard(it, state.monthlySummary) } }
-    if (state.weekly == null && state.monthly == null && !state.loading) {
+    if (state.weekly == null && state.monthly == null && !state.loading && state.error == null) {
         item { Text("No activity yet — complete a few quests to see your review.") }
     }
 }
@@ -108,7 +119,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.reviewContent(
 private fun androidx.compose.foundation.lazy.LazyListScope.planContent(state: ReviewUiState) {
     state.weeklyPlan?.let { item { PlanCard(it) } }
     state.monthlyPlan?.let { item { PlanCard(it) } }
-    if (state.weeklyPlan == null && state.monthlyPlan == null && !state.loading) {
+    if (state.weeklyPlan == null && state.monthlyPlan == null && !state.loading && state.error == null) {
         item { Text("Nothing scheduled yet — add some quests or habits to plan ahead.") }
     }
 }

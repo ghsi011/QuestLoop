@@ -45,6 +45,8 @@ class QuestsViewModelTest {
     private lateinit var repo: QuestRepository
 
     private class FakePrefs : ProfilePreferences {
+        /** When set, check-in reads throw — simulates a store failure mid-refresh. */
+        var failGetCheckIn = false
         private val state = MutableStateFlow(UserProfile())
         override val profile: Flow<UserProfile> = state
         override suspend fun setBudgetCap(value: Double) {}
@@ -57,7 +59,8 @@ class QuestsViewModelTest {
         override suspend fun setBadHabits(badHabits: List<BadHabit>) {}
         override suspend fun setGoals(goals: List<Goal>) {}
         override suspend fun setCheckIn(checkIn: EnergyCheckIn?) {}
-        override suspend fun getCheckIn(): EnergyCheckIn? = null
+        override suspend fun getCheckIn(): EnergyCheckIn? =
+            if (failGetCheckIn) throw RuntimeException("check-in store failed") else null
         override suspend fun getAiConfig(): AiConfig = AiConfig()
         override suspend fun setAiConfig(config: AiConfig) {}
         override suspend fun isOnboardingComplete(): Boolean = true
@@ -154,5 +157,20 @@ class QuestsViewModelTest {
         vm.consumeToast()
         assertNull(vm.state.value.toast)
         assertNull(vm.state.value.pendingUndo)
+    }
+
+    @Test
+    fun `a failed refresh surfaces an error and keeps the backlog subscription alive`() = runTest {
+        val prefs = FakePrefs().apply { failGetCheckIn = true }
+        val flaky = QuestRepository(db.questDao(), db.completionDao(), prefs)
+        val vm = QuestsViewModel(flaky)
+        // The first refresh fails: the spinner is released and the failure surfaces.
+        assertFalse(vm.state.value.loading)
+        assertNotNull(vm.state.value.toast)
+        // The collector survives, so the next change still refreshes the backlog.
+        prefs.failGetCheckIn = false
+        flaky.addQuest(quest())
+        assertEquals(1, vm.state.value.total)
+        assertTrue(vm.state.value.groups.flatMap { it.items }.any { it.quest.id == "a" })
     }
 }

@@ -26,6 +26,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -55,9 +56,12 @@ class ReviewViewModelTest {
         override suspend fun setHabits(habits: List<Habit>) {}
         override suspend fun setBadHabits(badHabits: List<BadHabit>) {}
         override suspend fun setGoals(goals: List<Goal>) {}
+        /** When set, AI-config reads throw — simulates a store failure. */
+        var failAiConfig = false
         override suspend fun setCheckIn(checkIn: EnergyCheckIn?) {}
         override suspend fun getCheckIn(): EnergyCheckIn? = null
-        override suspend fun getAiConfig(): AiConfig = AiConfig() // AI off -> deterministic fallback
+        override suspend fun getAiConfig(): AiConfig = // AI off -> deterministic fallback
+            if (failAiConfig) throw RuntimeException("prefs store failed") else AiConfig()
         override suspend fun setAiConfig(config: AiConfig) {}
         override suspend fun isOnboardingComplete(): Boolean = true
         override suspend fun setOnboardingComplete() {}
@@ -139,5 +143,31 @@ class ReviewViewModelTest {
         // No load yet -> weekly/monthly null -> early return, no crash.
         vm.summarizeWithAi()
         assertTrue(vm.state.value.loading)
+    }
+
+    @Test
+    fun `a failed load releases the spinner and surfaces an error`() = runTest {
+        db.close() // Make the store fail: the review queries throw.
+        val vm = ReviewViewModel(repo)
+        vm.load()
+        val state = vm.state.value
+        assertFalse(state.loading)
+        assertNotNull(state.error)
+        assertNull(state.weekly)
+    }
+
+    @Test
+    fun `a failed summarize resets the flag so the button re-enables`() = runTest {
+        val prefs = FakePrefs()
+        val flaky = QuestRepository(db.questDao(), db.completionDao(), prefs)
+        val vm = ReviewViewModel(flaky)
+        vm.load()
+        assertNull(vm.state.value.error)
+        prefs.failAiConfig = true
+        vm.summarizeWithAi()
+        val state = vm.state.value
+        assertFalse(state.summarizing)
+        // The deterministic summaries from load() stay in place.
+        assertNotNull(state.weeklySummary)
     }
 }

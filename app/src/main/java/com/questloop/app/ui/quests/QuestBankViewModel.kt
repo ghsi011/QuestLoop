@@ -36,7 +36,7 @@ class QuestBankViewModel(private val repository: QuestRepository) : ViewModel() 
 
     init {
         // Track which catalog quests are already added so the UI reflects it live.
-        launchSafely {
+        launchSafely(onError = ::refreshFailed) {
             repository.quests.collectLatest { active ->
                 val activeIds = active.map { it.id }.toSet()
                 val added = QuestBank.catalog.map { q -> q.id }.filter { id -> id in activeIds }.toSet()
@@ -53,24 +53,34 @@ class QuestBankViewModel(private val repository: QuestRepository) : ViewModel() 
         val s = _state.value
         if (quest.id in s.addedIds || quest.id in s.adding) return
         _state.update { it.copy(adding = it.adding + quest.id) }
-        launchSafely(onError = { t ->
-            // On failure the quest never reaches addedIds, so the quests collector
-            // can't release the in-flight marker — clear it here and say so, or
-            // this row's Add button is silently dead for the rest of the visit.
-            runCatching { Log.e("QuestLoop", "Quest bank add failed", t) }
-            _state.update {
-                it.copy(
-                    adding = it.adding - quest.id,
-                    toast = "Something went wrong — try again.",
-                    toastId = it.toastId + 1,
-                )
-            }
-        }) {
+        launchSafely(onError = { addFailed(quest, it) }) {
             repository.addFromBank(quest, AppClock.todayEpochDay())
             // Intentionally do NOT clear `adding` here — the quests collector
             // clears it when the new quest appears in addedIds, so the button
             // goes in-flight -> added with no gap a double-tap could exploit.
             _state.update { it.copy(toast = "Added \"${quest.title}\".", toastId = it.toastId + 1) }
+        }
+    }
+
+    /** A failed insert never reaches addedIds, so release the in-flight marker
+     *  (or the guard in [add] would dead-end this row's button) and say so. */
+    private fun addFailed(quest: Quest, t: Throwable) {
+        runCatching { Log.e("QuestLoop", "Quest bank add failed", t) }
+        _state.update {
+            it.copy(
+                adding = it.adding - quest.id,
+                toast = "Couldn't add \"${quest.title}\" — please try again.",
+                toastId = it.toastId + 1,
+            )
+        }
+    }
+
+    /** The added-state tracker died (store failure): say so instead of silently
+     *  freezing which rows show as added. Reopening the screen re-subscribes. */
+    private fun refreshFailed(t: Throwable) {
+        runCatching { Log.e("QuestLoop", "Quest bank refresh failed", t) }
+        _state.update {
+            it.copy(toast = "Couldn't refresh your quests — please try again.", toastId = it.toastId + 1)
         }
     }
 
