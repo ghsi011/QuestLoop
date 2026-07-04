@@ -213,6 +213,12 @@ class ProfileStore(
                 keyStore.getApiKey() == legacy
             }.getOrDefault(false)
             if (migrated) dataStore.edit { it.remove(Keys.AI_KEY) }
+        } else if (!legacy.isNullOrBlank()) {
+            // The secure store already holds a key, so a remaining plaintext copy is
+            // a dead leftover (the process died between the migration's verified
+            // secure write and its remove — the branch above won't re-run once the
+            // secure read is non-blank). Scrub it.
+            dataStore.edit { it.remove(Keys.AI_KEY) }
         }
         return AiConfig(
             enabled = (prefs[Keys.AI_ENABLED] ?: 0) == 1,

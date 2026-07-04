@@ -9,13 +9,17 @@ import com.questloop.core.model.Goal
 import com.questloop.core.model.Habit
 import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.UserProfile
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -44,9 +48,18 @@ class QuestRepositoryOpenAiTest {
     private class FakeAuth : OpenAiAuth {
         var refreshCount = 0
         var refreshed = OpenAiOAuth.OpenAiTokens("fresh-at", "fresh-rt", accountId = "acct", expiresAtEpochSec = Long.MAX_VALUE)
+
+        /** When set, [refresh] signals [refreshStarted] then suspends until it completes. */
+        var refreshGate: CompletableDeferred<Unit>? = null
+        val refreshStarted = CompletableDeferred<Unit>()
+
         override suspend fun signIn(timeoutMs: Long, openUrl: (String) -> Unit) = Result.success(refreshed)
         override suspend fun refresh(tokens: OpenAiOAuth.OpenAiTokens): Result<OpenAiOAuth.OpenAiTokens> {
             refreshCount++
+            refreshGate?.let { gate ->
+                refreshStarted.complete(Unit)
+                gate.await()
+            }
             return Result.success(refreshed)
         }
     }
@@ -72,7 +85,7 @@ class QuestRepositoryOpenAiTest {
         override suspend fun setOnboardingComplete() {}
         override suspend fun getReminderConfig(): ReminderConfig = ReminderConfig()
         override suspend fun setReminderConfig(config: ReminderConfig) {}
-        override suspend fun clear() {}
+        override suspend fun clear() { ai = AiConfig() }
     }
 
     @Before
@@ -128,13 +141,7 @@ class QuestRepositoryOpenAiTest {
 
     @Test
     fun `OpenAI provider refreshes and persists an expired token before calling`() = runTest {
-        val nowSec = System.currentTimeMillis() / 1000
-        prefs.ai = AiConfig(
-            enabled = true,
-            provider = AiProvider.OPENAI,
-            openAiTokens = OpenAiOAuth.OpenAiTokens("stale", "rt", accountId = "acct", expiresAtEpochSec = nowSec - 100),
-            openAiModel = "gpt-5.4",
-        )
+        prefs.ai = expiredTokenConfig()
         enqueueQuestSse()
 
         val result = repo.suggestQuests(listOf("rent"))
@@ -144,5 +151,77 @@ class QuestRepositoryOpenAiTest {
         // The refreshed tokens are persisted and the call used the new access token.
         assertEquals("fresh-at", prefs.ai.openAiTokens?.accessToken)
         assertEquals("Bearer fresh-at", server.takeRequest().getHeader("Authorization"))
+    }
+
+    /** An OpenAI config whose access token is already expired, forcing a refresh. */
+    private fun expiredTokenConfig(apiKey: String = "") = AiConfig(
+        enabled = true,
+        provider = AiProvider.OPENAI,
+        apiKey = apiKey,
+        openAiTokens = OpenAiOAuth.OpenAiTokens(
+            "stale",
+            "rt",
+            accountId = "acct",
+            expiresAtEpochSec = System.currentTimeMillis() / 1000 - 100,
+        ),
+        openAiModel = "gpt-5.4",
+    )
+
+    @Test
+    fun `disconnect during an in-flight refresh is not undone by the refresh persist`() = runTest {
+        prefs.ai = expiredTokenConfig()
+        val gate = CompletableDeferred<Unit>()
+        auth.refreshGate = gate
+        enqueueQuestSse()
+
+        val call = launch { repo.suggestQuests(listOf("rent")) }
+        auth.refreshStarted.await()
+        // Sign out while the refresh is mid-flight: it must serialise behind the
+        // refresh's persist so the cleared tokens stay cleared.
+        val disconnect = launch { repo.disconnectOpenAi() }
+        gate.complete(Unit)
+        call.join()
+        disconnect.join()
+
+        assertNull("sign-out must win over the in-flight refresh", prefs.ai.openAiTokens)
+    }
+
+    @Test
+    fun `delete-all during an in-flight refresh is not undone by the refresh persist`() = runTest {
+        prefs.ai = expiredTokenConfig(apiKey = "or-key")
+        val gate = CompletableDeferred<Unit>()
+        auth.refreshGate = gate
+        enqueueQuestSse()
+
+        val call = launch { repo.suggestQuests(listOf("rent")) }
+        auth.refreshStarted.await()
+        val wipe = launch { repo.deleteAllData() }
+        gate.complete(Unit)
+        call.join()
+        wipe.join()
+
+        // SPEC §9: after "delete all my data", no credential survives the race.
+        assertNull(prefs.ai.openAiTokens)
+        assertEquals("", prefs.ai.apiKey)
+    }
+
+    @Test
+    fun `refresh aborts rather than re-persisting credentials cleared mid-flight`() = runTest {
+        prefs.ai = expiredTokenConfig()
+        val gate = CompletableDeferred<Unit>()
+        auth.refreshGate = gate
+        enqueueQuestSse()
+
+        val call = async { repo.suggestQuests(listOf("rent")) }
+        auth.refreshStarted.await()
+        // A writer that bypasses the auth mutex clears the config mid-refresh:
+        // defence in depth for the disconnect/delete-all class of races.
+        prefs.ai = AiConfig()
+        gate.complete(Unit)
+        val result = call.await()
+
+        assertNull("cleared tokens must not be re-persisted", prefs.ai.openAiTokens)
+        assertFalse("the aborted call must not pose as AI output", result.fromAi)
+        assertTrue("the abort surfaces an error to the caller", result.error != null)
     }
 }

@@ -74,6 +74,19 @@ class ProfileStoreTest {
     }
 
     @Test
+    fun `a lingering legacy plaintext copy is scrubbed once the secure store holds the key`() = runTest {
+        val ds = realDataStore()
+        val store = ProfileStore(ctx, ds)
+        store.setAiConfig(AiConfig(enabled = true, apiKey = "sk-xyz"))
+        // Simulate a process death between the migration's verified secure write and
+        // its plaintext remove: the legacy slot still holds a stale plaintext copy.
+        ds.edit { it[stringPreferencesKey("ai_api_key")] = "sk-xyz" }
+        assertEquals("sk-xyz", store.getAiConfig().apiKey)
+        // The read notices the secure store already has the key and scrubs the copy.
+        assertNull(ds.data.first()[stringPreferencesKey("ai_api_key")])
+    }
+
+    @Test
     fun `openai provider and oauth tokens round-trip`() = runTest {
         val ds = realDataStore()
         val store = ProfileStore(ctx, ds)

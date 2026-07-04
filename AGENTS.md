@@ -99,6 +99,8 @@ QuestLoop: a gamified quest/habit Android app. Gradle multi-module:
   The chatgpt.com Codex backend is reverse-engineered and **can't be tested in the
   sandbox** — validate live changes by hand. Tokens rotate on refresh: serialise
   refresh+persist (`aiAuthMutex`) so concurrent calls don't burn each other's token.
+  Disconnect + delete-all take the same mutex (and the refresh re-reads the config
+  before persisting) so a sign-out/wipe can't be resurrected by an in-flight refresh.
 - Hold a partial `WAKE_LOCK` around the network call so a slow response survives
   the screen turning off (`AiCallGuard`).
 - Surface the provider's error body; never silently echo the deterministic

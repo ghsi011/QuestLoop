@@ -80,6 +80,8 @@ class QuestRepository(
 
     // Serialises the OpenAI OAuth refresh + persist so two concurrent AI calls
     // can't both refresh and invalidate each other's (rotating) refresh token.
+    // Also taken by disconnectOpenAi/deleteAllData so an in-flight refresh can't
+    // re-persist credentials the user just cleared.
     private val aiAuthMutex = Mutex()
 
     /** Days of history considered for safety signals. */
@@ -845,8 +847,12 @@ class QuestRepository(
         }
     }
 
-    /** Unlinks the OpenAI account (drops the stored tokens); leaves OpenRouter config intact. */
-    suspend fun disconnectOpenAi() {
+    /**
+     * Unlinks the OpenAI account (drops the stored tokens); leaves OpenRouter config
+     * intact. Serialised with [freshOpenAiTokens] so an in-flight token refresh
+     * can't re-persist the tokens after the sign-out.
+     */
+    suspend fun disconnectOpenAi() = aiAuthMutex.withLock {
         val config = profileStore.getAiConfig()
         profileStore.setAiConfig(config.copy(openAiTokens = null))
     }
@@ -859,9 +865,10 @@ class QuestRepository(
 
     /**
      * Returns a usable OpenAI token bundle, refreshing + persisting it when expired
-     * (or when [forceRefresh] is set after a 401). Serialised so concurrent AI calls
-     * don't both spend the rotating refresh token. Throws when not signed in or the
-     * refresh fails, so the error flows through [AiQuestService]'s per-call handling.
+     * (or when [forceRefresh] is set after a 401). Serialised (with [disconnectOpenAi]
+     * and [deleteAllData]) so concurrent AI calls don't both spend the rotating
+     * refresh token. Throws when not signed in or the refresh fails, so the error
+     * flows through [AiQuestService]'s per-call handling.
      */
     private suspend fun freshOpenAiTokens(forceRefresh: Boolean) = aiAuthMutex.withLock {
         val config = profileStore.getAiConfig()
@@ -872,7 +879,16 @@ class QuestRepository(
         val refreshed = openAiAuth.refresh(tokens).getOrElse {
             throw java.io.IOException("Your ChatGPT sign-in expired. Please sign in again in Settings.")
         }
-        profileStore.setAiConfig(config.copy(openAiTokens = refreshed))
+        // Re-read before persisting: a writer that bypasses this mutex (e.g. a
+        // Settings save) may have changed the config during the network refresh.
+        // If the tokens were cleared meanwhile, honor the sign-out — abort rather
+        // than resurrect credentials; otherwise persist onto the fresh snapshot so
+        // only the token slot changes.
+        val current = profileStore.getAiConfig()
+        if (current.openAiTokens == null) {
+            throw java.io.IOException("You're not signed in to ChatGPT. Sign in again in Settings.")
+        }
+        profileStore.setAiConfig(current.copy(openAiTokens = refreshed))
         refreshed
     }
 
@@ -983,8 +999,12 @@ class QuestRepository(
     private suspend fun recordAiError(config: AiConfig, message: String) =
         withContext(Dispatchers.IO) { aiDiagnostics.record(config.activeModel, redactSecrets(message, config)) }
 
-    /** Erases all on-device data (SPEC §9: users can delete their data). */
-    suspend fun deleteAllData() {
+    /**
+     * Erases all on-device data (SPEC §9: users can delete their data). Serialised
+     * with [freshOpenAiTokens] so an in-flight token refresh can't re-persist the
+     * AI credentials after the wipe.
+     */
+    suspend fun deleteAllData() = aiAuthMutex.withLock {
         completionDao.clear()
         questDao.clear()
         profileStore.clear()
