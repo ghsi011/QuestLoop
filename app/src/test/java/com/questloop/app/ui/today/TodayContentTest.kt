@@ -2,6 +2,7 @@ package com.questloop.app.ui.today
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -238,6 +239,42 @@ class TodayContentTest {
         composeRule.onNodeWithText("How did it go?").assertIsDisplayed()
         composeRule.onNodeWithText("4").performClick()
         assertEquals(4, measured)
+    }
+
+    @Test
+    fun `counter buttons carry spoken descriptions tied to the quest`() {
+        composeRule.setContent {
+            TodayContent(
+                state = stateWith(
+                    quest("water", "Stay hydrated", CompletionStyle.QUANTITATIVE, target = 8, unit = "glasses"),
+                ),
+                actions = noopActions(),
+            )
+        }
+        // TalkBack hears the action + quest, not a bare "+"/"−" glyph — and the
+        // description sits on the actionable node, so clicking it still works.
+        composeRule.onNodeWithContentDescription("Add one to Stay hydrated").performClick()
+        composeRule.onNodeWithText("1 / 8 glasses").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Remove one from Stay hydrated").performClick()
+        composeRule.onNodeWithText("0 / 8 glasses").assertIsDisplayed()
+    }
+
+    @Test
+    fun `duration and rating buttons carry spoken descriptions tied to the quest`() {
+        var measured: Int? = null
+        composeRule.setContent {
+            TodayContent(
+                state = stateWith(
+                    quest("run", "Go for a run", CompletionStyle.DURATION),
+                    quest("art", "Creative work", CompletionStyle.SUBJECTIVE),
+                ),
+                actions = noopActions(onCompleteMeasured = { _, v -> measured = v }),
+            )
+        }
+        composeRule.onNodeWithContentDescription("Remove 5 minutes from Go for a run").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Add 5 minutes to Go for a run").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Rate Creative work 3 of 5").performScrollTo().performClick()
+        assertEquals(3, measured)
     }
 
     @Test

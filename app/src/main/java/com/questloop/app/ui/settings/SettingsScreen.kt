@@ -48,6 +48,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -357,9 +359,16 @@ private fun HourRow(label: String, hour: Int, onHour: (Int) -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, modifier = Modifier.weight(1f))
-        OutlinedButton(onClick = { onHour((hour - 1).coerceAtLeast(0)) }) { Text("−") }
+        // Glyph-only steppers: name the action for TalkBack ("Earlier morning hour").
+        OutlinedButton(
+            onClick = { onHour((hour - 1).coerceAtLeast(0)) },
+            modifier = Modifier.semantics { contentDescription = "Earlier ${label.lowercase()} hour" },
+        ) { Text("−") }
         Text("%02d:00".format(hour), style = MaterialTheme.typography.bodyMedium)
-        OutlinedButton(onClick = { onHour((hour + 1).coerceAtMost(23)) }) { Text("+") }
+        OutlinedButton(
+            onClick = { onHour((hour + 1).coerceAtMost(23)) },
+            modifier = Modifier.semantics { contentDescription = "Later ${label.lowercase()} hour" },
+        ) { Text("+") }
     }
 }
 
