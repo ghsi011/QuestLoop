@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.questloop.core.completion.CompletionScaling
 import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.Quest
 
@@ -56,12 +57,16 @@ fun QuestCompletionControls(
 
         CompletionStyle.QUANTITATIVE -> {
             val target = (quest.targetCount ?: 1).coerceAtLeast(1)
-            var count by remember(quest.id, progress) { mutableIntStateOf(progress.coerceIn(0, target)) }
+            // Over-completion quests keep counting past the target (the 3rd swim on a
+            // "swim 2×/week"), bounded the same way as the stored fraction.
+            val max = if (quest.allowOverCompletion) (target * CompletionScaling.MAX_OVER_FRACTION).toInt() else target
+            var count by remember(quest.id, progress) { mutableIntStateOf(progress.coerceIn(0, max)) }
             Column(Modifier.padding(top = 8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { if (count > 0) count-- }, enabled = enabled) { Text("−") }
-                    Text("$count / $target ${quest.unit.orEmpty()}".trim(), style = MaterialTheme.typography.bodyMedium)
-                    OutlinedButton(onClick = { if (count < target) count++ }, enabled = enabled) { Text("+") }
+                    val extra = if (count > target) " (+${count - target})" else ""
+                    Text("$count / $target ${quest.unit.orEmpty()}".trim() + extra, style = MaterialTheme.typography.bodyMedium)
+                    OutlinedButton(onClick = { if (count < max) count++ }, enabled = enabled) { Text("+") }
                 }
                 Button(onClick = { onMeasured(count) }, enabled = enabled, modifier = Modifier.padding(top = 8.dp)) {
                     Text("Log progress")

@@ -42,6 +42,7 @@ class TodayContentTest {
         unit: String? = null,
         category: QuestCategory = QuestCategory.WORK_STUDY,
         rationale: String? = null,
+        allowOver: Boolean = false,
     ) = Quest(
         id = id,
         title = title,
@@ -52,6 +53,7 @@ class TodayContentTest {
         targetCount = target,
         unit = unit,
         rationale = rationale,
+        allowOverCompletion = allowOver,
     )
 
     private fun stateWith(vararg quests: Quest): TodayUiState {
@@ -158,6 +160,53 @@ class TodayContentTest {
         composeRule.onNodeWithText("0 / 8 glasses").assertIsDisplayed()
         composeRule.onNodeWithText("+").performClick()
         composeRule.onNodeWithText("1 / 8 glasses").assertIsDisplayed()
+    }
+
+    @Test
+    fun `quantitative stepper without over-completion stops at the target`() {
+        composeRule.setContent {
+            TodayContent(
+                state = stateWith(
+                    quest("swim", "Swim", CompletionStyle.QUANTITATIVE, target = 2, unit = "swims"),
+                ),
+                actions = noopActions(),
+            )
+        }
+        repeat(3) { composeRule.onNodeWithText("+").performClick() }
+        composeRule.onNodeWithText("2 / 2 swims").assertIsDisplayed()
+    }
+
+    @Test
+    fun `over-completion stepper counts past the target and logs the extra`() {
+        var measured: Pair<String, Int>? = null
+        composeRule.setContent {
+            TodayContent(
+                state = stateWith(
+                    quest("swim", "Swim", CompletionStyle.QUANTITATIVE, target = 2, unit = "swims", allowOver = true),
+                ),
+                actions = noopActions(onCompleteMeasured = { q, v -> measured = q.id to v }),
+            )
+        }
+        repeat(3) { composeRule.onNodeWithText("+").performClick() }
+        composeRule.onNodeWithText("3 / 2 swims (+1)").assertIsDisplayed()
+        composeRule.onNodeWithText("Log progress").performScrollTo().performClick()
+        assertEquals("swim" to 3, measured)
+        // Bounded like the stored fraction (5× the target), so it can't run away.
+        repeat(20) { composeRule.onNodeWithText("+").performClick() }
+        composeRule.onNodeWithText("10 / 2 swims (+8)").assertIsDisplayed()
+    }
+
+    @Test
+    fun `over-completion stepper resumes from progress past the target`() {
+        composeRule.setContent {
+            TodayContent(
+                state = stateWith(
+                    quest("swim", "Swim", CompletionStyle.QUANTITATIVE, target = 2, unit = "swims", allowOver = true),
+                ).copy(todayProgress = mapOf("swim" to 3)),
+                actions = noopActions(),
+            )
+        }
+        composeRule.onNodeWithText("3 / 2 swims (+1)").assertIsDisplayed()
     }
 
     @Test
