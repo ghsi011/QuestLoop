@@ -44,6 +44,9 @@ object AdminFundFactory {
     /** Every admin-quest id, for allowlisting (e.g. import validation). */
     val ALL_IDS: List<String> = listOf(OPEN_POT_ID, FUND_MONTH_ID, CLAIM_ID)
 
+    /** Every admin quest regardless of lifecycle state, e.g. to scan the completion ledger. */
+    fun all(): List<Quest> = listOf(openPotQuest(), fundMonthQuest(), claimQuest())
+
     fun openPotQuest(): Quest = adminQuest(
         id = OPEN_POT_ID,
         title = "Open a separate savings pot you control",

@@ -261,6 +261,24 @@ class QuestRepositoryTest {
     }
 
     @Test
+    fun `a completed daily routine leaves today's plan and returns tomorrow`() = runTest {
+        // Regression: routine quests aren't stored (or habit-derived), so the
+        // dismissal scan must still cover them — else the morning check-in pops
+        // right back into the plan after being checked off.
+        val morning = RoutineQuestFactory.all().first { it.id == RoutineQuestFactory.MORNING_REVIEW }
+        val before = repo.todayPlan(epochDay = 1, dayPart = DayPart.MORNING)
+        assertTrue(before.quests.any { it.quest.id == morning.id })
+
+        repo.completeQuest(morning, epochDay = 1, result = CompletionResult.COMPLETED)
+        val after = repo.todayPlan(epochDay = 1, dayPart = DayPart.MORNING)
+        assertTrue(after.quests.none { it.quest.id == morning.id })
+
+        // Dismissed for the day only — it's back tomorrow.
+        val nextDay = repo.todayPlan(epochDay = 2, dayPart = DayPart.MORNING)
+        assertTrue(nextDay.quests.any { it.quest.id == morning.id })
+    }
+
+    @Test
     fun `partially logged quantitative quest stays visible and accumulates`() = runTest {
         val water = quest("water", style = CompletionStyle.QUANTITATIVE, target = 8, category = QuestCategory.HEALTH)
         repo.addQuest(water)
@@ -573,6 +591,20 @@ class QuestRepositoryTest {
         // Past the ~30-day period -> it returns.
         val later = funded.periodPlan("m", fromEpochDay = 33, toEpochDay = 63)
         assertTrue(later.items.any { it.quest.id == AdminFundFactory.FUND_MONTH_ID })
+    }
+
+    @Test
+    fun `a skipped admin step rests for the day then returns`() = runTest {
+        // Admin-fund quests aren't stored either, and isDue only tracks
+        // completions — the dismissal scan is what hides a skip for the day.
+        val funded = QuestRepository(db.questDao(), db.completionDao(), FakePrefs(cap = 50.0))
+        funded.completeQuest(AdminFundFactory.openPotQuest(), epochDay = 1, result = CompletionResult.SKIPPED)
+        val today = funded.todayPlan(epochDay = 1, dayPart = DayPart.MIDDAY)
+        assertTrue(today.quests.none { it.quest.id == AdminFundFactory.OPEN_POT_ID })
+
+        // A skip rests it for the day, not forever.
+        val nextDay = funded.todayPlan(epochDay = 2, dayPart = DayPart.MIDDAY)
+        assertTrue(nextDay.quests.any { it.quest.id == AdminFundFactory.OPEN_POT_ID })
     }
 
     @Test

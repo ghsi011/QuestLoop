@@ -243,15 +243,18 @@ class QuestRepository(
     }
 
     /**
-     * Every quest that can appear in a plan, keyed by id: stored quests plus the
-     * ones derived from habits/bad-habits/goals. Used wherever a quest's style or
-     * fields are needed, so derived (non-stored) quests aren't silently treated as
-     * binary or skipped for progress.
+     * Every quest that can appear in a plan, keyed by id: stored quests, the ones
+     * derived from habits/bad-habits/goals, and the system routine + reward-fund
+     * admin quests. Used wherever a quest's style or fields are needed, so
+     * non-stored quests aren't silently treated as binary or skipped for
+     * progress/dismissal — a completed morning routine (or a skipped admin step)
+     * must leave today's plan like anything else.
      */
     private suspend fun candidateQuestsById(): Map<String, Quest> {
         val profile = profileStore.profile.first()
         val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals)
-        return (questDao.getActive().map { it.toModel() } + derived).associateBy { it.id }
+        val system = RoutineQuestFactory.all() + AdminFundFactory.all()
+        return (questDao.getActive().map { it.toModel() } + derived + system).associateBy { it.id }
     }
 
     /** Measured (count/duration) quests accumulate progress across their interval. */
