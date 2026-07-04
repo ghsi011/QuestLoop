@@ -107,8 +107,13 @@ class SettingsViewModelTest {
         override suspend fun setCheckIn(checkIn: EnergyCheckIn?) {}
         override suspend fun getCheckIn(): EnergyCheckIn? = null
         private var ai = AiConfig()
+        /** When true, AI writes throw like a rejected secure-store commit. */
+        var failAiWrites = false
         override suspend fun getAiConfig(): AiConfig = ai
-        override suspend fun setAiConfig(config: AiConfig) { ai = config }
+        override suspend fun setAiConfig(config: AiConfig) {
+            check(!failAiWrites) { "Could not save the credential securely." }
+            ai = config
+        }
         private var onboarded = false
         override suspend fun isOnboardingComplete(): Boolean = onboarded
         override suspend fun setOnboardingComplete() { onboarded = true }
@@ -123,6 +128,8 @@ class SettingsViewModelTest {
         }
     }
 
+    private val fakePrefs = FakePrefs()
+
     @Before
     fun setUp() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
@@ -131,7 +138,7 @@ class SettingsViewModelTest {
             RuntimeEnvironment.getApplication(),
             QuestLoopDatabase::class.java,
         ).allowMainThreadQueries().setQueryExecutor(sync).setTransactionExecutor(sync).build()
-        repo = QuestRepository(db.questDao(), db.completionDao(), FakePrefs(), openAiAuth = fakeAuth)
+        repo = QuestRepository(db.questDao(), db.completionDao(), fakePrefs, openAiAuth = fakeAuth)
     }
 
     @After
@@ -221,6 +228,26 @@ class SettingsViewModelTest {
         assertEquals("gpt-5-codex", state.ai.openAiModel)
         assertFalse(state.ai.filterWording)
         assertEquals("AI settings saved", state.savedMessage)
+    }
+
+    @Test
+    fun `a failed OpenAI settings write reports the failure, not success`() = runTest {
+        val vm = SettingsViewModel(repo)
+        fakePrefs.failAiWrites = true
+        vm.saveOpenAi(enabled = true, model = "gpt-5-codex", filterWording = false)
+        val state = vm.state.value
+        assertFalse("nothing persisted", state.ai.enabled)
+        assertEquals("Couldn't save your AI settings — please try again.", state.savedMessage)
+    }
+
+    @Test
+    fun `a failed provider switch surfaces an error instead of doing nothing`() = runTest {
+        val vm = SettingsViewModel(repo)
+        fakePrefs.failAiWrites = true
+        vm.setProvider(AiProvider.OPENAI)
+        val state = vm.state.value
+        assertEquals(AiProvider.OPENROUTER, state.ai.provider)
+        assertEquals("Couldn't switch AI providers — please try again.", state.savedMessage)
     }
 
     @Test

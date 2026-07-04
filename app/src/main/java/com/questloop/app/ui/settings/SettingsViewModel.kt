@@ -99,27 +99,34 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
         launchSafely {
             val current = repository.aiConfig()
             if (current.provider == provider) return@launchSafely
-            repository.setAiConfig(current.copy(provider = provider))
+            // setAiConfig can throw (see saveAi); tell the user instead of the tap
+            // silently doing nothing.
+            val wrote = runCatching { repository.setAiConfig(current.copy(provider = provider)) }.isSuccess
             reload()
+            if (!wrote) emitMessage("Couldn't switch AI providers — please try again.")
         }
     }
 
     /** Saves the OpenAI-specific settings (preserving the linked account + OpenRouter key). */
     fun saveOpenAi(enabled: Boolean, model: String, filterWording: Boolean) {
         launchSafely {
+            val trimmedModel = model.trim()
             val current = repository.aiConfig()
-            runCatching {
+            // Like saveAi: check the write and re-verify it persisted, so a rejected
+            // secure-store write reports a failure instead of falsely claiming success.
+            val wrote = runCatching {
                 repository.setAiConfig(
                     current.copy(
                         enabled = enabled,
                         provider = AiProvider.OPENAI,
-                        openAiModel = model.trim(),
+                        openAiModel = trimmedModel,
                         filterWording = filterWording,
                     ),
                 )
-            }
+            }.isSuccess
             reload()
-            emitMessage("AI settings saved")
+            val persisted = wrote && _state.value.ai.openAiModel == trimmedModel
+            emitMessage(if (persisted) "AI settings saved" else "Couldn't save your AI settings — please try again.")
         }
     }
 
