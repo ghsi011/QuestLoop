@@ -1,12 +1,18 @@
 package com.questloop.core.generation
 
+import com.questloop.core.completion.CompletionPolicy
+import com.questloop.core.completion.CompletionScaling
 import com.questloop.core.model.BadHabit
+import com.questloop.core.model.CompletionResult
+import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.Difficulty
 import com.questloop.core.model.Habit
 import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.QuestFrequency
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class HabitQuestFactoryTest {
@@ -19,14 +25,55 @@ class HabitQuestFactoryTest {
         assertEquals("habit-h1", q.id)
         assertEquals(QuestFrequency.DAILY, q.frequency)
         assertEquals(QuestCategory.HEALTH, q.category)
+        // Daily habits keep simple once-a-day semantics.
+        assertEquals(CompletionStyle.BINARY, q.completionStyle)
     }
 
     @Test
-    fun `occasional habit becomes a weekly quest`() {
+    fun `occasional habit becomes a weekly counting quest`() {
+        // A BINARY weekly quest hides for a week after ONE completion, so a
+        // 2-4×/week habit could never meet its own target; counting toward
+        // targetPerWeek lets every occurrence that week credit.
         val q = HabitQuestFactory.fromHabit(
             Habit(id = "h2", title = "Deep clean", category = QuestCategory.CHORES, targetPerWeek = 2),
         )
         assertEquals(QuestFrequency.WEEKLY, q.frequency)
+        assertEquals(CompletionStyle.QUANTITATIVE, q.completionStyle)
+        assertEquals(2, q.targetCount)
+        assertEquals("times", q.unit)
+    }
+
+    @Test
+    fun `once-a-week habit stays a simple weekly quest`() {
+        // One completion IS the weekly target, so binary semantics already fit.
+        val q = HabitQuestFactory.fromHabit(
+            Habit(id = "h3", title = "Call a friend", category = QuestCategory.SOCIAL, targetPerWeek = 1),
+        )
+        assertEquals(QuestFrequency.WEEKLY, q.frequency)
+        assertEquals(CompletionStyle.BINARY, q.completionStyle)
+        assertNull(q.targetCount)
+        assertNull(q.unit)
+    }
+
+    @Test
+    fun `weekly habit credits each occurrence until its target is met`() {
+        // "Swim 3× a week" through the measured-completion pipeline: part-way
+        // logs are PARTIAL and stay loggable (not dismissed for the interval);
+        // the 3rd occurrence completes the week.
+        val q = HabitQuestFactory.fromHabit(
+            Habit(id = "h4", title = "Swim", category = QuestCategory.HEALTH, targetPerWeek = 3),
+        )
+        assertEquals(3, q.targetCount)
+        val target = q.targetCount ?: 0
+        val second = CompletionScaling.quantitative(progress = 2, target = target)
+        assertEquals(CompletionResult.PARTIAL, second.result)
+        assertFalse(
+            CompletionPolicy.dismissedForToday(q.completionStyle, second.result),
+            "a habit part-way to its weekly target must stay loggable",
+        )
+        val third = CompletionScaling.quantitative(progress = 3, target = target)
+        assertEquals(CompletionResult.COMPLETED, third.result)
+        assertTrue(CompletionPolicy.dismissedForToday(q.completionStyle, third.result))
     }
 
     @Test

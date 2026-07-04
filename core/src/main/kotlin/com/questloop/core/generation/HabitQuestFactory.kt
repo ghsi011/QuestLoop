@@ -21,17 +21,29 @@ object HabitQuestFactory {
     const val BAD_HABIT_PREFIX = "badhabit-"
     const val GOAL_PREFIX = "goal-"
 
-    fun fromHabit(habit: Habit): Quest = Quest(
-        id = "$HABIT_PREFIX${habit.id}",
-        title = habit.title,
-        category = habit.category,
+    fun fromHabit(habit: Habit): Quest {
         // Habits aimed at most days of the week recur daily; less frequent goals
         // recur weekly so they aren't prompted every single day.
-        frequency = if (habit.targetPerWeek >= 5) QuestFrequency.DAILY else QuestFrequency.WEEKLY,
-        difficulty = habit.difficulty,
-        origin = QuestOrigin.SYSTEM_RECURRING,
-        rationale = "Building a habit — aim for ${habit.targetPerWeek}× a week.",
-    )
+        val daily = habit.targetPerWeek >= 5
+        // A weekly habit with a multi-occurrence target ("swim 3× a week") counts
+        // each occurrence toward the weekly target: QUANTITATIVE progress
+        // accumulates across the calendar week, whereas a BINARY weekly quest
+        // hides for a whole week after one completion and could never meet its
+        // own advertised "N×/week".
+        val counted = !daily && habit.targetPerWeek >= 2
+        return Quest(
+            id = "$HABIT_PREFIX${habit.id}",
+            title = habit.title,
+            category = habit.category,
+            frequency = if (daily) QuestFrequency.DAILY else QuestFrequency.WEEKLY,
+            difficulty = habit.difficulty,
+            origin = QuestOrigin.SYSTEM_RECURRING,
+            completionStyle = if (counted) CompletionStyle.QUANTITATIVE else CompletionStyle.BINARY,
+            targetCount = if (counted) habit.targetPerWeek else null,
+            unit = if (counted) "times" else null,
+            rationale = "Building a habit — aim for ${habit.targetPerWeek}× a week.",
+        )
+    }
 
     fun fromBadHabit(badHabit: BadHabit): Quest = Quest(
         id = "$BAD_HABIT_PREFIX${badHabit.id}",
