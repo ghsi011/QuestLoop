@@ -71,6 +71,13 @@ class QuestRepositoryOpenAiTest {
         }
     }
 
+    private class RecordingDiagnostics : AiDiagnostics {
+        private val entries = mutableListOf<String>()
+        override fun record(model: String, message: String) { entries += "[$model] $message" }
+        override fun dump(): String = entries.joinToString("\n")
+        override fun clear() = entries.clear()
+    }
+
     private class FakePrefs : ProfilePreferences {
         private val state = MutableStateFlow(UserProfile())
         override val profile: Flow<UserProfile> = state
@@ -230,5 +237,32 @@ class QuestRepositoryOpenAiTest {
         assertNull("cleared tokens must not be re-persisted", prefs.ai.openAiTokens)
         assertFalse("the aborted call must not pose as AI output", result.fromAi)
         assertTrue("the abort surfaces an error to the caller", result.error != null)
+    }
+    @Test
+    fun `a connection failure shows plain copy and logs the raw transport detail`() = runTest {
+        prefs.ai = AiConfig(
+            enabled = true,
+            provider = AiProvider.OPENAI,
+            openAiTokens = OpenAiOAuth.OpenAiTokens("at", "rt", accountId = "acct", expiresAtEpochSec = Long.MAX_VALUE),
+            openAiModel = "gpt-5.4",
+        )
+        val diag = RecordingDiagnostics()
+        // Nothing listens on port 1, so the call dies with a raw ConnectException.
+        val offline = QuestRepository(
+            db.questDao(),
+            db.completionDao(),
+            prefs,
+            aiDiagnostics = diag,
+            openAiAuth = auth,
+            openAiResponsesEndpoint = "http://127.0.0.1:1/codex/responses",
+        )
+
+        val result = offline.suggestQuests(listOf("rent"))
+
+        assertFalse(result.fromAi)
+        assertEquals("Couldn't reach the AI. Check your connection and try again.", result.error)
+        // The platform exception stays out of the UI but lands in the exportable log.
+        assertTrue("log keeps the plain copy", diag.dump().contains("Couldn't reach the AI"))
+        assertTrue("log keeps the raw detail", diag.dump().contains("Exception"))
     }
 }

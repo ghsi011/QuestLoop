@@ -889,7 +889,7 @@ class QuestRepository(
                 AiQuestService(llmClient(config)).suggest(input)
             }
             // Record real failures so the user can export them for troubleshooting.
-            suggestion.error?.let { recordAiError(config, it) }
+            suggestion.error?.let { recordAiError(config, it, suggestion.errorDetail) }
             suggestion
         } else {
             // No AI configured: deterministic, always-safe suggestions.
@@ -913,7 +913,7 @@ class QuestRepository(
             val result = aiCallGuard.keepAwake {
                 AiQuestService(llmClient(config)).decomposeGoal(goal, existing)
             }
-            result.error?.let { recordAiError(config, it) }
+            result.error?.let { recordAiError(config, it, result.errorDetail) }
             result
         } else {
             AiQuestService.Suggestion(
@@ -936,7 +936,7 @@ class QuestRepository(
         val result = aiCallGuard.keepAwake {
             AiQuestService(llmClient(config)).refine(quest, instruction)
         }
-        result.error?.let { recordAiError(config, it) }
+        result.error?.let { recordAiError(config, it, result.errorDetail) }
         return result
     }
 
@@ -958,9 +958,15 @@ class QuestRepository(
         return result
     }
 
-    /** AI errors are logged off the main thread (the diagnostics file is read+rewritten). */
-    private suspend fun recordAiError(config: AiConfig, message: String) =
-        withContext(Dispatchers.IO) { aiDiagnostics.record(config.activeModel, redactSecrets(message, config)) }
+    /**
+     * AI errors are logged off the main thread (the diagnostics file is read+rewritten).
+     * [detail] is the raw transport failure behind a plain-copy [message] — appended
+     * here so the exportable log keeps it while the UI never shows it.
+     */
+    private suspend fun recordAiError(config: AiConfig, message: String, detail: String? = null) {
+        val logged = if (detail.isNullOrBlank()) message else "$message ($detail)"
+        withContext(Dispatchers.IO) { aiDiagnostics.record(config.activeModel, redactSecrets(logged, config)) }
+    }
 
     /**
      * Erases all on-device data (SPEC §9: users can delete their data). Serialised
