@@ -92,6 +92,16 @@ class QuestRepository(
     val completions: Flow<List<CompletionRecord>> =
         completionDao.observeAll().map { list -> list.map { it.toModel() } }.distinctUntilChanged()
 
+    /**
+     * Signal-only companion to [completions] for observers that just need to know
+     * "the ledger changed" (e.g. the widget refresher): each write re-runs a cheap
+     * MAX(rowid) stamp query instead of re-reading and re-mapping the whole table.
+     * Deliberately NOT distinct — the stamp can survive a write unchanged (e.g.
+     * undoing a non-latest completion deletes a lower rowid), and every write must
+     * still tick.
+     */
+    val completionsChanged: Flow<Unit> = completionDao.observeChangeStamp().map { }
+
     val profile = profileStore.profile
 
     /**

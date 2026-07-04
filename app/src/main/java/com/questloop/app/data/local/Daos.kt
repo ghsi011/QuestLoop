@@ -58,6 +58,17 @@ interface CompletionDao {
     @Query("SELECT COALESCE(SUM(xpAwarded), 0) FROM completions")
     fun observeTotalXp(): Flow<Long>
 
+    /**
+     * Cheap change stamp for observers that only need a "ledger changed" tick
+     * (e.g. the widget refresher): Room re-runs flow queries on every write to
+     * the table, and MAX(rowid) reads a single index entry — no rows are loaded
+     * or mapped, unlike [observeAll]. The value itself is not meaningful (a
+     * REPLACE mints a fresh rowid; a delete can leave the max unchanged) —
+     * treat emissions as a signal only.
+     */
+    @Query("SELECT COALESCE(MAX(rowid), 0) FROM completions")
+    fun observeChangeStamp(): Flow<Long>
+
     // A zero-progress partial (e.g. "0 of 8 glasses") carries no penalty but is
     // not real activity, so it must not count toward completions/streaks/wins.
     @Query("SELECT COUNT(*) FROM completions WHERE result = 'COMPLETED' OR (result = 'PARTIAL' AND fraction > 0)")

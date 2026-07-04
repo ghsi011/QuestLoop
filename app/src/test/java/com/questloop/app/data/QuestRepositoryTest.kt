@@ -266,6 +266,31 @@ class QuestRepositoryTest {
     }
 
     @Test
+    fun `ledger change stamp ticks on every write including an idempotent re-log`() = runTest {
+        // The widget-freshness trigger observes completionsChanged — backed by this
+        // stamp — instead of re-mapping the whole ledger, so the stamp must move on
+        // ANY write, even one that leaves COUNT(*) and SUM(xpAwarded) unchanged.
+        val dao = db.completionDao()
+        val empty = dao.observeChangeStamp().first()
+
+        repo.addQuest(quest("a"))
+        repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)
+        val afterFirst = dao.observeChangeStamp().first()
+        assertTrue("a new completion moves the stamp", afterFirst != empty)
+
+        // Idempotent re-log: same instanceId and same XP total — but the REPLACE
+        // upsert mints a fresh rowid, so the widget would still refresh.
+        val xp = repo.totalXp()
+        repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)
+        assertEquals(xp, repo.totalXp())
+        val afterRelog = dao.observeChangeStamp().first()
+        assertTrue("an idempotent re-log still moves the stamp", afterRelog != afterFirst)
+
+        // The repository surfaces the stamp as a signal-only flow.
+        repo.completionsChanged.first()
+    }
+
+    @Test
     fun `completed quest is dismissed from today's plan`() = runTest {
         repo.addQuest(quest("a"))
         repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)
