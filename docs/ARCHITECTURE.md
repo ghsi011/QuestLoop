@@ -13,19 +13,25 @@
 
 ### `:core` (pure Kotlin/JVM)
 
+Package granularity (one line per package, so this stays truthful as files are
+added — see the source tree for the full list):
+
 ```
 com.questloop.core
-├── model/        Domain.kt          immutable data: Quest, CompletionRecord, ...
-├── reward/       RewardEngine.kt    XP scoring, anti-farm, penalties, caps
-│                 LevelSystem.kt     XP↔level curve
-│                 StreakTracker.kt   streaks with grace days
-│                 RewardAllowanceCalculator.kt  real-world reward suggestion + disclaimers
-├── generation/   QuestGenerator.kt  daily plan: budgets, variety, scoring
-├── safety/       SafetyGuard.kt     rest/overdrive/recovery signals
-├── review/       ReviewGenerator.kt weekly/monthly aggregation
-├── ai/           PromptLibrary.kt   versioned prompts
-│                 AiQuestValidator.kt guardrails + FallbackSuggester
-└── QuestLoopEngine.kt               facade: derives RewardContext from history
+├── model/        immutable domain data: Quest, CompletionRecord, habits, goals, enums
+├── reward/       RewardEngine (XP scoring, anti-farm, penalties, caps), LevelSystem,
+│                 StreakTracker, AchievementEngine, RewardAllowanceCalculator
+├── generation/   QuestGenerator (daily plan), QuestScheduler (recurrence cadence),
+│                 PeriodPlanner (week/month plan), Habit/Routine/AdminFund quest factories
+├── completion/   CompletionScaling: non-binary results → reward fractions
+├── calendar/     FreeBusyCalculator: calendar events → free minutes for budgeting
+├── safety/       SafetyGuard: rest/overdrive/recovery signals
+├── review/       ReviewGenerator: weekly/monthly aggregation
+├── ai/           PromptLibrary (versioned prompts), AiQuestService (LLM orchestration,
+│                 parse tolerant of chatty output), AiQuestValidator (guardrails +
+│                 FallbackSuggester), AiNarrator + NarrationSanitizer, LlmClient interface
+│   └── openai/   ChatGPT-login protocol bits, no I/O: OAuth/PKCE + Responses/SSE codec
+└── QuestLoopEngine.kt  facade: derives RewardContext from history
 ```
 
 Determinism is a design rule: `QuestGenerator` uses scoring + explicit budgets
@@ -40,17 +46,26 @@ com.questloop.app
 ├── MainActivity.kt           Compose entry point
 ├── di/AppContainer.kt        manual DI (no annotation processor)
 ├── data/
-│   ├── local/                Room: Entities, DAOs, QuestLoopDatabase
-│   ├── Mappers.kt            entity ↔ core-model conversion
-│   ├── ProfileStore.kt       DataStore: XP, budget, preferences
-│   ├── QuestRepository.kt    single source of truth; wires DB + engines
-│   └── SampleData.kt         friendly starter quests
+│   ├── local/                Room: Entities, DAOs, QuestLoopDatabase (+ migrations)
+│   ├── QuestRepository.kt    single source of truth; wires DB + engines + AI clients
+│   └── …                     Mappers, ProfileStore (DataStore), SecureKeyStore
+│                             (Keystore-encrypted AI credentials), the per-provider
+│                             LLM clients (OpenRouterClient; OpenAiClient +
+│                             OpenAiAuthService for the ChatGPT sign-in), AI call
+│                             guard/diagnostics, calendar readers, data export,
+│                             reminder config, sample data
+├── reminders/                AlarmManager scheduling + receivers (fire, boot,
+│                             notification "Mark done") for daily reminders
+├── util/                     small shared helpers
+├── widget/                   Glance home-screen widget
 └── ui/
     ├── theme/                Material 3 theme
     ├── components/           shared composables
-    ├── today/  add/  review/  rewards/   screen + ViewModel per feature
     ├── QuestLoopApp.kt       Scaffold + bottom nav + NavHost
-    └── ViewModelFactory.kt   wires ViewModels to the repository
+    ├── ViewModelFactory.kt   wires ViewModels to the repository
+    └── <feature>/            screen + ViewModel per feature: today, add, quests
+                              (+ quest bank), achievements, completed, habits,
+                              review, rewards, settings, onboarding
 ```
 
 ## Data flow

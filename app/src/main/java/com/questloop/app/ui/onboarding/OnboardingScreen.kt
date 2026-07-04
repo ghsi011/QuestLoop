@@ -53,7 +53,7 @@ fun OnboardingScreen(onGetStarted: () -> Unit) {
         )
         InfoCard(
             title = "✨ Optional AI",
-            body = "Add a key in Settings to turn lists into quests.",
+            body = "Turns your lists into quests when it's on in Settings.",
         )
 
         Button(
