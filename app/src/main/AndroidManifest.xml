@@ -67,6 +67,11 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/quest_widget_info" />
         </receiver>
+        <!-- Self-healing alarm target: re-renders the widget at midnight and
+             day-part boundaries so the morning glance never shows yesterday. -->
+        <receiver
+            android:name=".widget.WidgetRefreshReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.glance.appwidget.updateAll
 import com.questloop.app.di.AppContainer
 import com.questloop.app.widget.QuestWidget
+import com.questloop.app.widget.WidgetRefreshScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,6 +25,11 @@ class QuestLoopApplication : Application() {
         super.onCreate()
         container = AppContainer(this)
         keepWidgetFresh()
+        // The flows below only emit on writes: nothing re-renders the widget when
+        // a date/day-part boundary passes, so also arm the self-healing boundary
+        // alarm. Every process start doubles as its re-arm safety net (alarms are
+        // lost on reboot/force-stop); a no-op while no widget is placed.
+        runCatching { WidgetRefreshScheduler(this).scheduleNext() }
     }
 
     /**
