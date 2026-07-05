@@ -146,14 +146,17 @@ class QuestRepository(
      * here because they're managed on the Habits screen, not individually.
      */
     suspend fun questOverview(epochDay: Long, dayPart: DayPart): List<QuestStatus> {
-        val plan = todayPlan(epochDay, dayPart)
+        // One DayContext for the whole screen: the plan, the style-aware dismissal
+        // set, and the progress map all derive from the same profile/candidate/ledger
+        // snapshot instead of each re-reading the profile and issuing a find() per quest.
+        val ctx = buildDayContext(epochDay)
+        val plan = planFrom(ctx, dayPart, todayCheckIn(epochDay))
         val inPlan = plan.quests.map { it.quest.id }.toSet()
-        val lastCompleted = completionDao.lastCompletedDays().associate { it.questId to it.lastDay }
         // "Done" uses the same style-aware dismissal as the plan: a partially logged
         // counting/timed quest is NOT done, so it stays visible to keep logging.
-        val dismissed = dismissedQuestIdsToday(epochDay)
-        val progress = todayProgress(epochDay)
-        return questDao.getActive().map { it.toModel() }.map { quest ->
+        val dismissed = dismissedQuestIds(ctx)
+        val progress = progressByQuest(ctx)
+        return ctx.stored.map { quest ->
             QuestStatus(
                 quest = quest,
                 inTodaysPlan = quest.id in inPlan,
@@ -161,7 +164,7 @@ class QuestRepository(
                 // until the target is hit (mirrors the plan's interval-based gate);
                 // everything else follows the rolling cadence window.
                 dueToday = if (CompletionSlots.hasCalendarInterval(quest)) quest.id !in dismissed
-                else QuestScheduler.isDue(quest.frequency, epochDay, lastCompleted[quest.id]),
+                else QuestScheduler.isDue(quest.frequency, epochDay, ctx.lastCompleted[quest.id]),
                 done = quest.id in dismissed,
                 progress = progress[quest.id] ?: 0,
             )
@@ -208,20 +211,30 @@ class QuestRepository(
         epochDay: Long,
         dayPart: DayPart,
         checkIn: EnergyCheckIn? = null,
+    ): QuestGenerator.DailyPlan =
+        planFrom(buildDayContext(epochDay), dayPart, checkIn ?: todayCheckIn(epochDay))
+
+    /**
+     * Builds the plan from an already-assembled [DayContext], so a caller that also
+     * needs the dismissal/progress maps ([questOverview]) shares one profile +
+     * candidate + ledger snapshot instead of recomputing it.
+     */
+    private suspend fun planFrom(
+        ctx: DayContext,
+        dayPart: DayPart,
+        resolvedCheckIn: EnergyCheckIn?,
     ): QuestGenerator.DailyPlan {
-        val resolvedCheckIn = checkIn ?: todayCheckIn(epochDay)
-        val profile = profileStore.profile.first()
+        val profile = ctx.profile
         // Only surface quests whose recurrence cadence makes them due today
         // (e.g. a weekly quest doesn't reappear every day after completion).
-        val lastCompleted = completionDao.lastCompletedDays().associate { it.questId to it.lastDay }
+        val lastCompleted = ctx.lastCompleted
         // Style-aware "already done for now" set — computed once and reused for both
         // the candidate filter and the generator request.
-        val dismissed = dismissedQuestIdsToday(epochDay)
+        val dismissed = dismissedQuestIds(ctx)
         // User-created quests plus quests derived from habits/goals and the
         // reward-fund admin flow.
-        val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals) +
-            adminFundQuests(epochDay, profile, lastCompleted)
-        val candidates = (questDao.getActive().map { it.toModel() } + derived)
+        val derived = ctx.derivedHabits + adminFundQuests(ctx.epochDay, profile, lastCompleted)
+        val candidates = (ctx.stored + derived)
             .filter {
                 // Measured weekly/monthly quests reset on their calendar interval, so
                 // their visibility is governed by interval dismissal (target reached
@@ -229,16 +242,16 @@ class QuestRepository(
                 // last completion day and would otherwise keep a fresh interval hidden
                 // for up to a period. Everything else uses the normal cadence gate.
                 if (CompletionSlots.hasCalendarInterval(it)) it.id !in dismissed
-                else QuestScheduler.isDue(it.frequency, epochDay, lastCompleted[it.id])
+                else QuestScheduler.isDue(it.frequency, ctx.epochDay, lastCompleted[it.id])
             }
         // Recent history is only needed for avoidance scoring (skipped quests).
-        val history = completionDao.since(epochDay - 14).map { it.toModel() }
+        val history = completionDao.since(ctx.epochDay - 14).map { it.toModel() }
         // Free time left on the device calendar (null unless the user opted in and
         // granted permission) tightens today's time budget automatically.
         val calendarMinutes = calendarReader.freeMinutesToday()
         return generator.generateDaily(
             QuestGenerator.Request(
-                epochDay = epochDay,
+                epochDay = ctx.epochDay,
                 profile = profile,
                 candidates = candidates,
                 history = history,
@@ -270,18 +283,54 @@ class QuestRepository(
     }
 
     /**
-     * Every quest that can appear in a plan, keyed by id: stored quests, the ones
-     * derived from habits/bad-habits/goals, and the system routine + reward-fund
-     * admin quests. Used wherever a quest's style or fields are needed, so
-     * non-stored quests aren't silently treated as binary or skipped for
-     * progress/dismissal — a completed morning routine (or a skipped admin step)
-     * must leave today's plan like anything else.
+     * Everything the per-quest status paths need for one [epochDay], assembled once.
+     * Callers (plan, dismissal, progress, overview) read from this instead of each
+     * re-reading the profile, re-deriving candidates, and issuing a [CompletionDao.find]
+     * per quest — the pattern that made a Quests/Today refresh scale as several full
+     * recomputes plus ~2N point queries with the quest count.
      */
-    private suspend fun candidateQuestsById(): Map<String, Quest> {
+    private data class DayContext(
+        val epochDay: Long,
+        val profile: UserProfile,
+        /** Active stored quests as models (Quests-screen backlog + plan input). */
+        val stored: List<Quest>,
+        /** Quests derived from habits/bad-habits/goals. */
+        val derivedHabits: List<Quest>,
+        /**
+         * Every quest that can appear in a plan, keyed by id: [stored], [derivedHabits],
+         * and the system routine + reward-fund admin quests. Used wherever a quest's
+         * style is needed, so non-stored quests aren't silently treated as binary or
+         * skipped for progress/dismissal — a completed morning routine (or a skipped
+         * admin step) must leave today's plan like anything else.
+         */
+        val candidates: Map<String, Quest>,
+        val lastCompleted: Map<String, Long>,
+        /**
+         * Each candidate's *current-interval* completion record (the day for
+         * daily/binary quests, the week/month for measured recurring ones), keyed by
+         * quest id. Absent → no record this interval. Fetched in one IN-clause query.
+         */
+        val intervalRecords: Map<String, CompletionRecord>,
+    )
+
+    private suspend fun buildDayContext(epochDay: Long): DayContext {
         val profile = profileStore.profile.first()
-        val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals)
+        val stored = questDao.getActive().map { it.toModel() }
+        val derivedHabits = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals)
         val system = RoutineQuestFactory.all() + AdminFundFactory.all()
-        return (questDao.getActive().map { it.toModel() } + derived + system).associateBy { it.id }
+        val candidates = (stored + derivedHabits + system).associateBy { it.id }
+        val lastCompleted = completionDao.lastCompletedDays().associate { it.questId to it.lastDay }
+        // Map each candidate to its current-interval instanceId, then fetch them all
+        // in a single point-query instead of one find() per quest.
+        val instanceIdByQuest = candidates.values.associate { quest ->
+            quest.id to "${quest.id}@${CompletionSlots.completionSlot(quest, epochDay)}"
+        }
+        val recordsById = completionDao.findByInstanceIds(instanceIdByQuest.values.toList())
+            .associate { it.instanceId to it.toModel() }
+        val intervalRecords = instanceIdByQuest.mapNotNull { (questId, instanceId) ->
+            recordsById[instanceId]?.let { questId to it }
+        }.toMap()
+        return DayContext(epochDay, profile, stored, derivedHabits, candidates, lastCompleted, intervalRecords)
     }
 
     /** A measured quest's accumulated progress this interval (count or minutes). */
@@ -298,30 +347,26 @@ class QuestRepository(
     /**
      * Quest ids that should not appear again today. Style-aware: a partially
      * logged QUANTITATIVE/DURATION quest is *not* dismissed so the user can keep
-     * adding progress.
+     * adding progress. Reads the current-interval records already in [ctx] — a
+     * weekly quest finished earlier this week stays hidden the rest of the interval.
      */
-    private suspend fun dismissedQuestIdsToday(epochDay: Long): Set<String> {
-        val dismissed = mutableSetOf<String>()
-        for (quest in candidateQuestsById().values) {
-            // Read the quest's *current interval* record (the day for daily/binary
-            // quests, the week/month for measured recurring ones), so a weekly quest
-            // finished earlier this week stays hidden the rest of the interval.
-            val rec = completionDao.find("${quest.id}@${CompletionSlots.completionSlot(quest, epochDay)}") ?: continue
-            val result = rec.toModel().result
-            if (CompletionPolicy.dismissedForToday(quest.completionStyle, result, quest.allowOverCompletion)) {
-                dismissed += quest.id
+    private fun dismissedQuestIds(ctx: DayContext): Set<String> =
+        ctx.candidates.values.mapNotNullTo(mutableSetOf()) { quest ->
+            val result = ctx.intervalRecords[quest.id]?.result ?: return@mapNotNullTo null
+            quest.id.takeIf {
+                CompletionPolicy.dismissedForToday(quest.completionStyle, result, quest.allowOverCompletion)
             }
         }
-        return dismissed
-    }
 
     /**
      * Accumulated progress per measured quest for its *current interval* (count for
      * QUANTITATIVE, minutes for DURATION), so the UI resumes from where it left off
      * — for a weekly quest that's the whole week's progress, not just today's.
      */
-    suspend fun todayProgress(epochDay: Long): Map<String, Int> = buildMap {
-        for (quest in candidateQuestsById().values) {
+    suspend fun todayProgress(epochDay: Long): Map<String, Int> = progressByQuest(buildDayContext(epochDay))
+
+    private fun progressByQuest(ctx: DayContext): Map<String, Int> = buildMap {
+        for (quest in ctx.candidates.values) {
             val target = when (quest.completionStyle) {
                 CompletionStyle.QUANTITATIVE -> quest.targetCount ?: continue
                 CompletionStyle.DURATION -> quest.estimatedMinutes
@@ -329,7 +374,7 @@ class QuestRepository(
             }
             // An entry exists iff this quest has a record this interval (even a
             // zero-progress log), so the UI can resume/show 0 as before.
-            val rec = completionDao.find("${quest.id}@${CompletionSlots.completionSlot(quest, epochDay)}") ?: continue
+            val rec = ctx.intervalRecords[quest.id] ?: continue
             put(quest.id, (rec.fraction * target).roundToInt())
         }
     }

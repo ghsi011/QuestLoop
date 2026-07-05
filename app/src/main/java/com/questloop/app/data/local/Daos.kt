@@ -53,6 +53,14 @@ interface CompletionDao {
     @Query("SELECT * FROM completions WHERE instanceId = :instanceId LIMIT 1")
     suspend fun find(instanceId: String): CompletionEntity?
 
+    /**
+     * One point-query for many records: used to fetch every candidate quest's
+     * current-interval record in a single round-trip (see [QuestRepository]'s
+     * per-call DayContext) instead of a [find] per quest.
+     */
+    @Query("SELECT * FROM completions WHERE instanceId IN (:instanceIds)")
+    suspend fun findByInstanceIds(instanceIds: List<String>): List<CompletionEntity>
+
     /** The ledger is the source of truth for total XP. */
     @Query("SELECT COALESCE(SUM(xpAwarded), 0) FROM completions")
     suspend fun totalXp(): Long
