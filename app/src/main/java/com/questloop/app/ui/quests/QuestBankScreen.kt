@@ -62,6 +62,7 @@ fun QuestBankScreen(viewModel: QuestBankViewModel, snackbarHostState: SnackbarHo
                 BankRow(
                     quest = quest,
                     added = quest.id in state.addedIds,
+                    adding = quest.id in state.adding,
                     onAdd = { viewModel.add(quest) },
                 )
             }
@@ -71,7 +72,7 @@ fun QuestBankScreen(viewModel: QuestBankViewModel, snackbarHostState: SnackbarHo
 }
 
 @Composable
-private fun BankRow(quest: Quest, added: Boolean, onAdd: () -> Unit) {
+private fun BankRow(quest: Quest, added: Boolean, adding: Boolean, onAdd: () -> Unit) {
     Card(Modifier.fillMaxWidth()) {
         Row(
             Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
@@ -96,7 +97,8 @@ private fun BankRow(quest: Quest, added: Boolean, onAdd: () -> Unit) {
             if (added) {
                 OutlinedButton(onClick = {}, enabled = false) { Text("Added") }
             } else {
-                Button(onClick = onAdd) { Text("Add") }
+                // Disabled while the add is in flight so a double-tap has nothing to hit.
+                Button(onClick = onAdd, enabled = !adding) { Text("Add") }
             }
         }
     }

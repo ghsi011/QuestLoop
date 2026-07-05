@@ -1,5 +1,6 @@
 package com.questloop.app.ui.quests
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.questloop.app.util.launchSafely
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
+import kotlin.coroutines.cancellation.CancellationException
 
 data class QuestsUiState(
     val loading: Boolean = true,
@@ -45,8 +47,18 @@ class QuestsViewModel(private val repository: QuestRepository) : ViewModel() {
     init {
         // Recompute whenever the active quest set changes (e.g. AI quick-add adds
         // quests on another screen), so the backlog is always current.
-        launchSafely {
-            repository.quests.collectLatest { recompute() }
+        launchSafely(onError = ::refreshFailed) {
+            repository.quests.collectLatest {
+                try {
+                    recompute()
+                } catch (c: CancellationException) {
+                    throw c
+                } catch (t: Throwable) {
+                    // One failed recompute must not kill the subscription: report
+                    // it and keep collecting so the next change still refreshes.
+                    refreshFailed(t)
+                }
+            }
         }
     }
 
@@ -54,6 +66,19 @@ class QuestsViewModel(private val repository: QuestRepository) : ViewModel() {
         val today = AppClock.todayEpochDay()
         val overview = repository.questOverview(today, AppClock.currentDayPart())
         _state.update { it.copy(loading = false, groups = group(overview), total = overview.size) }
+    }
+
+    /** A failed refresh releases the spinner and says so, instead of freezing. */
+    private fun refreshFailed(t: Throwable) {
+        runCatching { Log.e("QuestLoop", "Quest backlog refresh failed", t) }
+        _state.update {
+            it.copy(
+                loading = false,
+                toast = "Couldn't refresh your quests — please try again.",
+                toastId = it.toastId + 1,
+                pendingUndo = null,
+            )
+        }
     }
 
     fun complete(quest: Quest) = completeWithUndo("Nice — done. ✨") {

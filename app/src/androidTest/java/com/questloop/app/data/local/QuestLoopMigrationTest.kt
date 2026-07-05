@@ -73,6 +73,34 @@ class QuestLoopMigrationTest {
         }
     }
 
+    @Test
+    fun v3_to_v4_preserves_ledger_rows_and_indexes_completions() {
+        // A ledger row that exists at v3 must survive the index build untouched —
+        // total XP is derived from SUM(xpAwarded), so any loss is user-visible.
+        helper.createDatabase(dbName, 3).use { db ->
+            db.execSQL(
+                "INSERT INTO completions (instanceId, questId, category, difficulty, priority, " +
+                    "result, verification, epochDay, fraction, isMeta, xpAwarded) VALUES " +
+                    "('q1@20000','q1','HEALTH','MEDIUM','NORMAL','COMPLETED','MANUAL',20000,1.0,0,40)",
+            )
+        }
+        val migrated = helper.runMigrationsAndValidate(
+            dbName, QuestLoopDatabase.SCHEMA_VERSION, true, *QuestLoopDatabase.MIGRATIONS,
+        )
+        migrated.query("SELECT xpAwarded FROM completions WHERE instanceId = 'q1@20000'").use { c ->
+            assert(c.moveToFirst())
+            assert(c.getLong(0) == 40L) { "ledger rows survive the v4 index migration" }
+        }
+        // The whole point of v4: the secondary indexes exist (validate() already
+        // checked them against the exported schema; this pins the names too).
+        migrated.query(
+            "SELECT name FROM sqlite_master WHERE type = 'index' " +
+                "AND tbl_name = 'completions' AND name LIKE 'index_completions_%'",
+        ).use { c ->
+            assert(c.count == 3) { "expected epochDay/questId/result indexes on completions" }
+        }
+    }
+
     private companion object {
         const val EARLIEST_EXPORTED_VERSION = 2
     }

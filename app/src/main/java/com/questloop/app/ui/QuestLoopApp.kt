@@ -68,15 +68,28 @@ private enum class Dest(val route: String, val label: String, val icon: ImageVec
     SETTINGS("settings", "Settings", Icons.Filled.Settings),
 }
 
-/** Which bottom-nav tab a route belongs to (sub-screens map to their parent tab). */
-private fun tabForRoute(route: String?): Dest? = when (route) {
-    Dest.TODAY.route, "achievements" -> Dest.TODAY
-    Dest.QUESTS.route, "quest-bank" -> Dest.QUESTS
-    Dest.REVIEWS.route, "completed" -> Dest.REVIEWS
-    Dest.REWARDS.route -> Dest.REWARDS
-    Dest.SETTINGS.route, "habits" -> Dest.SETTINGS
-    else -> null // "add" is a modal with no owning tab
+/**
+ * Sub-screens/modals reachable from the tabs. Single registry of their routes:
+ * it drives the top-bar title, the back arrow, and which tab stays lit
+ * (`owningTab == null` = modal with no tab). Adding a sub-screen is one entry
+ * here plus its `composable` in the NavHost.
+ */
+private enum class SubScreen(val route: String, val title: String, val owningTab: Dest?) {
+    ADD("add", "Add quest", owningTab = null),
+    HABITS("habits", "Habits & goals", Dest.SETTINGS),
+    ACHIEVEMENTS("achievements", "Achievements", Dest.TODAY),
+    QUEST_BANK("quest-bank", "Quest bank", Dest.QUESTS),
+    COMPLETED("completed", "Completed quests", Dest.REVIEWS),
+    ;
+
+    companion object {
+        fun forRoute(route: String?): SubScreen? = entries.firstOrNull { it.route == route }
+    }
 }
+
+/** Which bottom-nav tab a route belongs to (sub-screens map to their owning tab). */
+private fun tabForRoute(route: String?): Dest? =
+    Dest.entries.firstOrNull { it.route == route } ?: SubScreen.forRoute(route)?.owningTab
 
 /**
  * Switch tabs, always landing on the tab's ROOT screen. Any sub-screen open under
@@ -133,16 +146,9 @@ private fun QuestLoopMain(repository: QuestRepository) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination
     val routeName = currentRoute?.route
-    val isSubScreen = routeName == "add" || routeName == "habits" ||
-        routeName == "achievements" || routeName == "quest-bank" || routeName == "completed"
-    val title = when (routeName) {
-        "add" -> "Add quest"
-        "habits" -> "Habits & goals"
-        "achievements" -> "Achievements"
-        "quest-bank" -> "Quest bank"
-        "completed" -> "Completed quests"
-        else -> "QuestLoop"
-    }
+    val subScreen = SubScreen.forRoute(routeName)
+    val isSubScreen = subScreen != null
+    val title = subScreen?.title ?: "QuestLoop"
     // The tab a (possibly sub-) screen belongs to, so the right tab stays lit and
     // re-tapping it returns to that tab's root. "add" is a modal (no tab).
     val activeTab = tabForRoute(routeName)
@@ -165,7 +171,7 @@ private fun QuestLoopMain(repository: QuestRepository) {
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             if (showFab) {
-                androidx.compose.material3.FloatingActionButton(onClick = { navController.openOnce("add") }) {
+                androidx.compose.material3.FloatingActionButton(onClick = { navController.openOnce(SubScreen.ADD.route) }) {
                     Icon(Icons.Filled.Add, contentDescription = "Add quest")
                 }
             }
@@ -199,31 +205,31 @@ private fun QuestLoopMain(repository: QuestRepository) {
                 TodayScreen(
                     vm,
                     snackbarHostState,
-                    onOpenAchievements = { navController.openOnce("achievements") },
+                    onOpenAchievements = { navController.openOnce(SubScreen.ACHIEVEMENTS.route) },
                     // Open the Bank in one navigation (no tab-switch underneath, so
                     // back returns to Today). tabForRoute lights the Quests tab; a
                     // tab tap still resets cleanly to the Quests root.
-                    onOpenQuestBank = { navController.openOnce("quest-bank") },
-                    onOpenAddQuest = { navController.openOnce("add") },
+                    onOpenQuestBank = { navController.openOnce(SubScreen.QUEST_BANK.route) },
+                    onOpenAddQuest = { navController.openOnce(SubScreen.ADD.route) },
                 )
             }
             composable(Dest.QUESTS.route) {
                 val vm: QuestsViewModel = viewModel(factory = factory)
-                QuestsScreen(vm, snackbarHostState, onOpenBank = { navController.openOnce("quest-bank") })
+                QuestsScreen(vm, snackbarHostState, onOpenBank = { navController.openOnce(SubScreen.QUEST_BANK.route) })
             }
-            composable("quest-bank") {
+            composable(SubScreen.QUEST_BANK.route) {
                 val vm: com.questloop.app.ui.quests.QuestBankViewModel = viewModel(factory = factory)
                 com.questloop.app.ui.quests.QuestBankScreen(vm, snackbarHostState)
             }
-            composable("achievements") {
+            composable(SubScreen.ACHIEVEMENTS.route) {
                 val vm: com.questloop.app.ui.achievements.AchievementsViewModel = viewModel(factory = factory)
                 com.questloop.app.ui.achievements.AchievementsScreen(vm)
             }
             composable(Dest.REVIEWS.route) {
                 val vm: ReviewViewModel = viewModel(factory = factory)
-                ReviewScreen(vm, onOpenCompleted = { navController.openOnce("completed") })
+                ReviewScreen(vm, onOpenCompleted = { navController.openOnce(SubScreen.COMPLETED.route) })
             }
-            composable("completed") {
+            composable(SubScreen.COMPLETED.route) {
                 val vm: com.questloop.app.ui.completed.CompletedViewModel = viewModel(factory = factory)
                 com.questloop.app.ui.completed.CompletedScreen(vm, snackbarHostState)
             }
@@ -235,15 +241,15 @@ private fun QuestLoopMain(repository: QuestRepository) {
                 val vm: SettingsViewModel = viewModel(factory = factory)
                 SettingsScreen(
                     vm,
-                    onOpenHabits = { navController.openOnce("habits") },
+                    onOpenHabits = { navController.openOnce(SubScreen.HABITS.route) },
                     snackbarHostState = snackbarHostState,
                 )
             }
-            composable("habits") {
+            composable(SubScreen.HABITS.route) {
                 val vm: HabitsViewModel = viewModel(factory = factory)
                 HabitsScreen(vm)
             }
-            composable("add") {
+            composable(SubScreen.ADD.route) {
                 val vm: AddQuestViewModel = viewModel(factory = factory)
                 AddQuestScreen(vm, onDone = { navController.popBackStack() })
             }

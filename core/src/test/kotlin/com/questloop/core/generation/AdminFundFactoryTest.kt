@@ -45,6 +45,11 @@ class AdminFundFactoryTest {
     }
 
     @Test
+    fun `all enumerates every admin quest so ledger scans see each id`() {
+        assertEquals(AdminFundFactory.ALL_IDS, AdminFundFactory.all().map { it.id })
+    }
+
+    @Test
     fun `admin quests are meta-maintenance so the meta cap protects progression`() {
         val all = listOf(
             AdminFundFactory.openPotQuest(),

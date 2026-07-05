@@ -17,7 +17,8 @@ Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
   penalties (XP never negative); bad-habit relapse rewarded for honesty.
   *(Most heavily tested area.)*
 - **Levels & streaks** (§6) — quadratic XP curve; streaks with grace days.
-- **Achievements** (§6) — data-driven unlock engine, surfaced on Today.
+- **Achievements** (§6) — data-driven unlock engine, with a dedicated
+  achievements screen opened from Today.
 - **Daily quest generation** (§3, §4) — time/energy budgeting, deadline
   urgency, avoidance resurfacing, category-variety caps.
 - **Completion tracking** (§8) — manual + non-binary (quantitative / duration /
@@ -42,13 +43,15 @@ Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
 - **Daily reminders** (§3; UX H1) — opt-in morning & evening local notifications
   at user-set hours (AlarmManager, inexact), with a **"Mark done"** action that
   completes the routine from the notification, and **boot-persistence** (re-armed
-  on reboot + on app open). *Delivery is device-only — not CI-verifiable — so it's
-  covered by a pure schedule-math unit test and needs on-device testing.*
+  on reboot, timezone/clock changes, and app open). *Delivery is device-only —
+  not CI-verifiable — so it's covered by a pure schedule-math unit test and
+  needs on-device testing.*
 - **Home-screen widget** (Glance) — shows today's top quests at a glance and
   opens the app on tap. *Device-only; not CI-verifiable beyond compile.*
 - **First-run onboarding** — a one-time intro covering the quest/XP model, the
-  money/rewards disclaimer, and the local-first privacy stance before anything
-  sensitive is touched.
+  gentle daily loop, the local-first privacy stance, and optional AI before
+  anything sensitive is touched. *(The money/rewards disclaimer lives on the
+  Rewards tab, next to the numbers it qualifies.)*
 - **Delete all data** (§9) — Settings → "Delete all my data" wipes quests,
   history, XP, and settings on-device (with confirmation).
 - **Export data** (§9) — Settings → "Export my data" serialises everything to
@@ -64,14 +67,15 @@ Legend: ✅ implemented (logic + UI + tests) · ◑ partial · ✗ not yet.
 
 ## ◑ Partial
 
-- **AI quest generation** (§5) — **live LLM via OpenRouter** (user provides a
-  key + model in Settings) behind the `AiQuestService`: versioned prompts,
-  JSON parsing tolerant of chatty/markdown output, the `AiQuestValidator`
-  guardrails, and a deterministic `FallbackSuggester` whenever AI is off,
-  unavailable, or returns unusable output. The "Suggest quests ✨" action on the
-  Add screen uses it. *(The live network call can't be exercised in the CI
-  sandbox — OpenRouter is firewalled there — so it's covered by fake-client unit
-  tests and verified on-device.)*
+- **AI quest generation** (§5) — **live LLM with two providers**, chosen in
+  Settings (`AiConfig.provider`): **OpenRouter** (paste an API key, pick a
+  model) or **OpenAI** ("Sign in with ChatGPT" OAuth — no key). Both feed the
+  same provider-agnostic pipeline (`AiQuestService`): versioned prompts, JSON
+  parsing tolerant of chatty/markdown output, the `AiQuestValidator` guardrails,
+  and a deterministic `FallbackSuggester` whenever AI is off, unavailable, or
+  returns unusable output. The "Suggest quests ✨" action on the Add screen uses
+  it. *(Neither provider is reachable from the CI sandbox, so the pipeline is
+  covered by fake-client unit tests and live calls are verified on-device.)*
 - **Weekly/monthly quest *lists*** (§4) — recurrence cadence is enforced
   (`QuestScheduler`) and the Reviews tab now has a **Plan** view (toggle next to
   the retrospective Review) that lays the candidate pool out across the current

@@ -43,15 +43,21 @@ QuestLoop handles sensitive data (schedule, habits, goals, health routines,
 behavioural patterns, a self-set budget).
 
 - **Local-first.** All data is stored on-device (Room + DataStore). There is no
-  backend in the MVP and nothing is uploaded.
+  QuestLoop backend and nothing is uploaded — with one opt-in exception: when
+  the user enables AI, the text a request needs (todos, goals, the quest being
+  refined, review aggregates) is sent to their chosen provider (OpenRouter or
+  OpenAI). AI is off by default.
 - **Backups off by default.** `backup_rules.xml` / `data_extraction_rules.xml`
   exclude QuestLoop data from cloud backup and device transfer until a user
   opts in.
 - **Sensitive notifications are opt-in.** `UserPreferences.sensitiveNotificationsOptIn`
   defaults to false so personal patterns aren't surfaced in notifications.
-- **AI transparency.** When AI features are enabled, prompts are versioned
-  (`PromptLibrary`) and every generated quest carries a rationale; outputs pass
-  through `AiQuestValidator` before display.
+- **AI transparency.** When AI features are enabled, requests go only to the
+  provider the user configured (an OpenRouter key or a ChatGPT sign-in), prompts
+  are versioned (`PromptLibrary`), and every generated quest carries a
+  rationale; outputs pass through `AiQuestValidator` before display. Credentials
+  live in a Keystore-encrypted store (`SecureKeyStore`), are excluded from data
+  export, and are scrubbed from the diagnostics log.
 - **Data minimisation & deletion.** Quests can be archived; the schema is small
   and contains only what the features need.
 

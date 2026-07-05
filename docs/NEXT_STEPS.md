@@ -52,9 +52,11 @@ Recorded backlog from the roadmap and review cycles. Not yet started — pick up
 - Enforced floor is **0.55** instructions over the testable surface (ViewModels,
   data, Compose screens), measured by the merged JaCoCo report in the `[uitest]`
   emulator workflow (`app:jacocoCoverageVerification`). Framework entry points
-  (Application/MainActivity/DI/theme/Glance widget/boot+notification receivers,
-  and `EncryptedKeyStore` — the device Keystore can't be driven in tests) are
-  excluded as not realistically driveable.
+  (Application/MainActivity/DI/theme/Glance widget/boot+notification receivers)
+  are excluded as not realistically driveable. `EncryptedKeyStore` is NOT
+  excluded: emulator images ship a software-backed Keystore (only Robolectric
+  lacks one), so `EncryptedKeyStoreTest` round-trips the real encrypted store
+  in the emulator job.
 - Lowered from the original 0.58 by two compounding effects: (1) the AGP 8.13 /
   Kotlin 2.3 upgrade — the newer compiler emits more bytecode, so the instruction
   denominator grew and the merged ratio settled at ~0.574 (metric dilution, not a

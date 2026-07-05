@@ -55,6 +55,15 @@ jobs:
       - name: Core tests
         run: ./gradlew :core:test --console=plain
 
+      # Gate on the app unit suite + lint too: full-tests.yml only runs AFTER a
+      # release is published, so without these a red app suite (Robolectric
+      # break, a SCHEMA_VERSION bump missing its exported schema/Migration —
+      # SchemaExportTest runs here — or a lint error) could ship in the APK.
+      - name: App unit tests
+        run: ./gradlew :app:testDebugUnitTest --console=plain
+      - name: Lint
+        run: ./gradlew :app:lintDebug --console=plain
+
       # Decode the release keystore from secrets when present. The build signs
       # with it; without the secret we fall back to a debug-signed APK so the
       # workflow still produces an installable artifact.
@@ -91,6 +100,10 @@ jobs:
           if [ "${{ steps.keystore.outputs.signed }}" = "true" ]; then
             cp app/build/outputs/apk/release/app-release.apk \
                "dist/questloop-${{ steps.tag.outputs.value }}.apk"
+            # Keep R8's mapping file with the release: without it, obfuscated
+            # stack traces from this build are permanently un-retraceable.
+            cp app/build/outputs/mapping/release/mapping.txt \
+               "dist/questloop-${{ steps.tag.outputs.value }}-mapping.txt"
             SIGNING="release-signed"
             SIGN_NOTE="Release-signed with QuestLoop's own key (not Play App Signing); you may still see an \"unknown app\" warning when sideloading."
           else
@@ -128,4 +141,8 @@ jobs:
           prerelease: true
           generate_release_notes: false
           body_path: ${{ runner.temp }}/notes.md
-          files: dist/*.apk
+          # The R8 mapping.txt only exists on the signed (minified) path; the
+          # unmatched pattern is harmless on debug-signed builds.
+          files: |
+            dist/*.apk
+            dist/*-mapping.txt

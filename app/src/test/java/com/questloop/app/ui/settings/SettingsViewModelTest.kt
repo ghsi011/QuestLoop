@@ -16,6 +16,7 @@ import com.questloop.core.model.Goal
 import com.questloop.core.model.Habit
 import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.UserProfile
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,9 +53,16 @@ class SettingsViewModelTest {
         ),
     ) : OpenAiAuth {
         var openedUrl: String? = null
-        override suspend fun signIn(timeoutMs: Long, openUrl: (String) -> Unit): Result<OpenAiOAuth.OpenAiTokens> {
+        override suspend fun signIn(
+            timeoutMs: Long,
+            onTokens: suspend (OpenAiOAuth.OpenAiTokens) -> Unit,
+            openUrl: (String) -> Unit,
+        ): Result<OpenAiOAuth.OpenAiTokens> {
             openUrl("https://auth.openai.test/authorize?x=1")
             openedUrl = "https://auth.openai.test/authorize?x=1"
+            // Mirror the real service: tokens are handed to the caller's hook
+            // (where the repository persists them) before returning success.
+            result.getOrNull()?.let { onTokens(it) }
             return result
         }
         override suspend fun refresh(tokens: OpenAiOAuth.OpenAiTokens) = Result.success(tokens)
@@ -100,8 +108,13 @@ class SettingsViewModelTest {
         override suspend fun setCheckIn(checkIn: EnergyCheckIn?) {}
         override suspend fun getCheckIn(): EnergyCheckIn? = null
         private var ai = AiConfig()
+        /** When true, AI writes throw like a rejected secure-store commit. */
+        var failAiWrites = false
         override suspend fun getAiConfig(): AiConfig = ai
-        override suspend fun setAiConfig(config: AiConfig) { ai = config }
+        override suspend fun setAiConfig(config: AiConfig) {
+            check(!failAiWrites) { "Could not save the credential securely." }
+            ai = config
+        }
         private var onboarded = false
         override suspend fun isOnboardingComplete(): Boolean = onboarded
         override suspend fun setOnboardingComplete() { onboarded = true }
@@ -116,6 +129,8 @@ class SettingsViewModelTest {
         }
     }
 
+    private val fakePrefs = FakePrefs()
+
     @Before
     fun setUp() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
@@ -124,7 +139,7 @@ class SettingsViewModelTest {
             RuntimeEnvironment.getApplication(),
             QuestLoopDatabase::class.java,
         ).allowMainThreadQueries().setQueryExecutor(sync).setTransactionExecutor(sync).build()
-        repo = QuestRepository(db.questDao(), db.completionDao(), FakePrefs(), openAiAuth = fakeAuth)
+        repo = QuestRepository(db.questDao(), db.completionDao(), fakePrefs, openAiAuth = fakeAuth)
     }
 
     @After
@@ -217,6 +232,26 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `a failed OpenAI settings write reports the failure, not success`() = runTest {
+        val vm = SettingsViewModel(repo)
+        fakePrefs.failAiWrites = true
+        vm.saveOpenAi(enabled = true, model = "gpt-5-codex", filterWording = false)
+        val state = vm.state.value
+        assertFalse("nothing persisted", state.ai.enabled)
+        assertEquals("Couldn't save your AI settings — please try again.", state.savedMessage)
+    }
+
+    @Test
+    fun `a failed provider switch surfaces an error instead of doing nothing`() = runTest {
+        val vm = SettingsViewModel(repo)
+        fakePrefs.failAiWrites = true
+        vm.setProvider(AiProvider.OPENAI)
+        val state = vm.state.value
+        assertEquals(AiProvider.OPENROUTER, state.ai.provider)
+        assertEquals("Couldn't switch AI providers — please try again.", state.savedMessage)
+    }
+
+    @Test
     fun `connecting ChatGPT links the account and opens the browser url`() = runTest {
         val vm = SettingsViewModel(repo)
         vm.connectOpenAi()
@@ -251,9 +286,13 @@ class SettingsViewModelTest {
     @Test
     fun `delete all data clears state and invokes the callback`() = runTest {
         val vm = SettingsViewModel(repo)
-        var done = false
-        vm.deleteAllData { done = true }
-        assertTrue(done)
+        // deleteAllData hops to Dispatchers.IO (it removes the AI diagnostics
+        // file), which escapes the unconfined scheduler — so await the completion
+        // callback (fired after the confirmation is emitted) instead of asserting
+        // immediately (see the note above requestExport()).
+        val done = CompletableDeferred<Unit>()
+        vm.deleteAllData { done.complete(Unit) }
+        done.await()
         assertEquals("Your data has been deleted.", vm.state.value.savedMessage)
     }
 }

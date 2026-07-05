@@ -1,5 +1,6 @@
 package com.questloop.app.ui.rewards
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.questloop.app.util.launchSafely
@@ -25,7 +26,7 @@ data class RewardsUiState(
     val fundSteps: List<Quest> = emptyList(),
     /** True while a "Mark done" completion is in flight, to guard against double-taps. */
     val fundStepInFlight: Boolean = false,
-    /** One-shot confirmation shown after the budget is saved; consumed by the UI. */
+    /** One-shot snackbar message (a confirmation, or a load error); consumed by the UI. */
     val savedMessage: String? = null,
     /**
      * Monotonic id bumped on every [savedMessage] emit. The snackbar effect keys on
@@ -43,7 +44,7 @@ class RewardsViewModel(private val repository: QuestRepository) : ViewModel() {
     init { load() }
 
     fun load() {
-        launchSafely {
+        launchSafely(onError = ::loadFailed) {
             _state.update { it.copy(loading = true) }
             val today = AppClock.todayEpochDay()
             val cap = repository.profile.first().preferences.monthlyRewardBudgetCap
@@ -59,6 +60,18 @@ class RewardsViewModel(private val repository: QuestRepository) : ViewModel() {
                     fundSteps = fund.steps,
                 )
             }
+        }
+    }
+
+    /** A failed load must not silently render a zeroed budget — say so instead. */
+    private fun loadFailed(t: Throwable) {
+        runCatching { Log.e("QuestLoop", "Rewards load failed", t) }
+        _state.update {
+            it.copy(
+                loading = false,
+                savedMessage = "Couldn't load your rewards — please try again.",
+                messageId = it.messageId + 1,
+            )
         }
     }
 

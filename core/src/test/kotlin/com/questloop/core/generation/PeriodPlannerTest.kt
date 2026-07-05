@@ -1,10 +1,12 @@
 package com.questloop.core.generation
 
+import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.Difficulty
 import com.questloop.core.model.Priority
 import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.QuestFrequency
+import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -25,6 +27,8 @@ class PeriodPlannerTest {
         priority: Priority = Priority.NORMAL,
         minutes: Int = 10,
         deadline: Long? = null,
+        style: CompletionStyle = CompletionStyle.BINARY,
+        target: Int? = null,
     ) = Quest(
         id = id,
         title = "Quest $id",
@@ -34,6 +38,8 @@ class PeriodPlannerTest {
         priority = priority,
         estimatedMinutes = minutes,
         deadlineEpochDay = deadline,
+        completionStyle = style,
+        targetCount = target,
     )
 
     private fun plan(candidates: List<Quest>, lastCompleted: Map<String, Long> = emptyMap()) =
@@ -131,6 +137,75 @@ class PeriodPlannerTest {
             result.byCategory.indexOfFirst { it.category == QuestCategory.HEALTH } <
                 result.byCategory.indexOfFirst { it.category == QuestCategory.CHORES },
         )
+    }
+
+    // --- Measured weekly/monthly quests follow calendar intervals, like Today ---
+
+    // A Monday, so calendar-week math is unambiguous (ISO weeks start Monday).
+    private val monday = LocalDate.of(2026, 6, 22).toEpochDay()
+
+    private fun weeklySwim() =
+        quest("swim", QuestFrequency.WEEKLY, style = CompletionStyle.QUANTITATIVE, target = 2)
+
+    @Test
+    fun `a measured weekly quest finished midweek returns at the calendar boundary, like Today`() {
+        val wednesday = monday + 2
+        val done = mapOf("swim" to wednesday)
+
+        // Rest of this week: the interval is satisfied — Today hides the quest,
+        // and so does the plan.
+        val thisWeek = planner.plan("This week", wednesday, monday + 6, listOf(weeklySwim()), done)
+        assertTrue(thisWeek.items.isEmpty())
+
+        // Next calendar week: due again from Monday (when Today resurfaces it),
+        // not from the rolling wednesday+7.
+        val nextWeek = planner.plan("This week", monday + 7, monday + 13, listOf(weeklySwim()), done)
+        val item = nextWeek.items.single()
+        assertEquals(1, item.expectedOccurrences)
+        assertEquals(monday + 7, item.firstDueEpochDay)
+    }
+
+    @Test
+    fun `a binary weekly quest keeps the rolling last-completion window`() {
+        val wednesday = monday + 2
+        val chores = quest("c", QuestFrequency.WEEKLY, category = QuestCategory.CHORES)
+        val nextWeek = planner.plan("This week", monday + 7, monday + 13, listOf(chores), mapOf("c" to wednesday))
+        // Rolling: next due a full week after the completion, not the calendar Monday.
+        assertEquals(wednesday + 7, nextWeek.items.single().firstDueEpochDay)
+    }
+
+    @Test
+    fun `a measured monthly quest completed late last month is planned from the 1st`() {
+        // Completed 30 Jan; February is a fresh interval, so Today surfaces the
+        // quest from the 1st. The rolling 30-day window would put the next due at
+        // 1 Mar — past February entirely — silently dropping it from the plan.
+        val jan30 = LocalDate.of(2026, 1, 30).toEpochDay()
+        val feb1 = LocalDate.of(2026, 2, 1).toEpochDay()
+        val feb28 = LocalDate.of(2026, 2, 28).toEpochDay()
+        val budget = quest("b", QuestFrequency.MONTHLY, style = CompletionStyle.DURATION, minutes = 30)
+
+        val plan = planner.plan("This month", feb1, feb28, listOf(budget), mapOf("b" to jan30))
+        val item = plan.items.single()
+        assertEquals(1, item.expectedOccurrences)
+        assertEquals(feb1, item.firstDueEpochDay)
+    }
+
+    @Test
+    fun `a measured weekly quest counts calendar weeks, not rolling fence-posts`() {
+        // Window: Wednesday through the next Monday. Two calendar weeks overlap it
+        // and the quest is unmet in both — doable now (from Wednesday) and again
+        // once next week resets it — where rolling math would count just one.
+        val wednesday = monday + 2
+        val plan = planner.plan("This week", wednesday, monday + 7, listOf(weeklySwim()))
+        val item = plan.items.single()
+        assertEquals(2, item.expectedOccurrences)
+        assertEquals(wednesday, item.firstDueEpochDay)
+    }
+
+    @Test
+    fun `an inverted window plans nothing for a measured quest`() {
+        val plan = planner.plan("This week", monday, monday - 1, listOf(weeklySwim()))
+        assertTrue(plan.items.isEmpty())
     }
 
     @Test

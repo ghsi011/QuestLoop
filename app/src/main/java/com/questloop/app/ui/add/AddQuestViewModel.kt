@@ -1,5 +1,6 @@
 package com.questloop.app.ui.add
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.questloop.app.util.launchSafely
@@ -93,7 +94,7 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
             deadlineEpochDay = d.deadlineEpochDay,
             tags = d.tags,
         )
-        launchSafely {
+        launchSafely(onError = failed()) {
             repository.addQuest(quest)
             repository.completeOnboardingQuest(SampleData.ONBOARDING_CREATE, AppClock.todayEpochDay())
             // Reset the manual form (keep any AI brain-dump / goal text).
@@ -107,7 +108,7 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
 
     /** Loads upcoming calendar events for the "pick from calendar" deadline picker. */
     fun loadCalendarEvents() {
-        launchSafely {
+        launchSafely(onError = failed { it.copy(loadingCalendarEvents = false) }) {
             _state.update { it.copy(loadingCalendarEvents = true) }
             val events = repository.upcomingCalendarEvents()
             _state.update { it.copy(loadingCalendarEvents = false, calendarEvents = events) }
@@ -137,7 +138,7 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
     fun generate(text: String) {
         val lines = text.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
         if (lines.isEmpty()) return
-        launchSafely {
+        launchSafely(onError = failed { it.copy(generating = false) }) {
             _state.update { it.copy(generating = true, message = null) }
             val suggestion = repository.suggestQuests(lines)
             val n = suggestion.quests.size
@@ -164,7 +165,7 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
      */
     fun decomposeGoal(goal: String) {
         if (goal.isBlank()) return
-        launchSafely {
+        launchSafely(onError = failed { it.copy(generating = false) }) {
             _state.update { it.copy(generating = true, message = null) }
             val suggestion = repository.decomposeGoal(goal)
             val n = suggestion.quests.size
@@ -197,7 +198,7 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
     /** Asks the AI to revise one suggestion per a free-text instruction. */
     fun refineSuggestion(id: String, instruction: String) {
         val target = _state.value.suggestions.firstOrNull { it.id == id } ?: return
-        launchSafely {
+        launchSafely(onError = failed { it.copy(refiningId = null) }) {
             _state.update { it.copy(refiningId = id, message = null) }
             val result = repository.refineQuest(target, instruction)
             val revised = result.quest // local val so it smart-casts inside the lambda
@@ -220,7 +221,7 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
         if (_state.value.saving) return
         val quest = _state.value.suggestions.firstOrNull { it.id == id } ?: return
         _state.update { it.copy(saving = true) }
-        launchSafely {
+        launchSafely(onError = failed { it.copy(saving = false) }) {
             repository.addQuest(quest.copy(id = "user-${UUID.randomUUID()}", title = quest.title.trim()))
             repository.completeOnboardingQuest(SampleData.ONBOARDING_CREATE, AppClock.todayEpochDay())
             _state.update {
@@ -239,12 +240,20 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
         val all = _state.value.suggestions.filter { it.title.isBlank().not() }
         if (all.isEmpty()) return
         _state.update { it.copy(saving = true) }
-        launchSafely {
+        launchSafely(onError = failed { it.copy(saving = false) }) {
             all.forEach { repository.addQuest(it.copy(id = "user-${UUID.randomUUID()}", title = it.title.trim())) }
             repository.completeOnboardingQuest(SampleData.ONBOARDING_CREATE, AppClock.todayEpochDay())
             val plural = if (all.size == 1) "" else "s"
             _state.update { it.copy(saving = false, suggestions = emptyList(), message = "Added ${all.size} quest$plural.") }
         }
+    }
+
+    /** launchSafely handler: log, clear the failed action's busy flag via [reset],
+     *  and surface a plain message — otherwise the flag sticks and every button it
+     *  disables stays dead until the screen is recreated. */
+    private fun failed(reset: (AddUiState) -> AddUiState = { it }): (Throwable) -> Unit = { t ->
+        runCatching { Log.e("QuestLoop", "Add quest action failed", t) }
+        _state.update { reset(it).copy(message = "Something went wrong — try again.") }
     }
 
     companion object {

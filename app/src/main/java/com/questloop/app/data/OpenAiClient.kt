@@ -48,7 +48,7 @@ class OpenAiClient(
         }
     }
 
-    private fun call(payload: String, sessionId: String, tokens: OpenAiOAuth.OpenAiTokens): Outcome {
+    private suspend fun call(payload: String, sessionId: String, tokens: OpenAiOAuth.OpenAiTokens): Outcome {
         val builder = Request.Builder()
             .url(endpoint)
             .addHeader("Authorization", "Bearer ${tokens.accessToken}")
@@ -61,21 +61,21 @@ class OpenAiClient(
         if (tokens.accountId.isNotBlank()) builder.addHeader("ChatGPT-Account-Id", tokens.accountId)
 
         return try {
-            http.newCall(builder.build()).execute().use { response ->
-                val body = response.body?.string().orEmpty()
-                when {
-                    response.code == 401 -> Outcome.Unauthorized
-                    !response.isSuccessful -> {
-                        val detail = OpenAiResponsesCodec.parseError(body)
-                        Outcome.Failed(
-                            IOException(
-                                "OpenAI request failed (${response.code})" +
-                                    if (detail.isNotBlank()) " for model \"$model\": $detail" else " for model \"$model\".",
-                            ),
-                        )
-                    }
-                    else -> Outcome.Ok(OpenAiResponsesCodec.parseResponse(body))
+            // awaitReply (not execute) so cancelling the caller aborts the call
+            // instead of blocking an IO thread until the 120s read timeout.
+            val reply = http.newCall(builder.build()).awaitReply()
+            when {
+                reply.code == 401 -> Outcome.Unauthorized
+                !reply.isSuccessful -> {
+                    val detail = OpenAiResponsesCodec.parseError(reply.body)
+                    Outcome.Failed(
+                        IOException(
+                            "OpenAI request failed (${reply.code})" +
+                                if (detail.isNotBlank()) " for model \"$model\": $detail" else " for model \"$model\".",
+                        ),
+                    )
                 }
+                else -> Outcome.Ok(OpenAiResponsesCodec.parseResponse(reply.body))
             }
         } catch (e: IOException) {
             Outcome.Failed(e)

@@ -236,6 +236,19 @@ class QuestRepositoryTest {
     }
 
     @Test
+    fun `delete all data removes the ai diagnostics log`() = runTest {
+        val diagnostics = FileAiDiagnostics(RuntimeEnvironment.getApplication())
+        diagnostics.clear()
+        val repoWithLog = QuestRepository(db.questDao(), db.completionDao(), FakePrefs(), aiDiagnostics = diagnostics)
+        diagnostics.record("some-model", "provider error body")
+        assertTrue(repoWithLog.aiDiagnosticsDump().isNotBlank())
+
+        repoWithLog.deleteAllData()
+
+        assertTrue("a full wipe removes the AI error log", repoWithLog.aiDiagnosticsDump().isBlank())
+    }
+
+    @Test
     fun `total xp comes from the ledger`() = runTest {
         repo.addQuest(quest("a"))
         repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)
@@ -253,11 +266,54 @@ class QuestRepositoryTest {
     }
 
     @Test
+    fun `ledger change stamp ticks on every write including an idempotent re-log`() = runTest {
+        // The widget-freshness trigger observes completionsChanged — backed by this
+        // stamp — instead of re-mapping the whole ledger, so the stamp must move on
+        // ANY write, even one that leaves COUNT(*) and SUM(xpAwarded) unchanged.
+        val dao = db.completionDao()
+        val empty = dao.observeChangeStamp().first()
+
+        repo.addQuest(quest("a"))
+        repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)
+        val afterFirst = dao.observeChangeStamp().first()
+        assertTrue("a new completion moves the stamp", afterFirst != empty)
+
+        // Idempotent re-log: same instanceId and same XP total — but the REPLACE
+        // upsert mints a fresh rowid, so the widget would still refresh.
+        val xp = repo.totalXp()
+        repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)
+        assertEquals(xp, repo.totalXp())
+        val afterRelog = dao.observeChangeStamp().first()
+        assertTrue("an idempotent re-log still moves the stamp", afterRelog != afterFirst)
+
+        // The repository surfaces the stamp as a signal-only flow.
+        repo.completionsChanged.first()
+    }
+
+    @Test
     fun `completed quest is dismissed from today's plan`() = runTest {
         repo.addQuest(quest("a"))
         repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.COMPLETED)
         val plan = repo.todayPlan(epochDay = 1, dayPart = DayPart.MIDDAY)
         assertTrue(plan.quests.none { it.quest.id == "a" })
+    }
+
+    @Test
+    fun `a completed daily routine leaves today's plan and returns tomorrow`() = runTest {
+        // Regression: routine quests aren't stored (or habit-derived), so the
+        // dismissal scan must still cover them — else the morning check-in pops
+        // right back into the plan after being checked off.
+        val morning = RoutineQuestFactory.all().first { it.id == RoutineQuestFactory.MORNING_REVIEW }
+        val before = repo.todayPlan(epochDay = 1, dayPart = DayPart.MORNING)
+        assertTrue(before.quests.any { it.quest.id == morning.id })
+
+        repo.completeQuest(morning, epochDay = 1, result = CompletionResult.COMPLETED)
+        val after = repo.todayPlan(epochDay = 1, dayPart = DayPart.MORNING)
+        assertTrue(after.quests.none { it.quest.id == morning.id })
+
+        // Dismissed for the day only — it's back tomorrow.
+        val nextDay = repo.todayPlan(epochDay = 2, dayPart = DayPart.MORNING)
+        assertTrue(nextDay.quests.any { it.quest.id == morning.id })
     }
 
     @Test
@@ -437,6 +493,32 @@ class QuestRepositoryTest {
     }
 
     @Test
+    fun `plan resolves the persisted check-in and an explicit one overrides it`() = runTest {
+        // An easy companion keeps the low-energy plan non-empty (an empty plan
+        // would trigger the easiest-quest fallback and resurface the hard one).
+        repo.addQuest(quest("gentle", difficulty = Difficulty.EASY))
+        repo.addQuest(quest("tough", difficulty = Difficulty.HARD))
+        // No check-in today: the hard quest is planned as usual.
+        assertTrue(repo.todayPlan(epochDay = 1, dayPart = DayPart.MIDDAY).quests.any { it.quest.id == "tough" })
+        // A persisted low-energy check-in caps difficulty at MEDIUM. todayPlan
+        // resolves it itself, so callers that don't thread it (widget, reminder
+        // receiver) see the same lighter plan as the Today screen.
+        repo.setCheckIn(com.questloop.core.model.EnergyCheckIn(epochDay = 1, energy = 2, availableMinutes = 60))
+        val lighter = repo.todayPlan(epochDay = 1, dayPart = DayPart.MIDDAY)
+        assertTrue(lighter.quests.any { it.quest.id == "gentle" })
+        assertFalse(lighter.quests.any { it.quest.id == "tough" })
+        // An explicitly passed check-in overrides the persisted one.
+        val energized = com.questloop.core.model.EnergyCheckIn(epochDay = 1, energy = 5, availableMinutes = 240)
+        assertTrue(
+            repo.todayPlan(epochDay = 1, dayPart = DayPart.MIDDAY, checkIn = energized)
+                .quests.any { it.quest.id == "tough" },
+        )
+        // A check-in persisted for another day never shapes today's plan.
+        repo.setCheckIn(com.questloop.core.model.EnergyCheckIn(epochDay = 3, energy = 2, availableMinutes = 60))
+        assertTrue(repo.todayPlan(epochDay = 1, dayPart = DayPart.MIDDAY).quests.any { it.quest.id == "tough" })
+    }
+
+    @Test
     fun `a goal becomes a weekly derived quest`() = runTest {
         repo.addGoal(
             com.questloop.core.model.Goal(id = "g1", title = "Learn guitar", category = QuestCategory.PERSONAL_GROWTH),
@@ -576,6 +658,20 @@ class QuestRepositoryTest {
     }
 
     @Test
+    fun `a skipped admin step rests for the day then returns`() = runTest {
+        // Admin-fund quests aren't stored either, and isDue only tracks
+        // completions — the dismissal scan is what hides a skip for the day.
+        val funded = QuestRepository(db.questDao(), db.completionDao(), FakePrefs(cap = 50.0))
+        funded.completeQuest(AdminFundFactory.openPotQuest(), epochDay = 1, result = CompletionResult.SKIPPED)
+        val today = funded.todayPlan(epochDay = 1, dayPart = DayPart.MIDDAY)
+        assertTrue(today.quests.none { it.quest.id == AdminFundFactory.OPEN_POT_ID })
+
+        // A skip rests it for the day, not forever.
+        val nextDay = funded.todayPlan(epochDay = 2, dayPart = DayPart.MIDDAY)
+        assertTrue(nextDay.quests.any { it.quest.id == AdminFundFactory.OPEN_POT_ID })
+    }
+
+    @Test
     fun `calendar free time caps today's plan`() = runTest {
         val reader = object : CalendarReader {
             override suspend fun freeMinutesToday(): Int = 20 // only 20 minutes free today
@@ -711,6 +807,53 @@ class QuestRepositoryTest {
         assertEquals(wednesday, entry.record.epochDay)
     }
 
+    private fun oneOffRead() = quest(
+        id = "read",
+        style = CompletionStyle.QUANTITATIVE,
+        target = 100,
+        category = QuestCategory.PERSONAL_GROWTH,
+        frequency = QuestFrequency.ONE_OFF,
+    )
+
+    @Test
+    fun `a one-off quantitative quest accumulates across days then completes for good`() = runTest {
+        val read = oneOffRead()
+        repo.addQuest(read)
+
+        // 30 pages on day 1 — the next day it's still 30/100 (not reset) and still offered.
+        repo.completeMeasured(read, epochDay = 1, value = 30)
+        assertEquals(30, repo.todayProgress(2)["read"])
+        assertTrue(repo.todayPlan(2, DayPart.MIDDAY).quests.any { it.quest.id == "read" })
+
+        // Reaching the cumulative target days later completes it — and a one-off has
+        // no next interval, so it leaves the plan for good (isDue via lastCompleted).
+        repo.completeMeasured(read, epochDay = 4, value = 100)
+        val done = repo.questOverview(5, DayPart.MIDDAY).first { it.quest.id == "read" }
+        assertTrue(done.done)
+        assertFalse(done.dueToday)
+        assertFalse(repo.todayPlan(5, DayPart.MIDDAY).quests.any { it.quest.id == "read" })
+        assertFalse(repo.todayPlan(40, DayPart.MIDDAY).quests.any { it.quest.id == "read" })
+    }
+
+    @Test
+    fun `a one-off measured quest logged across days nets one grant, not one per day`() = runTest {
+        val read = oneOffRead()
+        repo.addQuest(read)
+
+        // Progress logged over three days accumulates into ONE ledger row whose grant
+        // is re-netted on each log — day-keyed records used to score every partial
+        // day independently and mint more XP than finishing the quest is worth.
+        repo.completeMeasured(read, epochDay = 1, value = 30)
+        repo.completeMeasured(read, epochDay = 2, value = 60)
+        repo.completeMeasured(read, epochDay = 3, value = 100)
+
+        val rows = db.completionDao().all().filter { it.questId == "read" }
+        assertEquals(1, rows.size)
+        assertEquals(CompletionResult.COMPLETED.name, rows.single().result)
+        // Total XP is exactly that single grant — nothing stacked across the days.
+        assertEquals(rows.single().xpAwarded, repo.totalXp())
+    }
+
     @Test
     fun `editing a measured quest's frequency re-keys the record without inflating the reported total`() = runTest {
         val daily = quest("a", style = CompletionStyle.QUANTITATIVE, target = 2, frequency = QuestFrequency.DAILY)
@@ -732,6 +875,25 @@ class QuestRepositoryTest {
     }
 
     @Test
+    fun `history lists a skipped quest so its penalty can still be reversed later`() = runTest {
+        repo.addQuest(quest("earn"))
+        repo.completeQuest(quest("earn"), epochDay = 1, result = CompletionResult.COMPLETED)
+        val earned = repo.totalXp()
+
+        repo.addQuest(quest("a"))
+        repo.completeQuest(quest("a"), epochDay = 1, result = CompletionResult.SKIPPED)
+        assertEquals(earned - 3, repo.totalXp())
+
+        // The skip appears in history, giving a recovery path once the snackbar's
+        // Undo window is gone: removing the record refunds the gentle penalty.
+        val entry = repo.completedHistory().single { it.record.questId == "a" }
+        assertEquals(CompletionResult.SKIPPED, entry.record.result)
+        repo.deleteCompletion(entry.record.instanceId)
+        assertEquals(earned, repo.totalXp())
+        assertTrue(repo.completedHistory().none { it.record.questId == "a" })
+    }
+
+    @Test
     fun `history marks stored quests editable and non-stored (routine) completions not`() = runTest {
         // A routine quest is named for display but isn't in the quests table.
         val routine = RoutineQuestFactory.all().first()
@@ -744,5 +906,24 @@ class QuestRepositoryTest {
         repo.completeQuest(quest("stored"), epochDay = 1, result = CompletionResult.COMPLETED)
         val storedEntry = repo.completedHistory().first { it.record.questId == "stored" }
         assertTrue("a stored quest is editable/re-addable", storedEntry.editable)
+    }
+
+    @Test
+    fun `history is newest-first, shows only full completions, and respects the window`() = runTest {
+        repo.addQuest(quest("a"))
+        repo.addQuest(quest("b"))
+        repo.addQuest(quest("c"))
+        repo.completeQuest(quest("a"), epochDay = 10, result = CompletionResult.COMPLETED)
+        repo.completeQuest(quest("b"), epochDay = 12, result = CompletionResult.COMPLETED)
+        repo.completeQuest(quest("c"), epochDay = 11, result = CompletionResult.FAILED)
+        repo.completeQuest(quest("c"), epochDay = 13, result = CompletionResult.PARTIAL, fraction = 0.5)
+
+        // All-time: only fully-completed records, newest first (the filter and the
+        // ordering live in SQL now — pin the contract the Completed screen relies on).
+        val allTime = repo.completedHistory()
+        assertEquals(listOf("b" to 12L, "a" to 10L), allTime.map { it.record.questId to it.record.epochDay })
+
+        // Windowed: the range bounds the slice, and the result filter still applies.
+        assertEquals(listOf("b"), repo.completedHistory(range = 11L..13L).map { it.record.questId })
     }
 }

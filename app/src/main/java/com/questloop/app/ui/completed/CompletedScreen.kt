@@ -32,12 +32,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.ui.components.CategoryDot
 import com.questloop.app.ui.components.SectionHeader
+import com.questloop.app.ui.components.pickableCategories
+import com.questloop.app.ui.components.pickableFrequencies
 import com.questloop.app.ui.components.pretty
+import com.questloop.core.model.CompletionResult
 import com.questloop.core.model.Difficulty
 import com.questloop.core.model.Priority
 import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestCategory
-import com.questloop.core.model.QuestFrequency
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -134,17 +136,34 @@ private fun CompletedCard(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CategoryDot(entry.record.category)
                 Text(entry.title, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                if (entry.record.xpAwarded != 0L) {
+                val xp = entry.record.xpAwarded
+                if (xp != 0L) {
                     Text(
-                        "+${entry.record.xpAwarded} XP",
+                        // Skips carry a small negative grant; state it plainly, not
+                        // in an alarm color (non-shaming).
+                        (if (xp > 0) "+$xp" else "$xp") + " XP",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = if (xp > 0) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                     )
                 }
             }
+            // Skips are listed too (so they can still be undone later); name the
+            // outcome with the same word the button used.
+            val outcome = when {
+                entry.record.result != CompletionResult.SKIPPED -> null
+                entry.record.category == QuestCategory.BAD_HABIT_REDUCTION -> "Slipped"
+                else -> "Skipped"
+            }
             Text(
-                "${LocalDate.ofEpochDay(entry.record.epochDay).format(historyDateFormat)} · " +
+                listOfNotNull(
+                    LocalDate.ofEpochDay(entry.record.epochDay).format(historyDateFormat),
                     entry.record.difficulty.pretty(),
+                    outcome,
+                ).joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -222,17 +241,20 @@ internal fun EditQuestFields(original: Quest, onChange: (Quest) -> Unit) {
         Text("Priority", style = MaterialTheme.typography.labelMedium)
         ChipRow(Priority.entries, priority, { it.name.lowercase().replaceFirstChar { c -> c.uppercase() } }) { priority = it; emit() }
         Text("Category", style = MaterialTheme.typography.labelMedium)
-        ChipRow(QuestCategory.entries, category, { it.pretty() }) { category = it; emit() }
+        ChipRow(pickableCategories, category, { it.pretty() }) { category = it; emit() }
         Text("Frequency", style = MaterialTheme.typography.labelMedium)
-        ChipRow(QuestFrequency.entries, frequency, { it.pretty() }) { frequency = it; emit() }
+        ChipRow(pickableFrequencies, frequency, { it.pretty() }) { frequency = it; emit() }
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun <T> ChipRow(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit) {
+    // Some stored/AI values are valid but not offered as choices (e.g. a seasonal
+    // cadence) — keep the active one visible so the row never looks unselected.
+    val shown = if (selected in options) options else options + selected
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        options.forEach { option ->
+        shown.forEach { option ->
             FilterChip(
                 selected = option == selected,
                 onClick = { onSelect(option) },

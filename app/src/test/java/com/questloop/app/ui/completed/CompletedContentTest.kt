@@ -52,6 +52,8 @@ class CompletedContentTest {
         title: String,
         editable: Boolean = true,
         quest: Quest? = quest(id, title),
+        result: CompletionResult = CompletionResult.COMPLETED,
+        xp: Long = 12,
     ) = QuestRepository.CompletedEntry(
         record = CompletionRecord(
             instanceId = "$id@1",
@@ -59,9 +61,9 @@ class CompletedContentTest {
             category = QuestCategory.WORK_STUDY,
             difficulty = Difficulty.EASY,
             priority = Priority.NORMAL,
-            result = CompletionResult.COMPLETED,
+            result = result,
             epochDay = 1,
-            xpAwarded = 12,
+            xpAwarded = xp,
         ),
         title = title,
         quest = quest,
@@ -107,6 +109,13 @@ class CompletedContentTest {
     fun `empty window shows the hint`() {
         render(stateWith())
         composeRule.onNodeWithText("Nothing completed", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a skipped entry is labelled and shows its signed xp`() {
+        render(stateWith(entry("a", "Write the report", result = CompletionResult.SKIPPED, xp = -3)))
+        composeRule.onNodeWithText("Skipped", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("-3 XP").assertIsDisplayed()
     }
 
     @Test
@@ -160,5 +169,23 @@ class CompletedContentTest {
         composeRule.onNodeWithText("Bad habit reduction").performClick()
         assertEquals(QuestCategory.BAD_HABIT_REDUCTION, edited?.category)
         assertTrue("reduction category should flag the quest", edited?.isReductionQuest == true)
+    }
+
+    // Internal enum values (CONTENT_STYLE: no developer vocabulary) are hidden from
+    // the pickers, but a quest that already carries one still shows it as selected.
+    @Test
+    fun `edit pickers hide internal values but keep an existing one visible`() {
+        var edited: Quest? = null
+        composeRule.setContent {
+            EditQuestFields(
+                original = quest("a", "Water the plants").copy(frequency = QuestFrequency.RECURRING),
+                onChange = { edited = it },
+            )
+        }
+        composeRule.onNodeWithText("Meta maintenance").assertDoesNotExist()
+        composeRule.onNodeWithText("Seasonal").assertDoesNotExist()
+        composeRule.onNodeWithText("Recurring").assertIsDisplayed()
+        composeRule.onNodeWithText("Weekly").performClick()
+        assertEquals(QuestFrequency.WEEKLY, edited?.frequency)
     }
 }

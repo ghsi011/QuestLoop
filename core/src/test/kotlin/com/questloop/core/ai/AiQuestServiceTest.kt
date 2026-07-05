@@ -6,9 +6,14 @@ import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.QuestFrequency
 import com.questloop.core.model.QuestOrigin
+import java.io.IOException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import kotlinx.coroutines.test.runTest
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -16,9 +21,11 @@ import kotlin.test.assertTrue
 
 class AiQuestServiceTest {
 
-    private fun service(response: String? = null, fail: Boolean = false) = AiQuestService(
+    private fun service(response: String? = null, fail: Boolean = false, failWith: Throwable? = null, cancel: Boolean = false) = AiQuestService(
         client = object : LlmClient {
             override suspend fun complete(systemPrompt: String, userPrompt: String): String {
+                if (cancel) throw CancellationException("cancelled")
+                failWith?.let { throw it }
                 if (fail) throw RuntimeException("network down")
                 return response ?: ""
             }
@@ -131,6 +138,59 @@ class AiQuestServiceTest {
         val result = svc.suggest(AiQuestService.Input(todos = listOf("Call mom")))
         assertNotNull(result.error)
         assertTrue(result.error!!.contains("network down"))
+    }
+
+    @Test
+    fun `offline failure shows plain copy and keeps the raw detail for the log`() = runTest {
+        val svc = service(
+            failWith = UnknownHostException("Unable to resolve host \"openrouter.ai\": No address associated with hostname"),
+        )
+        val result = svc.suggest(AiQuestService.Input(todos = listOf("Call mom")))
+        assertFalse(result.fromAi)
+        assertEquals("Couldn't reach the AI. Check your connection and try again.", result.error)
+        assertTrue(result.errorDetail!!.contains("openrouter.ai"))
+        assertTrue(result.quests.isNotEmpty())
+    }
+
+    @Test
+    fun `timeout failure shows the same plain copy in suggest, decompose and refine`() = runTest {
+        val plainCopy = "Couldn't reach the AI. Check your connection and try again."
+        val svc = service(failWith = SocketTimeoutException("timeout"))
+        assertEquals(plainCopy, svc.suggest(AiQuestService.Input(todos = listOf("x"))).error)
+        assertEquals(plainCopy, svc.decomposeGoal("Run a 10k").error)
+        val original = Quest("x", "Call mum", QuestCategory.SOCIAL, QuestFrequency.ONE_OFF, Difficulty.EASY)
+        val refined = svc.refine(original, "make it harder")
+        assertEquals(plainCopy, refined.error)
+        assertNull(refined.quest)
+    }
+
+    @Test
+    fun `curated provider errors keep surfacing verbatim`() = runTest {
+        val svc = service(failWith = IOException("OpenRouter request failed (404) for model \"m\": No endpoints found"))
+        val result = svc.suggest(AiQuestService.Input(todos = listOf("x")))
+        assertTrue(result.error!!.contains("No endpoints found"))
+        assertNull(result.errorDetail)
+    }
+
+    @Test
+    fun `a failure with no message still reports something human`() = runTest {
+        val result = service(failWith = IOException()).suggest(AiQuestService.Input(todos = listOf("x")))
+        assertEquals("AI request failed: couldn't reach the model", result.error)
+    }
+
+    @Test
+    fun `cancellation is rethrown instead of becoming a fallback`() = runTest {
+        val svc = service(cancel = true)
+        assertFailsWith<CancellationException> { svc.suggest(AiQuestService.Input(todos = listOf("Call mom"))) }
+        assertFailsWith<CancellationException> { svc.decomposeGoal("Run a 10k") }
+        val original = Quest(
+            id = "x",
+            title = "Call mum",
+            category = QuestCategory.SOCIAL,
+            frequency = QuestFrequency.ONE_OFF,
+            difficulty = Difficulty.EASY,
+        )
+        assertFailsWith<CancellationException> { svc.refine(original, "make it harder") }
     }
 
     @Test

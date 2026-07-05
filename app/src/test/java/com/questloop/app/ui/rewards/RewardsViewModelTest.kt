@@ -135,4 +135,18 @@ class RewardsViewModelTest {
         vm.consumeSavedMessage()
         assertNull(vm.state.value.savedMessage)
     }
+
+    @Test
+    fun `a failed load finishes loading and surfaces an error message`() = runTest {
+        // Drop the ledger table so the allowance query throws a real SQLiteException
+        // (a genuine store failure). NOT db.close(): closing cancels Room's query
+        // scope, and that CancellationException is cooperative cancellation the
+        // ViewModel correctly rethrows — so it would never reach the error handler.
+        db.openHelper.writableDatabase.execSQL("DROP TABLE completions")
+        val vm = RewardsViewModel(repo)
+        val state = vm.state.value
+        assertFalse(state.loading)
+        assertNotNull(state.savedMessage)
+        assertTrue(state.messageId > 0)
+    }
 }

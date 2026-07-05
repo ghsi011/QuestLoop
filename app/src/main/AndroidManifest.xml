@@ -49,11 +49,16 @@
         <receiver
             android:name=".reminders.ReminderActionReceiver"
             android:exported="false" />
+        <!-- Re-arms the reminder alarms whenever their fixed trigger instants go
+             stale: reboot, timezone change, or a clock correction. All three are
+             protected system broadcasts, exempt from implicit-broadcast limits. -->
         <receiver
             android:name=".reminders.BootReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
             </intent-filter>
         </receiver>
 
@@ -67,6 +72,11 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/quest_widget_info" />
         </receiver>
+        <!-- Self-healing alarm target: re-renders the widget at midnight and
+             day-part boundaries so the morning glance never shows yesterday. -->
+        <receiver
+            android:name=".widget.WidgetRefreshReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

@@ -3,6 +3,7 @@ package com.questloop.app.data
 import com.questloop.core.ai.openai.OpenAiOAuth
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -41,5 +42,20 @@ class ApiKeyRedactionTest {
         assertFalse(out.contains("sk-or-secret"))
         assertFalse(out.contains("access-secret"))
         assertFalse(out.contains("refresh-secret"))
+    }
+
+    @Test
+    fun `redactSecrets scrubs bearer-shaped tokens the config no longer holds`() {
+        // A token that rotated mid-call isn't in this config; the Bearer shape still catches it.
+        val rotated = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJxbCJ9.sig-material-here"
+        val out = redactSecrets("provider echoed our header: Bearer $rotated", AiConfig())
+        assertFalse("a rotated token must not survive redaction", out.contains(rotated))
+        assertTrue(out.contains("Bearer ***"))
+    }
+
+    @Test
+    fun `bearer scrub keeps short prose like 'Bearer token' readable`() {
+        val msg = "OpenAI request failed (401): invalid Bearer token, sign in again"
+        assertEquals(msg, redactSecrets(msg, AiConfig()))
     }
 }

@@ -35,7 +35,11 @@ data class CompletedUiState(
  * Backs the Completed-quests screen: a filtered history with undo, a full-quest
  * edit (which re-scores XP), and re-add (clone as a new quest).
  */
-class CompletedViewModel(private val repository: QuestRepository) : ViewModel() {
+class CompletedViewModel(
+    private val repository: QuestRepository,
+    /** Injectable "today" so tests can pin the date; defaults to the shared [AppClock]. */
+    private val todayEpochDay: () -> Long = AppClock::todayEpochDay,
+) : ViewModel() {
 
     private val _state = MutableStateFlow(CompletedUiState())
     val state: StateFlow<CompletedUiState> = _state.asStateFlow()
@@ -117,7 +121,7 @@ class CompletedViewModel(private val repository: QuestRepository) : ViewModel() 
     fun consumeMessage() = _state.update { it.copy(message = null) }
 
     private fun rangeFor(filter: HistoryFilter): LongRange? {
-        val today = AppClock.todayEpochDay()
+        val today = todayEpochDay()
         return when (filter) {
             HistoryFilter.TODAY -> today..today
             HistoryFilter.WEEK -> AppClock.startOfWeek(today)..today

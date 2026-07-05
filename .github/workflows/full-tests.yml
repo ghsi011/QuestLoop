@@ -182,7 +182,10 @@ jobs:
     needs: instrumented
     # Publish from nightly, release, and manual-from-main runs only — never from a
     # push (incl. "[uitest]"), so dev runs can't clobber the published number.
-    if: ${{ always() && (github.event_name == 'schedule' || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')) }}
+    # success() (not always()): a red instrumented job still writes a "merged"
+    # report that may be unit-only, so publishing from it would silently
+    # misreport the public coverage number.
+    if: ${{ success() && (github.event_name == 'schedule' || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -7,6 +7,7 @@ import com.questloop.core.ai.AiNarrator
 import com.questloop.core.ai.AiQuestService
 import com.questloop.core.completion.CompletionPolicy
 import com.questloop.core.completion.CompletionScaling
+import com.questloop.core.completion.CompletionSlots
 import com.questloop.core.generation.AdminFundFactory
 import com.questloop.core.generation.HabitQuestFactory
 import com.questloop.core.generation.PeriodPlanner
@@ -22,7 +23,6 @@ import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.DayPart
 import com.questloop.core.model.EnergyCheckIn
 import com.questloop.core.model.Quest
-import com.questloop.core.model.QuestFrequency
 import com.questloop.core.model.UserProfile
 import com.questloop.core.model.VerificationMethod
 import com.questloop.core.reward.Achievement
@@ -33,6 +33,7 @@ import com.questloop.core.reward.RewardAllowanceCalculator
 import com.questloop.core.reward.StreakTracker
 import com.questloop.core.review.ReviewGenerator
 import com.questloop.core.safety.SafetyGuard
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -41,7 +42,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.time.LocalDate
 import kotlin.math.roundToInt
 
 /**
@@ -66,6 +66,8 @@ class QuestRepository(
     private val openAiAuth: OpenAiAuth = OpenAiAuthService(),
     // Injectable so tests can point the OpenAI client at a local MockWebServer.
     private val openAiResponsesEndpoint: String = com.questloop.core.ai.openai.OpenAiOAuth.API_RESPONSES_URL,
+    // Injectable so ViewModel tests can keep the completed-history mapping inline (synchronous).
+    private val historyDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
     private val exportJson = kotlinx.serialization.json.Json { prettyPrint = true; ignoreUnknownKeys = true }
 
@@ -80,7 +82,15 @@ class QuestRepository(
 
     // Serialises the OpenAI OAuth refresh + persist so two concurrent AI calls
     // can't both refresh and invalidate each other's (rotating) refresh token.
+    // Also taken by disconnectOpenAi/deleteAllData so an in-flight refresh can't
+    // re-persist credentials the user just cleared.
     private val aiAuthMutex = Mutex()
+
+    // Bumped (under aiAuthMutex) whenever credentials are deliberately cleared
+    // (sign-out / delete-all). connectOpenAi snapshots it before the browser
+    // handshake; the sign-in's onTokens persist aborts if it advanced meanwhile,
+    // so a sign-in that finishes AFTER a wipe can't resurrect credentials.
+    private var credentialClearGeneration = 0L
 
     /** Days of history considered for safety signals. */
     private val safetyWindowDays = 30L
@@ -90,6 +100,16 @@ class QuestRepository(
 
     val completions: Flow<List<CompletionRecord>> =
         completionDao.observeAll().map { list -> list.map { it.toModel() } }.distinctUntilChanged()
+
+    /**
+     * Signal-only companion to [completions] for observers that just need to know
+     * "the ledger changed" (e.g. the widget refresher): each write re-runs a cheap
+     * MAX(rowid) stamp query instead of re-reading and re-mapping the whole table.
+     * Deliberately NOT distinct — the stamp can survive a write unchanged (e.g.
+     * undoing a non-latest completion deletes a lower rowid), and every write must
+     * still tick.
+     */
+    val completionsChanged: Flow<Unit> = completionDao.observeChangeStamp().map { }
 
     val profile = profileStore.profile
 
@@ -115,7 +135,7 @@ class QuestRepository(
         val dueToday: Boolean,
         /** Finished for today (binary completed, or a counting/timed target reached). */
         val done: Boolean,
-        /** Today's logged count/minutes, for resuming a partial log. */
+        /** The current interval's logged count/minutes, for resuming a partial log. */
         val progress: Int,
     )
 
@@ -126,8 +146,7 @@ class QuestRepository(
      * here because they're managed on the Habits screen, not individually.
      */
     suspend fun questOverview(epochDay: Long, dayPart: DayPart): List<QuestStatus> {
-        val checkIn = todayCheckIn(epochDay)
-        val plan = todayPlan(epochDay, dayPart, checkIn)
+        val plan = todayPlan(epochDay, dayPart)
         val inPlan = plan.quests.map { it.quest.id }.toSet()
         val lastCompleted = completionDao.lastCompletedDays().associate { it.questId to it.lastDay }
         // "Done" uses the same style-aware dismissal as the plan: a partially logged
@@ -141,7 +160,7 @@ class QuestRepository(
                 // Measured weekly/monthly quests are "due" any day of their interval
                 // until the target is hit (mirrors the plan's interval-based gate);
                 // everything else follows the rolling cadence window.
-                dueToday = if (hasCalendarInterval(quest)) quest.id !in dismissed
+                dueToday = if (CompletionSlots.hasCalendarInterval(quest)) quest.id !in dismissed
                 else QuestScheduler.isDue(quest.frequency, epochDay, lastCompleted[quest.id]),
                 done = quest.id in dismissed,
                 progress = progress[quest.id] ?: 0,
@@ -177,12 +196,20 @@ class QuestRepository(
         questDao.archive(id)
     }
 
-    /** Build today's plan from active quests + recent history + the day's routine. */
+    /**
+     * Build today's plan from active quests + recent history + the day's routine.
+     *
+     * The day's persisted energy check-in shapes the plan (size, difficulty
+     * ceiling, time budget), so it's resolved here rather than by each caller —
+     * the widget and reminder receiver see the same plan as the Today screen.
+     * Pass [checkIn] only to override the persisted one.
+     */
     suspend fun todayPlan(
         epochDay: Long,
         dayPart: DayPart,
         checkIn: EnergyCheckIn? = null,
     ): QuestGenerator.DailyPlan {
+        val resolvedCheckIn = checkIn ?: todayCheckIn(epochDay)
         val profile = profileStore.profile.first()
         // Only surface quests whose recurrence cadence makes them due today
         // (e.g. a weekly quest doesn't reappear every day after completion).
@@ -201,7 +228,7 @@ class QuestRepository(
                 // this week/month) — NOT the rolling isDue window, which keys off the
                 // last completion day and would otherwise keep a fresh interval hidden
                 // for up to a period. Everything else uses the normal cadence gate.
-                if (hasCalendarInterval(it)) it.id !in dismissed
+                if (CompletionSlots.hasCalendarInterval(it)) it.id !in dismissed
                 else QuestScheduler.isDue(it.frequency, epochDay, lastCompleted[it.id])
             }
         // Recent history is only needed for avoidance scoring (skipped quests).
@@ -215,7 +242,7 @@ class QuestRepository(
                 profile = profile,
                 candidates = candidates,
                 history = history,
-                checkIn = checkIn,
+                checkIn = resolvedCheckIn,
                 routineQuests = RoutineQuestFactory.routinesFor(dayPart),
                 dismissedToday = dismissed,
                 availableMinutesOverride = calendarMinutes,
@@ -237,58 +264,24 @@ class QuestRepository(
         val cap = profile.preferences.monthlyRewardBudgetCap
         if (cap <= 0.0) return emptyList()
         val potOpened = lastCompleted.containsKey(AdminFundFactory.OPEN_POT_ID)
-        val monthStart = LocalDate.ofEpochDay(today).withDayOfMonth(1).toEpochDay()
+        val monthStart = CompletionSlots.startOfMonth(today)
         val earned = allowance(monthStart, today).suggestedAllowance
         return AdminFundFactory.deriveAll(RewardFundState(cap, potOpened, earned))
     }
 
     /**
-     * Every quest that can appear in a plan, keyed by id: stored quests plus the
-     * ones derived from habits/bad-habits/goals. Used wherever a quest's style or
-     * fields are needed, so derived (non-stored) quests aren't silently treated as
-     * binary or skipped for progress.
+     * Every quest that can appear in a plan, keyed by id: stored quests, the ones
+     * derived from habits/bad-habits/goals, and the system routine + reward-fund
+     * admin quests. Used wherever a quest's style or fields are needed, so
+     * non-stored quests aren't silently treated as binary or skipped for
+     * progress/dismissal — a completed morning routine (or a skipped admin step)
+     * must leave today's plan like anything else.
      */
     private suspend fun candidateQuestsById(): Map<String, Quest> {
         val profile = profileStore.profile.first()
         val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals)
-        return (questDao.getActive().map { it.toModel() } + derived).associateBy { it.id }
-    }
-
-    /** Measured (count/duration) quests accumulate progress across their interval. */
-    private fun accumulates(quest: Quest): Boolean =
-        quest.completionStyle == CompletionStyle.QUANTITATIVE ||
-            quest.completionStyle == CompletionStyle.DURATION
-
-    /**
-     * A *measured recurring* quest whose progress accumulates across a calendar
-     * interval (a week for WEEKLY, a month for MONTHLY) and resets at the boundary
-     * — e.g. "swim 2×/week". Daily/one-off/recurring measured quests keep their
-     * per-day semantics (their "interval" is just the day), so they're excluded.
-     * This is the set for which interval dismissal, not the rolling isDue window,
-     * governs visibility.
-     */
-    private fun hasCalendarInterval(quest: Quest): Boolean =
-        accumulates(quest) &&
-            (quest.frequency == QuestFrequency.WEEKLY || quest.frequency == QuestFrequency.MONTHLY)
-
-    /**
-     * The epoch-day that anchors a quest's completion record. For a *measured
-     * recurring* quest it's the start of its current calendar interval (week for
-     * WEEKLY, month for MONTHLY), so progress accumulates across the interval — e.g.
-     * "swim 2×/week" counts both swims toward one 2/2 — and resets at the boundary.
-     * For everything else (and daily quests, where the interval *is* the day) it's
-     * the day itself, so behaviour is unchanged.
-     */
-    private fun completionSlot(quest: Quest, epochDay: Long): Long =
-        if (accumulates(quest)) intervalStartFor(quest.frequency, epochDay) else epochDay
-
-    private fun intervalStartFor(frequency: QuestFrequency, epochDay: Long): Long = when (frequency) {
-        QuestFrequency.WEEKLY -> {
-            val d = LocalDate.ofEpochDay(epochDay)
-            d.minusDays((d.dayOfWeek.value - 1).toLong()).toEpochDay()
-        }
-        QuestFrequency.MONTHLY -> LocalDate.ofEpochDay(epochDay).withDayOfMonth(1).toEpochDay()
-        else -> epochDay
+        val system = RoutineQuestFactory.all() + AdminFundFactory.all()
+        return (questDao.getActive().map { it.toModel() } + derived + system).associateBy { it.id }
     }
 
     /** A measured quest's accumulated progress this interval (count or minutes). */
@@ -298,7 +291,7 @@ class QuestRepository(
             CompletionStyle.DURATION -> quest.estimatedMinutes
             else -> return 0
         }
-        val rec = completionDao.find("${quest.id}@${completionSlot(quest, epochDay)}") ?: return 0
+        val rec = completionDao.find("${quest.id}@${CompletionSlots.completionSlot(quest, epochDay)}") ?: return 0
         return (rec.fraction * target).roundToInt()
     }
 
@@ -313,7 +306,7 @@ class QuestRepository(
             // Read the quest's *current interval* record (the day for daily/binary
             // quests, the week/month for measured recurring ones), so a weekly quest
             // finished earlier this week stays hidden the rest of the interval.
-            val rec = completionDao.find("${quest.id}@${completionSlot(quest, epochDay)}") ?: continue
+            val rec = completionDao.find("${quest.id}@${CompletionSlots.completionSlot(quest, epochDay)}") ?: continue
             val result = rec.toModel().result
             if (CompletionPolicy.dismissedForToday(quest.completionStyle, result, quest.allowOverCompletion)) {
                 dismissed += quest.id
@@ -336,7 +329,7 @@ class QuestRepository(
             }
             // An entry exists iff this quest has a record this interval (even a
             // zero-progress log), so the UI can resume/show 0 as before.
-            val rec = completionDao.find("${quest.id}@${completionSlot(quest, epochDay)}") ?: continue
+            val rec = completionDao.find("${quest.id}@${CompletionSlots.completionSlot(quest, epochDay)}") ?: continue
             put(quest.id, (rec.fraction * target).roundToInt())
         }
     }
@@ -368,32 +361,37 @@ class QuestRepository(
 
     /**
      * Completed quests for the history screen, newest first. [range] bounds the
-     * epoch-day window (Today/Week/Month); null is all-time. Only fully-completed
-     * records are shown (partials are in-progress, not history). Titles are resolved
+     * epoch-day window (Today/Week/Month); null is all-time. Fully-completed
+     * records are shown (partials are in-progress, not history), plus skipped ones
+     * — so a skip can still be reversed after the snackbar's Undo is gone (the
+     * row's Undo removes the record and the gentle penalty re-derives away). The
+     * filter, sort, and row→entry mapping run on [historyDispatcher], so the
+     * all-time slice never transforms the whole ledger on Main. Titles are resolved
      * from stored (incl. archived) + derived + routine + admin quests so every row
      * is named; only stored quests are marked [CompletedEntry.editable].
      */
-    suspend fun completedHistory(range: LongRange? = null): List<CompletedEntry> {
-        val rows = if (range == null) completionDao.all() else completionDao.between(range.first, range.last)
-        val profile = profileStore.profile.first()
-        val stored = questDao.getAll().map { it.toModel() }
-        val storedIds = stored.map { it.id }.toSet()
-        val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals)
-        val routines = RoutineQuestFactory.all()
-        val admin = listOf(
-            AdminFundFactory.openPotQuest(), AdminFundFactory.fundMonthQuest(), AdminFundFactory.claimQuest(),
-        )
-        val quests = (stored + derived + routines + admin).associateBy { it.id }
-        return rows.map { it.toModel() }
-            .filter { it.result == CompletionResult.COMPLETED }
-            .sortedByDescending { it.epochDay }
-            .map { rec ->
-                val quest = quests[rec.questId]
-                val title = quest?.title ?: rec.category.name.lowercase().replace('_', ' ')
-                    .replaceFirstChar { it.uppercase() }
-                CompletedEntry(record = rec, title = title, quest = quest, editable = rec.questId in storedIds)
-            }
-    }
+    suspend fun completedHistory(range: LongRange? = null): List<CompletedEntry> =
+        withContext(historyDispatcher) {
+            val rows = if (range == null) completionDao.all() else completionDao.between(range.first, range.last)
+            val profile = profileStore.profile.first()
+            val stored = questDao.getAll().map { it.toModel() }
+            val storedIds = stored.map { it.id }.toSet()
+            val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals)
+            val routines = RoutineQuestFactory.all()
+            val admin = listOf(
+                AdminFundFactory.openPotQuest(), AdminFundFactory.fundMonthQuest(), AdminFundFactory.claimQuest(),
+            )
+            val quests = (stored + derived + routines + admin).associateBy { it.id }
+            rows.map { it.toModel() }
+                .filter { it.result == CompletionResult.COMPLETED || it.result == CompletionResult.SKIPPED }
+                .sortedByDescending { it.epochDay }
+                .map { rec ->
+                    val quest = quests[rec.questId]
+                    val title = quest?.title ?: rec.category.name.lowercase().replace('_', ' ')
+                        .replaceFirstChar { it.uppercase() }
+                    CompletedEntry(record = rec, title = title, quest = quest, editable = rec.questId in storedIds)
+                }
+        }
 
     /** Undo a completion from the history screen: remove it entirely; XP re-derives. */
     suspend fun deleteCompletion(instanceId: String) = completionMutex.withLock {
@@ -419,7 +417,7 @@ class QuestRepository(
             // left behind, and the returned outcome's reported total/level are honest.
             // A same-slot edit keeps the same instanceId, so completeQuestLocked nets
             // the prior grant itself (nothing to delete).
-            val newInstanceId = "${updatedQuest.id}@${completionSlot(updatedQuest, existing.epochDay)}"
+            val newInstanceId = "${updatedQuest.id}@${CompletionSlots.completionSlot(updatedQuest, existing.epochDay)}"
             if (newInstanceId != instanceId) completionDao.delete(instanceId)
             completeQuestLocked(
                 updatedQuest, existing.epochDay, existing.result, existing.fraction, existing.verification,
@@ -444,10 +442,11 @@ class QuestRepository(
 
     /**
      * Records a completion idempotently. The record is keyed by `instanceId`
-     * (`questId@slot`, where the slot is the day for most quests and the calendar
-     * interval start for a measured weekly/monthly quest); re-logging the same
-     * instance replaces its prior grant via the ledger, so XP never double-counts
-     * (the prior `xpAwarded` is netted out before the new grant is applied).
+     * (`questId@slot`, where the slot is the day for most quests, the calendar
+     * interval start for a measured weekly/monthly quest, and a fixed lifetime
+     * slot for a measured one-off); re-logging the same instance replaces its
+     * prior grant via the ledger, so XP never double-counts (the prior
+     * `xpAwarded` is netted out before the new grant is applied).
      */
     suspend fun completeQuest(
         quest: Quest,
@@ -468,20 +467,23 @@ class QuestRepository(
         verification: VerificationMethod,
     ): CompleteOutcome {
         // Measured recurring quests are *keyed* by their interval start (so weekly/
-        // monthly progress accumulates into one record and resets at the boundary);
-        // everything else is keyed by the day, unchanged. The record's `epochDay`,
+        // monthly progress accumulates into one record and resets at the boundary),
+        // and a measured one-off by its single lifetime slot (accumulates until the
+        // target is reached once, never resets); everything else is keyed by the
+        // day, unchanged. The record's `epochDay`,
         // however, is always the REAL log day — it drives streak / active-days /
         // same-day anti-farm / history, none of which must be shifted to the interval
         // start (that would break the streak and mis-date the completed-history row).
         //
         // Trade-off: a measured interval quest is one logical unit stored as ONE row,
-        // so it contributes ONE active day per interval — the most recent log (which
+        // so it contributes ONE active day per interval (a one-off's interval is its
+        // whole lifetime) — the most recent log (which
         // keeps *today's* streak alive). If it's logged on several days of the same
         // interval, only the latest is recorded; the earlier days aren't independently
         // marked active by this quest (other quests/routines on those days still are).
         // This is the cost of clean interval accumulation + over-completion scoring
         // (which needs a single record carrying the cumulative fraction).
-        val slot = completionSlot(quest, epochDay)
+        val slot = CompletionSlots.completionSlot(quest, epochDay)
         val instanceId = "${quest.id}@$slot"
         val existing = completionDao.find(instanceId)
         val ledgerSum = completionDao.totalXp()
@@ -818,18 +820,40 @@ class QuestRepository(
      * failure reason (for the UI) when the handshake doesn't complete.
      */
     suspend fun connectOpenAi(openUrl: (String) -> Unit): Result<Unit> {
-        val tokens = openAiAuth.signIn(openUrl = openUrl).getOrElse { return Result.failure(it) }
-        // Persisting can throw if the encrypted key store rejects the write; surface
-        // that as a failure (so the caller shows a message + clears its busy state)
-        // rather than letting it propagate past the caller's cleanup.
-        return runCatching {
-            val config = profileStore.getAiConfig()
-            profileStore.setAiConfig(config.copy(enabled = true, provider = AiProvider.OPENAI, openAiTokens = tokens))
-        }
+        // Snapshot the clear generation before the (long, user-driven) handshake so
+        // onTokens can tell whether a sign-out/delete-all landed while it ran.
+        val genAtStart = aiAuthMutex.withLock { credentialClearGeneration }
+        return openAiAuth.signIn(
+            // Runs inside the sign-in's non-cancellable completion: once the browser
+            // says "You're signed in", the link is persisted even if this coroutine
+            // was cancelled (screen closed) mid-handshake. Persisting can throw if
+            // the encrypted key store rejects the write; signIn surfaces that as a
+            // failure (so the caller shows a message + clears its busy state)
+            // rather than letting it propagate past the caller's cleanup.
+            onTokens = { tokens ->
+                // Persist under the same mutex as refresh/sign-out/wipe, and abort if
+                // credentials were cleared during the handshake: a stale browser
+                // callback must not resurrect tokens (and re-enable AI) after an
+                // explicit "delete all my data" or sign-out.
+                aiAuthMutex.withLock {
+                    if (credentialClearGeneration != genAtStart) {
+                        throw java.io.IOException("Sign-in was cancelled. Please sign in again in Settings.")
+                    }
+                    val config = profileStore.getAiConfig()
+                    profileStore.setAiConfig(config.copy(enabled = true, provider = AiProvider.OPENAI, openAiTokens = tokens))
+                }
+            },
+            openUrl = openUrl,
+        ).map { }
     }
 
-    /** Unlinks the OpenAI account (drops the stored tokens); leaves OpenRouter config intact. */
-    suspend fun disconnectOpenAi() {
+    /**
+     * Unlinks the OpenAI account (drops the stored tokens); leaves OpenRouter config
+     * intact. Serialised with [freshOpenAiTokens] so an in-flight token refresh
+     * can't re-persist the tokens after the sign-out.
+     */
+    suspend fun disconnectOpenAi() = aiAuthMutex.withLock {
+        credentialClearGeneration++
         val config = profileStore.getAiConfig()
         profileStore.setAiConfig(config.copy(openAiTokens = null))
     }
@@ -842,9 +866,10 @@ class QuestRepository(
 
     /**
      * Returns a usable OpenAI token bundle, refreshing + persisting it when expired
-     * (or when [forceRefresh] is set after a 401). Serialised so concurrent AI calls
-     * don't both spend the rotating refresh token. Throws when not signed in or the
-     * refresh fails, so the error flows through [AiQuestService]'s per-call handling.
+     * (or when [forceRefresh] is set after a 401). Serialised (with [disconnectOpenAi]
+     * and [deleteAllData]) so concurrent AI calls don't both spend the rotating
+     * refresh token. Throws when not signed in or the refresh fails, so the error
+     * flows through [AiQuestService]'s per-call handling.
      */
     private suspend fun freshOpenAiTokens(forceRefresh: Boolean) = aiAuthMutex.withLock {
         val config = profileStore.getAiConfig()
@@ -855,7 +880,16 @@ class QuestRepository(
         val refreshed = openAiAuth.refresh(tokens).getOrElse {
             throw java.io.IOException("Your ChatGPT sign-in expired. Please sign in again in Settings.")
         }
-        profileStore.setAiConfig(config.copy(openAiTokens = refreshed))
+        // Re-read before persisting: a writer that bypasses this mutex (e.g. a
+        // Settings save) may have changed the config during the network refresh.
+        // If the tokens were cleared meanwhile, honor the sign-out — abort rather
+        // than resurrect credentials; otherwise persist onto the fresh snapshot so
+        // only the token slot changes.
+        val current = profileStore.getAiConfig()
+        if (current.openAiTokens == null) {
+            throw java.io.IOException("You're not signed in to ChatGPT. Sign in again in Settings.")
+        }
+        profileStore.setAiConfig(current.copy(openAiTokens = refreshed))
         refreshed
     }
 
@@ -893,7 +927,7 @@ class QuestRepository(
                 AiQuestService(llmClient(config)).suggest(input)
             }
             // Record real failures so the user can export them for troubleshooting.
-            suggestion.error?.let { recordAiError(config, it) }
+            suggestion.error?.let { recordAiError(config, it, suggestion.errorDetail) }
             suggestion
         } else {
             // No AI configured: deterministic, always-safe suggestions.
@@ -917,7 +951,7 @@ class QuestRepository(
             val result = aiCallGuard.keepAwake {
                 AiQuestService(llmClient(config)).decomposeGoal(goal, existing)
             }
-            result.error?.let { recordAiError(config, it) }
+            result.error?.let { recordAiError(config, it, result.errorDetail) }
             result
         } else {
             AiQuestService.Suggestion(
@@ -940,7 +974,7 @@ class QuestRepository(
         val result = aiCallGuard.keepAwake {
             AiQuestService(llmClient(config)).refine(quest, instruction)
         }
-        result.error?.let { recordAiError(config, it) }
+        result.error?.let { recordAiError(config, it, result.errorDetail) }
         return result
     }
 
@@ -962,15 +996,35 @@ class QuestRepository(
         return result
     }
 
-    /** AI errors are logged off the main thread (the diagnostics file is read+rewritten). */
-    private suspend fun recordAiError(config: AiConfig, message: String) =
-        withContext(Dispatchers.IO) { aiDiagnostics.record(config.activeModel, redactSecrets(message, config)) }
+    /**
+     * AI errors are logged off the main thread (the diagnostics file is read+rewritten).
+     * [detail] is the raw transport failure behind a plain-copy [message] — appended
+     * here so the exportable log keeps it while the UI never shows it.
+     */
+    private suspend fun recordAiError(config: AiConfig, message: String, detail: String? = null) = withContext(Dispatchers.IO) {
+        val logged = if (detail.isNullOrBlank()) message else "$message ($detail)"
+        // The OpenAI call can rotate + persist tokens mid-flight (freshOpenAiTokens),
+        // so the [config] snapshot taken before the call may no longer hold the
+        // credentials that were actually sent. Scrub with the snapshot AND a fresh
+        // read — best-effort, since logging an AI error must never itself throw.
+        var scrubbed = redactSecrets(logged, config)
+        runCatching { profileStore.getAiConfig() }.getOrNull()
+            ?.let { current -> scrubbed = redactSecrets(scrubbed, current) }
+        aiDiagnostics.record(config.activeModel, scrubbed)
+    }
 
-    /** Erases all on-device data (SPEC §9: users can delete their data). */
-    suspend fun deleteAllData() {
+    /**
+     * Erases all on-device data (SPEC §9: users can delete their data). Serialised
+     * with [freshOpenAiTokens] so an in-flight token refresh can't re-persist the
+     * AI credentials after the wipe.
+     */
+    suspend fun deleteAllData() = aiAuthMutex.withLock {
+        credentialClearGeneration++
         completionDao.clear()
         questDao.clear()
         profileStore.clear()
+        // The exportable AI error log is on-device data too — a full wipe removes it.
+        clearAiDiagnostics()
     }
 }
 
@@ -988,7 +1042,9 @@ internal fun redactApiKey(message: String, apiKey: String): String =
  * Scrubs every provider secret from a diagnostics message: the OpenRouter API key
  * and, for the OpenAI provider, the OAuth access + refresh tokens. Same rationale
  * as [redactApiKey] — the tokens shouldn't appear in error bodies, but this makes
- * sure they can never leak into an exported log.
+ * sure they can never leak into an exported log. Also strips anything shaped like
+ * an `Authorization: Bearer <token>` value, a catch-all for credentials [config]
+ * no longer holds (e.g. an access token that rotated mid-call).
  */
 internal fun redactSecrets(message: String, config: AiConfig): String {
     var out = redactApiKey(message, config.apiKey)
@@ -996,5 +1052,12 @@ internal fun redactSecrets(message: String, config: AiConfig): String {
         out = redactApiKey(out, tokens.accessToken)
         out = redactApiKey(out, tokens.refreshToken)
     }
-    return out
+    return out.replace(BEARER_SHAPED_TOKEN, "Bearer ***")
 }
+
+/**
+ * `Bearer` followed by a long token-charset run (RFC 6750 shape). The length floor
+ * keeps prose such as "invalid Bearer token" readable — real credentials (JWTs,
+ * API keys) are far longer than 20 characters.
+ */
+private val BEARER_SHAPED_TOKEN = Regex("""Bearer\s+[A-Za-z0-9\-._~+/=]{20,}""", RegexOption.IGNORE_CASE)

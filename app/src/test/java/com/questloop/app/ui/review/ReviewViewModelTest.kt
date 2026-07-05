@@ -24,8 +24,10 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -33,6 +35,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import java.time.LocalDate
 import java.util.concurrent.Executor
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -55,9 +58,12 @@ class ReviewViewModelTest {
         override suspend fun setHabits(habits: List<Habit>) {}
         override suspend fun setBadHabits(badHabits: List<BadHabit>) {}
         override suspend fun setGoals(goals: List<Goal>) {}
+        /** When set, AI-config reads throw — simulates a store failure. */
+        var failAiConfig = false
         override suspend fun setCheckIn(checkIn: EnergyCheckIn?) {}
         override suspend fun getCheckIn(): EnergyCheckIn? = null
-        override suspend fun getAiConfig(): AiConfig = AiConfig() // AI off -> deterministic fallback
+        override suspend fun getAiConfig(): AiConfig = // AI off -> deterministic fallback
+            if (failAiConfig) throw RuntimeException("prefs store failed") else AiConfig()
         override suspend fun setAiConfig(config: AiConfig) {}
         override suspend fun isOnboardingComplete(): Boolean = true
         override suspend fun setOnboardingComplete() {}
@@ -83,6 +89,10 @@ class ReviewViewModelTest {
         db.close()
     }
 
+    // Fixed "today": Wednesday 2026-06-17, mid-week and mid-month — a completion
+    // today deterministically lands inside both review windows.
+    private val today = LocalDate.of(2026, 6, 17).toEpochDay()
+
     private fun quest() = Quest(
         id = "a",
         title = "Write the report",
@@ -94,13 +104,16 @@ class ReviewViewModelTest {
     @Test
     fun `load produces weekly and monthly reviews with factual summaries`() = runTest {
         repo.addQuest(quest())
-        repo.completeQuest(quest(), epochDay = com.questloop.app.ui.AppClock.todayEpochDay(), result = CompletionResult.COMPLETED)
-        val vm = ReviewViewModel(repo)
+        repo.completeQuest(quest(), epochDay = today, result = CompletionResult.COMPLETED)
+        val vm = ReviewViewModel(repo, todayEpochDay = { today })
         vm.load()
         val state = vm.state.value
         assertFalse(state.loading)
         assertNotNull(state.weekly)
         assertNotNull(state.monthly)
+        // With the clock pinned, the completion counts in both windows deterministically.
+        assertEquals(1, state.weekly!!.totalCompleted)
+        assertEquals(1, state.monthly!!.totalCompleted)
         assertNotNull(state.weeklySummary)
         assertNotNull(state.monthlySummary)
         // AI is off in the fake prefs, so the AI action is unavailable.
@@ -110,7 +123,7 @@ class ReviewViewModelTest {
     @Test
     fun `load builds weekly and monthly plans and mode toggles`() = runTest {
         repo.addQuest(quest()) // a daily quest -> should populate the forward plan
-        val vm = ReviewViewModel(repo)
+        val vm = ReviewViewModel(repo, todayEpochDay = { today })
         vm.load()
         val state = vm.state.value
         assertNotNull(state.weeklyPlan)
@@ -124,7 +137,7 @@ class ReviewViewModelTest {
 
     @Test
     fun `summarize with ai falls back to deterministic text when ai is off`() = runTest {
-        val vm = ReviewViewModel(repo)
+        val vm = ReviewViewModel(repo, todayEpochDay = { today })
         vm.load()
         vm.summarizeWithAi()
         val state = vm.state.value
@@ -135,9 +148,39 @@ class ReviewViewModelTest {
 
     @Test
     fun `summarize with ai is a no-op before load`() = runTest {
-        val vm = ReviewViewModel(repo)
+        val vm = ReviewViewModel(repo, todayEpochDay = { today })
         // No load yet -> weekly/monthly null -> early return, no crash.
         vm.summarizeWithAi()
         assertTrue(vm.state.value.loading)
+    }
+
+    @Test
+    fun `a failed load releases the spinner and surfaces an error`() = runTest {
+        // Drop the ledger table so the review queries throw a real SQLiteException.
+        // NOT db.close(): closing cancels Room's query scope, and that
+        // CancellationException is cooperative cancellation the ViewModel correctly
+        // rethrows — so it would never reach the error handler.
+        db.openHelper.writableDatabase.execSQL("DROP TABLE completions")
+        val vm = ReviewViewModel(repo)
+        vm.load()
+        val state = vm.state.value
+        assertFalse(state.loading)
+        assertNotNull(state.error)
+        assertNull(state.weekly)
+    }
+
+    @Test
+    fun `a failed summarize resets the flag so the button re-enables`() = runTest {
+        val prefs = FakePrefs()
+        val flaky = QuestRepository(db.questDao(), db.completionDao(), prefs)
+        val vm = ReviewViewModel(flaky)
+        vm.load()
+        assertNull(vm.state.value.error)
+        prefs.failAiConfig = true
+        vm.summarizeWithAi()
+        val state = vm.state.value
+        assertFalse(state.summarizing)
+        // The deterministic summaries from load() stay in place.
+        assertNotNull(state.weeklySummary)
     }
 }

@@ -7,6 +7,11 @@ import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.QuestFrequency
 import com.questloop.core.model.QuestOrigin
+import java.io.EOFException
+import java.io.InterruptedIOException
+import java.net.SocketException
+import java.net.UnknownHostException
+import javax.net.ssl.SSLException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -53,8 +58,15 @@ class AiQuestService(
      * fallback was used. [error] is non-null only when AI was actually attempted
      * and failed (transport error, unparseable output, or everything filtered),
      * so the caller can tell the user instead of silently echoing their text.
+     * [errorDetail] is the raw transport failure behind a plain-copy [error] —
+     * kept for the diagnostics log, never shown in the UI.
      */
-    data class Suggestion(val quests: List<Quest>, val fromAi: Boolean, val error: String? = null)
+    data class Suggestion(
+        val quests: List<Quest>,
+        val fromAi: Boolean,
+        val error: String? = null,
+        val errorDetail: String? = null,
+    )
 
     suspend fun suggest(input: Input): Suggestion {
         val userPrompt = PromptLibrary.questGenerationUserPayload(
@@ -65,12 +77,12 @@ class AiQuestService(
             focusAreas = input.focusAreas.map { it.name },
         ) + "\n\n" + SCHEMA_INSTRUCTION
 
-        val attempt = runCatching {
+        val attempt = runCatchingCancellable {
             client.complete(PromptLibrary.QUEST_GENERATION_SYSTEM, userPrompt)
         }
         if (attempt.isFailure) {
-            val reason = attempt.exceptionOrNull()?.message?.takeIf { it.isNotBlank() } ?: "couldn't reach the model"
-            return fallback(input, "AI request failed: $reason")
+            val failure = describeFailure(attempt.exceptionOrNull())
+            return fallback(input, failure.message, failure.detail)
         }
 
         val proposed = attempt.getOrNull()?.let(::parse)?.mapIndexedNotNull(::toQuest).orEmpty()
@@ -91,10 +103,10 @@ class AiQuestService(
         val trimmed = goal.trim()
         if (trimmed.isBlank()) return Suggestion(emptyList(), fromAi = false, error = "Add a goal to break down.")
         val payload = PromptLibrary.goalDecompositionUserPayload(trimmed) + "\n\n" + SCHEMA_INSTRUCTION
-        val attempt = runCatching { client.complete(PromptLibrary.GOAL_DECOMPOSITION_SYSTEM, payload) }
+        val attempt = runCatchingCancellable { client.complete(PromptLibrary.GOAL_DECOMPOSITION_SYSTEM, payload) }
         if (attempt.isFailure) {
-            val reason = attempt.exceptionOrNull()?.message?.takeIf { it.isNotBlank() } ?: "couldn't reach the model"
-            return goalFallback(trimmed, "AI request failed: $reason")
+            val failure = describeFailure(attempt.exceptionOrNull())
+            return goalFallback(trimmed, failure.message, failure.detail)
         }
         val proposed = attempt.getOrNull()?.let(::parse)?.mapIndexedNotNull(::toQuest).orEmpty()
         val accepted = validator.validate(proposed, existing).accepted
@@ -105,20 +117,42 @@ class AiQuestService(
         }
     }
 
-    private fun goalFallback(goal: String, error: String?) = Suggestion(
+    private fun goalFallback(goal: String, error: String?, errorDetail: String? = null) = Suggestion(
         quests = FallbackSuggester.suggest(listOf("Make a start on: $goal"), emptySet()),
         fromAi = false,
         error = error,
+        errorDetail = errorDetail,
     )
 
-    private fun fallback(input: Input, error: String?) = Suggestion(
+    private fun fallback(input: Input, error: String?, errorDetail: String? = null) = Suggestion(
         quests = FallbackSuggester.suggest(input.todos, input.focusAreas.toSet()),
         fromAi = false,
         error = error,
+        errorDetail = errorDetail,
     )
 
-    /** Outcome of refining a single quest: the revised quest, or an error reason. */
-    data class RefineResult(val quest: Quest?, val error: String? = null)
+    /** A failed call, split into user-facing copy and raw [detail] for the diagnostics log. */
+    private class Failure(val message: String, val detail: String? = null)
+
+    /**
+     * Connectivity/timeout exceptions carry platform text ("Unable to resolve
+     * host…", bare "timeout") that never belongs in the UI — map those to plain
+     * copy and keep the raw exception for the diagnostics log. Everything else,
+     * notably our [LlmClient]s' curated messages (provider error bodies, sign-in
+     * prompts), keeps surfacing as-is.
+     */
+    private fun describeFailure(cause: Throwable?): Failure = when (cause) {
+        is UnknownHostException, is SocketException, is SSLException,
+        is EOFException, is InterruptedIOException ->
+            Failure(CANT_REACH_AI, cause.toString())
+        else -> {
+            val reason = cause?.message?.takeIf { it.isNotBlank() } ?: "couldn't reach the model"
+            Failure("AI request failed: $reason")
+        }
+    }
+
+    /** Outcome of refining a quest: the revised quest, or an error reason (plus raw [errorDetail] for the log). */
+    data class RefineResult(val quest: Quest?, val error: String? = null, val errorDetail: String? = null)
 
     /**
      * Revises one [quest] according to a free-text [instruction] (e.g. "make it
@@ -131,10 +165,10 @@ class AiQuestService(
             currentQuestJson = json.encodeToString(AiQuestDto.serializer(), dtoFrom(quest)),
             instruction = instruction,
         ) + "\n\n" + SCHEMA_INSTRUCTION
-        val attempt = runCatching { client.complete(PromptLibrary.QUEST_REFINE_SYSTEM, payload) }
+        val attempt = runCatchingCancellable { client.complete(PromptLibrary.QUEST_REFINE_SYSTEM, payload) }
         if (attempt.isFailure) {
-            val reason = attempt.exceptionOrNull()?.message?.takeIf { it.isNotBlank() } ?: "couldn't reach the model"
-            return RefineResult(null, "AI request failed: $reason")
+            val failure = describeFailure(attempt.exceptionOrNull())
+            return RefineResult(null, failure.message, failure.detail)
         }
         val proposed = attempt.getOrNull()?.let(::parse)?.mapIndexedNotNull(::toQuest).orEmpty()
         val revised = validator.validate(proposed, existing).accepted.firstOrNull()
@@ -195,6 +229,9 @@ class AiQuestService(
         runCatching { enumValueOf<T>(name.trim().uppercase()) }.getOrDefault(default)
 
     companion object {
+        /** Plain copy for connectivity failures; the raw exception rides along in [Suggestion.errorDetail]. */
+        private const val CANT_REACH_AI = "Couldn't reach the AI. Check your connection and try again."
+
         val SCHEMA_INSTRUCTION: String = buildString {
             appendLine("Respond with ONLY a JSON array (no prose, no markdown fences).")
             appendLine("Each element is an object:")

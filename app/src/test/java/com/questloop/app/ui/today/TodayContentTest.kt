@@ -2,6 +2,7 @@ package com.questloop.app.ui.today
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -42,6 +43,7 @@ class TodayContentTest {
         unit: String? = null,
         category: QuestCategory = QuestCategory.WORK_STUDY,
         rationale: String? = null,
+        allowOver: Boolean = false,
     ) = Quest(
         id = id,
         title = title,
@@ -52,6 +54,7 @@ class TodayContentTest {
         targetCount = target,
         unit = unit,
         rationale = rationale,
+        allowOverCompletion = allowOver,
     )
 
     private fun stateWith(vararg quests: Quest): TodayUiState {
@@ -161,6 +164,53 @@ class TodayContentTest {
     }
 
     @Test
+    fun `quantitative stepper without over-completion stops at the target`() {
+        composeRule.setContent {
+            TodayContent(
+                state = stateWith(
+                    quest("swim", "Swim", CompletionStyle.QUANTITATIVE, target = 2, unit = "swims"),
+                ),
+                actions = noopActions(),
+            )
+        }
+        repeat(3) { composeRule.onNodeWithText("+").performClick() }
+        composeRule.onNodeWithText("2 / 2 swims").assertIsDisplayed()
+    }
+
+    @Test
+    fun `over-completion stepper counts past the target and logs the extra`() {
+        var measured: Pair<String, Int>? = null
+        composeRule.setContent {
+            TodayContent(
+                state = stateWith(
+                    quest("swim", "Swim", CompletionStyle.QUANTITATIVE, target = 2, unit = "swims", allowOver = true),
+                ),
+                actions = noopActions(onCompleteMeasured = { q, v -> measured = q.id to v }),
+            )
+        }
+        repeat(3) { composeRule.onNodeWithText("+").performClick() }
+        composeRule.onNodeWithText("3 / 2 swims (+1)").assertIsDisplayed()
+        composeRule.onNodeWithText("Log progress").performScrollTo().performClick()
+        assertEquals("swim" to 3, measured)
+        // Bounded like the stored fraction (5× the target), so it can't run away.
+        repeat(20) { composeRule.onNodeWithText("+").performClick() }
+        composeRule.onNodeWithText("10 / 2 swims (+8)").assertIsDisplayed()
+    }
+
+    @Test
+    fun `over-completion stepper resumes from progress past the target`() {
+        composeRule.setContent {
+            TodayContent(
+                state = stateWith(
+                    quest("swim", "Swim", CompletionStyle.QUANTITATIVE, target = 2, unit = "swims", allowOver = true),
+                ).copy(todayProgress = mapOf("swim" to 3)),
+                actions = noopActions(),
+            )
+        }
+        composeRule.onNodeWithText("3 / 2 swims (+1)").assertIsDisplayed()
+    }
+
+    @Test
     fun `quantitative log fires the measured-completion callback`() {
         // The count→XP math is covered by CompletionScalingTest; this verifies
         // the "Log progress" control is wired through to onCompleteMeasured.
@@ -189,6 +239,42 @@ class TodayContentTest {
         composeRule.onNodeWithText("How did it go?").assertIsDisplayed()
         composeRule.onNodeWithText("4").performClick()
         assertEquals(4, measured)
+    }
+
+    @Test
+    fun `counter buttons carry spoken descriptions tied to the quest`() {
+        composeRule.setContent {
+            TodayContent(
+                state = stateWith(
+                    quest("water", "Stay hydrated", CompletionStyle.QUANTITATIVE, target = 8, unit = "glasses"),
+                ),
+                actions = noopActions(),
+            )
+        }
+        // TalkBack hears the action + quest, not a bare "+"/"−" glyph — and the
+        // description sits on the actionable node, so clicking it still works.
+        composeRule.onNodeWithContentDescription("Add one to Stay hydrated").performClick()
+        composeRule.onNodeWithText("1 / 8 glasses").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Remove one from Stay hydrated").performClick()
+        composeRule.onNodeWithText("0 / 8 glasses").assertIsDisplayed()
+    }
+
+    @Test
+    fun `duration and rating buttons carry spoken descriptions tied to the quest`() {
+        var measured: Int? = null
+        composeRule.setContent {
+            TodayContent(
+                state = stateWith(
+                    quest("run", "Go for a run", CompletionStyle.DURATION),
+                    quest("art", "Creative work", CompletionStyle.SUBJECTIVE),
+                ),
+                actions = noopActions(onCompleteMeasured = { _, v -> measured = v }),
+            )
+        }
+        composeRule.onNodeWithContentDescription("Remove 5 minutes from Go for a run").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Add 5 minutes to Go for a run").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Rate Creative work 3 of 5").performScrollTo().performClick()
+        assertEquals(3, measured)
     }
 
     @Test

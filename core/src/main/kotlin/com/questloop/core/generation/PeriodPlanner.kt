@@ -1,7 +1,9 @@
 package com.questloop.core.generation
 
+import com.questloop.core.completion.CompletionSlots
 import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestCategory
+import com.questloop.core.model.QuestFrequency
 
 /**
  * Builds a forward-looking **weekly or monthly plan** from the candidate pool
@@ -14,9 +16,10 @@ import com.questloop.core.model.QuestCategory
  * Pure and platform-agnostic: the caller passes the inclusive day window
  * `[fromEpochDay, toEpochDay]` (computed from the calendar in the app layer, the
  * same boundaries the weekly/monthly review uses) and a map of each quest's last
- * completion day. All cadence math is delegated to [QuestScheduler], so a quest's
+ * completion day. Cadence math is delegated to [QuestScheduler], so a quest's
  * "expected occurrences" stay consistent with what actually gets scheduled day to
- * day.
+ * day — except measured weekly/monthly quests, which follow [CompletionSlots]'
+ * calendar intervals (the same boundaries that reset them on the Today screen).
  */
 class PeriodPlanner {
 
@@ -70,14 +73,29 @@ class PeriodPlanner {
     ): PeriodPlan {
         val items = candidates.mapNotNull { quest ->
             val lastCompleted = lastCompletedByQuest[quest.id]
-            val occurrences = QuestScheduler.expectedOccurrences(
-                quest.frequency, fromEpochDay, toEpochDay, lastCompleted,
-            )
+            // A measured weekly/monthly quest accumulates toward its target across
+            // a calendar interval and resets at the boundary — the same slot math
+            // that keys its completion records — so its due days come from the
+            // calendar, not from the rolling last-completion window used for
+            // everything else. Otherwise this plan would contradict the Today
+            // screen (e.g. a monthly quest finished late last month would vanish
+            // from this month's plan even though Today resurfaces it from the 1st).
+            val interval = CompletionSlots.hasCalendarInterval(quest)
+            val (occurrences, firstDue) = if (interval) {
+                intervalSchedule(quest.frequency, fromEpochDay, toEpochDay, lastCompleted)
+            } else {
+                QuestScheduler.expectedOccurrences(quest.frequency, fromEpochDay, toEpochDay, lastCompleted) to
+                    QuestScheduler.firstDueDay(quest.frequency, fromEpochDay, toEpochDay, lastCompleted)
+            }
             val deadline = quest.deadlineEpochDay
             // A deadline only pulls a quest in while it's still unmet. A completed
             // one-off (or a recurring quest already satisfied for its period) must
             // not linger in the plan as "Due …"/"Overdue" forever.
-            val unmet = QuestScheduler.isDue(quest.frequency, toEpochDay, lastCompleted)
+            val unmet = if (interval) {
+                intervalDue(quest.frequency, toEpochDay, lastCompleted)
+            } else {
+                QuestScheduler.isDue(quest.frequency, toEpochDay, lastCompleted)
+            }
             val dueThisPeriod = unmet && deadline != null && deadline in fromEpochDay..toEpochDay
             val isOverdue = unmet && deadline != null && deadline < fromEpochDay
             // Drop quests with no occurrences this period unless an unmet deadline
@@ -86,9 +104,7 @@ class PeriodPlanner {
             PlanItem(
                 quest = quest,
                 expectedOccurrences = occurrences,
-                firstDueEpochDay = QuestScheduler.firstDueDay(
-                    quest.frequency, fromEpochDay, toEpochDay, lastCompleted,
-                ),
+                firstDueEpochDay = firstDue,
                 deadlineEpochDay = deadline,
                 isOverdue = isOverdue,
                 dueThisPeriod = dueThisPeriod,
@@ -113,6 +129,42 @@ class PeriodPlanner {
             notes = buildNotes(periodLabel, items, totalMinutes),
         )
     }
+
+    /**
+     * Interval counterpart of [QuestScheduler.expectedOccurrences] +
+     * [QuestScheduler.firstDueDay] for measured weekly/monthly quests: walks the
+     * calendar intervals overlapping `[from, to]` and counts each one still
+     * needing work. The interval holding the last completion is already satisfied
+     * (its record accumulates until the boundary); every other interval expects
+     * the quest once. Returns `(occurrences, firstDueEpochDay)`.
+     */
+    private fun intervalSchedule(
+        frequency: QuestFrequency,
+        from: Long,
+        to: Long,
+        lastCompleted: Long?,
+    ): Pair<Int, Long?> {
+        if (from > to) return 0 to null
+        val satisfied = lastCompleted?.let { CompletionSlots.intervalStartFor(frequency, it) }
+        var occurrences = 0
+        var firstDue: Long? = null
+        var start = CompletionSlots.intervalStartFor(frequency, from)
+        while (start <= to) {
+            if (start != satisfied) {
+                occurrences++
+                if (firstDue == null) firstDue = maxOf(from, start)
+            }
+            start = CompletionSlots.nextIntervalStart(frequency, start)
+        }
+        return occurrences to firstDue
+    }
+
+    /** Interval counterpart of [QuestScheduler.isDue]: due on [day] unless the
+     *  last completion falls in the same calendar interval. */
+    private fun intervalDue(frequency: QuestFrequency, day: Long, lastCompleted: Long?): Boolean =
+        lastCompleted == null ||
+            CompletionSlots.intervalStartFor(frequency, lastCompleted) !=
+            CompletionSlots.intervalStartFor(frequency, day)
 
     /**
      * Most-pressing first: overdue, then due-this-period (earliest deadline

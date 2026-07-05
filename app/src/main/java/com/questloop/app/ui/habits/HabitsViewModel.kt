@@ -1,5 +1,6 @@
 package com.questloop.app.ui.habits
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.questloop.app.util.launchSafely
@@ -21,6 +22,8 @@ data class HabitsUiState(
     val habits: List<Habit> = emptyList(),
     val badHabits: List<BadHabit> = emptyList(),
     val goals: List<Goal> = emptyList(),
+    /** Set when a load or save fails; cleared by the next successful load. */
+    val error: String? = null,
 )
 
 class HabitsViewModel(private val repository: QuestRepository) : ViewModel() {
@@ -31,12 +34,13 @@ class HabitsViewModel(private val repository: QuestRepository) : ViewModel() {
     init { load() }
 
     fun load() {
-        launchSafely {
+        launchSafely(onError = ::failed) {
             _state.update { it.copy(loading = true) }
             val profile = repository.profile.first()
             _state.update {
                 it.copy(
                     loading = false,
+                    error = null,
                     habits = profile.habits,
                     badHabits = profile.badHabits,
                     goals = profile.goals,
@@ -85,9 +89,16 @@ class HabitsViewModel(private val repository: QuestRepository) : ViewModel() {
     fun removeGoal(id: String) = mutate { repository.removeGoal(id) }
 
     private fun mutate(action: suspend () -> Unit) {
-        launchSafely {
+        launchSafely(onError = ::failed) {
             action()
             load()
         }
+    }
+
+    /** launchSafely handler: a failed load or save must not vanish silently — the
+     *  form has already cleared the user's input by then, so say so on screen. */
+    private fun failed(t: Throwable) {
+        runCatching { Log.e("QuestLoop", "Habits update failed", t) }
+        _state.update { it.copy(loading = false, error = "Something went wrong — try again.") }
     }
 }

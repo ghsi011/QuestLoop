@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.glance.appwidget.updateAll
 import com.questloop.app.di.AppContainer
 import com.questloop.app.widget.QuestWidget
+import com.questloop.app.widget.WidgetRefreshScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,6 +25,11 @@ class QuestLoopApplication : Application() {
         super.onCreate()
         container = AppContainer(this)
         keepWidgetFresh()
+        // The flows below only emit on writes: nothing re-renders the widget when
+        // a date/day-part boundary passes, so also arm the self-healing boundary
+        // alarm. Every process start doubles as its re-arm safety net (alarms are
+        // lost on reboot/force-stop); a no-op while no widget is placed.
+        runCatching { WidgetRefreshScheduler(this).scheduleNext() }
     }
 
     /**
@@ -36,14 +42,20 @@ class QuestLoopApplication : Application() {
     private fun keepWidgetFresh() {
         val repo = container.repository
         // Map each source to Unit and merge, so any change triggers one refresh.
-        // debounce() coalesces bursts (e.g. an import upserting many completions)
-        // into a single widget update. catch() is a crash-guard: if a source flow
-        // throws (a backing-store hiccup), it's swallowed so it can't take down
-        // appScope — the collector then ends quietly and the widget simply stops
-        // refreshing until the next app start, rather than crashing the process.
+        // The ledger source is the signal-only completionsChanged (an O(1) change
+        // stamp), NOT repo.completions — this collector lives for the whole process,
+        // and the full flow would re-read and re-map the entire (unbounded) completion
+        // history on every write just to be discarded here. debounce() coalesces
+        // bursts (e.g. an import upserting many completions) into a single widget
+        // update, and updateAll() exits after a cheap widget-id lookup when no widget
+        // is placed, so a tick without a widget does no render/plan work. catch() is
+        // a crash-guard: if a source flow throws (a backing-store hiccup), it's
+        // swallowed so it can't take down appScope — the collector then ends quietly
+        // and the widget simply stops refreshing until the next app start, rather
+        // than crashing the process.
         merge(
             repo.quests.map { },
-            repo.completions.map { },
+            repo.completionsChanged,
             repo.profile.map { },
         )
             .debounce(500)

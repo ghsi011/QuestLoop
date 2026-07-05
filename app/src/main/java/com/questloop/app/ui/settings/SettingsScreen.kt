@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -47,7 +48,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -70,9 +74,13 @@ fun SettingsScreen(
     var confirmDelete by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
-    // (Re)schedule reminder alarms whenever the config changes. Guarded because
-    // arming exact alarms can throw if the permission was revoked (Android 12+).
-    LaunchedEffect(state.reminders) {
+    // (Re)schedule reminder alarms whenever the config changes — but not while the
+    // initial load is in flight: state.reminders is still the placeholder default
+    // (disabled) then, and applying it would cancel the user's armed alarms (for
+    // good, if the load fails). runCatching because arming alarms can throw if the
+    // permission was revoked (Android 12+).
+    LaunchedEffect(state.loading, state.reminders) {
+        if (state.loading) return@LaunchedEffect
         runCatching { ReminderScheduler(context).apply(state.reminders) }
     }
 
@@ -282,7 +290,10 @@ fun SettingsScreen(
         SectionHeader("Privacy")
         InfoCard(
             title = "Your data stays on this device",
-            body = "Nothing is uploaded.",
+            body = "Your quests, history, and XP never leave it. If you turn on AI " +
+                "suggestions, the to-dos and goals you type — plus your daily time " +
+                "budget and chosen focus areas — are sent to your chosen provider to " +
+                "generate ideas.",
         )
         OutlinedButton(onClick = viewModel::requestExport, modifier = Modifier.fillMaxWidth()) {
             Text("Export my data")
@@ -351,9 +362,16 @@ private fun HourRow(label: String, hour: Int, onHour: (Int) -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, modifier = Modifier.weight(1f))
-        OutlinedButton(onClick = { onHour((hour - 1).coerceAtLeast(0)) }) { Text("−") }
+        // Glyph-only steppers: name the action for TalkBack ("Earlier morning hour").
+        OutlinedButton(
+            onClick = { onHour((hour - 1).coerceAtLeast(0)) },
+            modifier = Modifier.semantics { contentDescription = "Earlier ${label.lowercase()} hour" },
+        ) { Text("−") }
         Text("%02d:00".format(hour), style = MaterialTheme.typography.bodyMedium)
-        OutlinedButton(onClick = { onHour((hour + 1).coerceAtMost(23)) }) { Text("+") }
+        OutlinedButton(
+            onClick = { onHour((hour + 1).coerceAtMost(23)) },
+            modifier = Modifier.semantics { contentDescription = "Later ${label.lowercase()} hour" },
+        ) { Text("+") }
     }
 }
 
@@ -432,6 +450,8 @@ private fun OpenRouterSettings(
         label = { Text("OpenRouter API key") },
         singleLine = true,
         visualTransformation = PasswordVisualTransformation(),
+        // Password IME treatment: keyboards must not learn, suggest, or autocorrect the key.
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
         modifier = Modifier.fillMaxWidth(),
     )
     OutlinedTextField(

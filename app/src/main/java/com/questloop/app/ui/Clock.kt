@@ -1,5 +1,6 @@
 package com.questloop.app.ui
 
+import com.questloop.core.completion.CompletionSlots
 import com.questloop.core.model.DayPart
 import java.time.LocalDate
 import java.time.LocalTime
@@ -10,22 +11,16 @@ object AppClock {
 
     fun currentDayPart(): DayPart = DayPart.fromHour(LocalTime.now().hour)
 
-    fun startOfWeek(today: Long): Long {
-        val date = LocalDate.ofEpochDay(today)
-        return date.minusDays((date.dayOfWeek.value - 1).toLong()).toEpochDay()
-    }
+    // Week/month boundaries delegate to :core's CompletionSlots — the same math
+    // that keys interval completion slots — so the Completed filters and review/
+    // plan windows can never drift from how completions are bucketed.
+    fun startOfWeek(today: Long): Long = CompletionSlots.startOfWeek(today)
 
-    fun startOfMonth(today: Long): Long {
-        val date = LocalDate.ofEpochDay(today)
-        return date.withDayOfMonth(1).toEpochDay()
-    }
+    fun startOfMonth(today: Long): Long = CompletionSlots.startOfMonth(today)
 
     /** Last day (inclusive) of the ISO week `today` falls in — for forward-looking plans. */
-    fun endOfWeek(today: Long): Long = startOfWeek(today) + 6
+    fun endOfWeek(today: Long): Long = CompletionSlots.endOfWeek(today)
 
     /** Last day (inclusive) of the calendar month `today` falls in. */
-    fun endOfMonth(today: Long): Long {
-        val date = LocalDate.ofEpochDay(today)
-        return date.withDayOfMonth(date.lengthOfMonth()).toEpochDay()
-    }
+    fun endOfMonth(today: Long): Long = CompletionSlots.endOfMonth(today)
 }

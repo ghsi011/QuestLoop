@@ -2,6 +2,9 @@ package com.questloop.app.data
 
 import com.questloop.core.ai.openai.OpenAiOAuth
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
@@ -15,6 +18,8 @@ import java.net.ServerSocket
 import java.net.SocketTimeoutException
 import java.net.URLDecoder
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Drives the "Sign in with ChatGPT" OAuth flow. Abstracted as an interface so the
@@ -25,9 +30,17 @@ interface OpenAiAuth {
      * Runs the authorization-code + PKCE handshake. [openUrl] is invoked with the
      * browser URL the user must visit. Suspends until the loopback callback arrives
      * or [timeoutMs] elapses. All failures come back as [Result.failure].
+     *
+     * The loopback wait is cancellation-aware: cancelling the caller unblocks the
+     * listener and frees its port for a retry. But once the browser has been
+     * answered with the success page, the handshake is completed even if the
+     * caller was cancelled meanwhile — implementations invoke [onTokens] with the
+     * fresh tokens before returning success, so callers persist them there (a
+     * cancelled caller never receives the returned [Result], only side effects).
      */
     suspend fun signIn(
         timeoutMs: Long = DEFAULT_TIMEOUT_MS,
+        onTokens: suspend (OpenAiOAuth.OpenAiTokens) -> Unit = {},
         openUrl: (String) -> Unit,
     ): Result<OpenAiOAuth.OpenAiTokens>
 
@@ -58,23 +71,48 @@ class OpenAiAuthService(
 
     override suspend fun signIn(
         timeoutMs: Long,
+        onTokens: suspend (OpenAiOAuth.OpenAiTokens) -> Unit,
         openUrl: (String) -> Unit,
-    ): Result<OpenAiOAuth.OpenAiTokens> = withContext(Dispatchers.IO) {
+    ): Result<OpenAiOAuth.OpenAiTokens> {
         val pkce = OpenAiOAuth.generatePkce()
         val state = OpenAiOAuth.randomUrlSafe(16)
-        runCatching {
-            ServerSocket().use { server ->
-                // Reuse the address so a quick retry after an aborted sign-in doesn't
-                // fail with "address already in use" while the port drains.
-                server.reuseAddress = true
-                server.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), OpenAiOAuth.REDIRECT_PORT), 1)
-                openUrl(OpenAiOAuth.authorizeUrl(pkce.challenge, state))
-                val callback = awaitCallback(server, timeoutMs) ?: error("Sign-in timed out. Please try again.")
+        // Set the moment the browser has been answered with the success page; read
+        // back when cancellation races that answer, so a handshake the user watched
+        // complete isn't silently dropped.
+        val served = AtomicReference<Callback?>(null)
+        val callback = try {
+            withContext(Dispatchers.IO) {
+                ServerSocket().use { server ->
+                    // Reuse the address so a quick retry after an aborted sign-in doesn't
+                    // fail with "address already in use" while the port drains.
+                    server.reuseAddress = true
+                    server.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), OpenAiOAuth.REDIRECT_PORT), 1)
+                    openUrl(OpenAiOAuth.authorizeUrl(pkce.challenge, state))
+                    val cb = awaitCallback(server, timeoutMs) ?: error("Sign-in timed out. Please try again.")
+                    served.set(cb)
+                    cb
+                }
+            }
+        } catch (e: CancellationException) {
+            // Cancelled (screen closed) while waiting: the listener is closed, so
+            // port 1455 is free for a retry. If the browser was already told
+            // "You're signed in", honor that handshake below instead of dropping it.
+            served.get() ?: throw e
+        } catch (e: Exception) {
+            return Result.failure(e)
+        }
+        // From here the browser tab already shows the outcome, so finish the code
+        // exchange (and hand the tokens to [onTokens]) even if our caller was
+        // cancelled meanwhile: a cancelled caller never sees the returned Result,
+        // only the side effects.
+        return withContext(Dispatchers.IO + NonCancellable) {
+            val code = callback.code
+            runCatching {
                 when {
                     callback.error != null -> error("Sign-in was declined. Please try again.")
                     callback.state != state -> error("Sign-in could not be verified. Please try again.")
-                    callback.code.isNullOrBlank() -> error("Sign-in didn't return an authorization code.")
-                    else -> exchange(callback.code, pkce.verifier).getOrThrow()
+                    code.isNullOrBlank() -> error("Sign-in didn't return an authorization code.")
+                    else -> exchange(code, pkce.verifier).getOrThrow().also { onTokens(it) }
                 }
             }
         }
@@ -86,25 +124,35 @@ class OpenAiAuthService(
                 .map { if (it.accountId.isBlank()) it.copy(accountId = tokens.accountId) else it }
         }
 
-    private fun exchange(code: String, verifier: String): Result<OpenAiOAuth.OpenAiTokens> =
+    private suspend fun exchange(code: String, verifier: String): Result<OpenAiOAuth.OpenAiTokens> =
         postForm(OpenAiOAuth.tokenExchangeForm(code, verifier), priorRefresh = "")
 
-    private fun postForm(form: Map<String, String>, priorRefresh: String): Result<OpenAiOAuth.OpenAiTokens> =
-        runCatching {
+    private suspend fun postForm(form: Map<String, String>, priorRefresh: String): Result<OpenAiOAuth.OpenAiTokens> =
+        try {
             val body = FormBody.Builder().apply { form.forEach { (k, v) -> add(k, v) } }.build()
             val request = Request.Builder()
                 .url(tokenEndpoint)
                 .addHeader("User-Agent", OpenAiOAuth.USER_AGENT)
                 .post(body)
                 .build()
-            http.newCall(request).execute().use { response ->
-                val text = response.body?.string().orEmpty()
-                if (!response.isSuccessful) {
-                    throw IOException("OpenAI sign-in failed (${response.code}).")
-                }
-                OpenAiOAuth.parseTokenResponse(text, nowEpochSec(), priorRefresh)
-                    ?: throw IOException("OpenAI sign-in returned an unreadable response.")
+            // awaitReply (not execute) so cancelling the caller aborts the call
+            // instead of blocking an IO thread until the read timeout.
+            val reply = http.newCall(request).awaitReply()
+            if (!reply.isSuccessful) {
+                throw IOException("OpenAI sign-in failed (${reply.code}).")
             }
+            Result.success(
+                OpenAiOAuth.parseTokenResponse(reply.body, nowEpochSec(), priorRefresh)
+                    ?: throw IOException("OpenAI sign-in returned an unreadable response."),
+            )
+        } catch (c: CancellationException) {
+            // Rethrow so a cancelled refresh keeps cancelling instead of being
+            // repackaged as a failure the caller mistakes for "sign-in expired"
+            // (refresh runs under IO, not NonCancellable). Same idiom as :core's
+            // runCatchingCancellable and the app's launchSafely.
+            throw c
+        } catch (t: Throwable) {
+            Result.failure(t)
         }
 
     private data class Callback(val code: String?, val state: String?, val error: String?)
@@ -113,14 +161,21 @@ class OpenAiAuthService(
      * Waits (until [timeoutMs] elapses) for the loopback request that carries the
      * OAuth `code`/`error`. Stray connections without those params (favicon fetches,
      * connectivity probes) are answered and skipped so they don't abort the flow.
+     *
+     * A blocking [ServerSocket.accept] can't be interrupted by coroutine
+     * cancellation, so the wait polls in slices of at most [ACCEPT_POLL_MS] and
+     * re-checks cancellation between them: a cancelled sign-in (screen closed)
+     * unblocks within a slice and the caller's `use` releases port 1455 right
+     * away instead of holding it until the deadline.
      */
-    private fun awaitCallback(server: ServerSocket, timeoutMs: Long): Callback? {
+    private suspend fun awaitCallback(server: ServerSocket, timeoutMs: Long): Callback? {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (true) {
+            currentCoroutineContext().ensureActive()
             val remaining = deadline - System.currentTimeMillis()
             if (remaining <= 0) return null
-            server.soTimeout = remaining.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-            val cb = acceptOnce(server, deadline) ?: return null // accept() timed out → overall timeout
+            server.soTimeout = remaining.coerceAtMost(ACCEPT_POLL_MS).toInt()
+            val cb = acceptOnce(server, deadline) ?: continue // slice elapsed → re-check cancellation/deadline
             if (cb.code != null || cb.error != null) return cb
             // else: a stray/slow request — keep waiting for the real callback.
         }
@@ -128,10 +183,11 @@ class OpenAiAuthService(
 
     /**
      * Accepts one loopback request, parses its query, and replies with a page.
-     * Returns null only when [ServerSocket.accept] itself times out (overall
-     * deadline reached). A connection that stalls without sending a request line
-     * is bounded by a per-socket read timeout and skipped (empty [Callback]) so it
-     * can't hang the sign-in past the deadline.
+     * Returns null only when [ServerSocket.accept] itself times out (poll slice
+     * elapsed; the caller re-checks cancellation and the overall deadline). A
+     * connection that stalls without sending a request line is bounded by a
+     * per-socket read timeout and skipped (empty [Callback]) so it can't hang
+     * the sign-in past the deadline.
      */
     private fun acceptOnce(server: ServerSocket, deadline: Long): Callback? {
         val socket = try {
@@ -170,6 +226,12 @@ class OpenAiAuthService(
     private fun decode(s: String) = runCatching { URLDecoder.decode(s, "UTF-8") }.getOrDefault(s)
 
     companion object {
+        // Upper bound for a single blocking accept() wait. Coroutine cancellation
+        // can't interrupt accept(), so the wait is sliced and cancellation is
+        // re-checked between slices — a cancelled sign-in frees port 1455 within
+        // about a second instead of holding it until the deadline.
+        private const val ACCEPT_POLL_MS = 1_000L
+
         // Upper bound for reading a single loopback request line; keeps one stalled
         // connection from eating the whole sign-in window while still leaving time
         // to accept the genuine browser callback.

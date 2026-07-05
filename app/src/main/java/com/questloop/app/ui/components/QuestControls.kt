@@ -16,7 +16,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.questloop.core.completion.CompletionScaling
 import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.Quest
 
@@ -56,12 +59,26 @@ fun QuestCompletionControls(
 
         CompletionStyle.QUANTITATIVE -> {
             val target = (quest.targetCount ?: 1).coerceAtLeast(1)
-            var count by remember(quest.id, progress) { mutableIntStateOf(progress.coerceIn(0, target)) }
+            // Over-completion quests keep counting past the target (the 3rd swim on a
+            // "swim 2×/week"), bounded the same way as the stored fraction.
+            val max = if (quest.allowOverCompletion) (target * CompletionScaling.MAX_OVER_FRACTION).toInt() else target
+            var count by remember(quest.id, progress) { mutableIntStateOf(progress.coerceIn(0, max)) }
             Column(Modifier.padding(top = 8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { if (count > 0) count-- }, enabled = enabled) { Text("−") }
-                    Text("$count / $target ${quest.unit.orEmpty()}".trim(), style = MaterialTheme.typography.bodyMedium)
-                    OutlinedButton(onClick = { if (count < target) count++ }, enabled = enabled) { Text("+") }
+                    // Glyph-only buttons: name the action + quest so TalkBack rows
+                    // stay distinguishable when several quests are on screen.
+                    OutlinedButton(
+                        onClick = { if (count > 0) count-- },
+                        enabled = enabled,
+                        modifier = Modifier.semantics { contentDescription = "Remove one from ${quest.title}" },
+                    ) { Text("−") }
+                    val extra = if (count > target) " (+${count - target})" else ""
+                    Text("$count / $target ${quest.unit.orEmpty()}".trim() + extra, style = MaterialTheme.typography.bodyMedium)
+                    OutlinedButton(
+                        onClick = { if (count < max) count++ },
+                        enabled = enabled,
+                        modifier = Modifier.semantics { contentDescription = "Add one to ${quest.title}" },
+                    ) { Text("+") }
                 }
                 Button(onClick = { onMeasured(count) }, enabled = enabled, modifier = Modifier.padding(top = 8.dp)) {
                     Text("Log progress")
@@ -74,9 +91,17 @@ fun QuestCompletionControls(
             var minutes by remember(quest.id, progress) { mutableIntStateOf(if (progress > 0) progress else target) }
             Column(Modifier.padding(top = 8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { if (minutes >= 5) minutes -= 5 }, enabled = enabled) { Text("−5") }
+                    OutlinedButton(
+                        onClick = { if (minutes >= 5) minutes -= 5 },
+                        enabled = enabled,
+                        modifier = Modifier.semantics { contentDescription = "Remove 5 minutes from ${quest.title}" },
+                    ) { Text("−5") }
                     Text("$minutes / $target min", style = MaterialTheme.typography.bodyMedium)
-                    OutlinedButton(onClick = { minutes = (minutes + 5).coerceAtMost(1440) }, enabled = enabled) { Text("+5") }
+                    OutlinedButton(
+                        onClick = { minutes = (minutes + 5).coerceAtMost(1440) },
+                        enabled = enabled,
+                        modifier = Modifier.semantics { contentDescription = "Add 5 minutes to ${quest.title}" },
+                    ) { Text("+5") }
                 }
                 Button(onClick = { onMeasured(minutes) }, enabled = enabled, modifier = Modifier.padding(top = 8.dp)) {
                     Text("Log time")
@@ -88,7 +113,11 @@ fun QuestCompletionControls(
             Text("How did it go?", style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
                 (1..5).forEach { rating ->
-                    OutlinedButton(onClick = { onMeasured(rating) }, enabled = enabled) { Text("$rating") }
+                    OutlinedButton(
+                        onClick = { onMeasured(rating) },
+                        enabled = enabled,
+                        modifier = Modifier.semantics { contentDescription = "Rate ${quest.title} $rating of 5" },
+                    ) { Text("$rating") }
                 }
             }
         }

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -24,13 +25,31 @@ import com.questloop.app.ui.components.SectionHeader
 @Composable
 fun AchievementsScreen(viewModel: AchievementsViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    AchievementsContent(state, onRetry = viewModel::load)
+}
 
+/** Stateless body — driven directly in tests (loading / error / list states). */
+@Composable
+fun AchievementsContent(state: AchievementsUiState, onRetry: () -> Unit) {
     if (state.loading) {
         Column(
             Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) { CircularProgressIndicator() }
+        return
+    }
+
+    val error = state.error
+    if (error != null) {
+        Column(
+            Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(error)
+            Button(onClick = onRetry) { Text("Try again") }
+        }
         return
     }
 

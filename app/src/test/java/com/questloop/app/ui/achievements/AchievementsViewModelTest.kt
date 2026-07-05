@@ -26,6 +26,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -108,5 +109,18 @@ class AchievementsViewModelTest {
         val state = vm.state.value
         assertTrue(state.unlockedCount >= 1)
         assertTrue(state.items.any { it.achievement.id == "first_steps" && it.unlocked })
+    }
+
+    @Test
+    fun `a failed load shows a retryable error instead of an endless spinner`() = runTest {
+        // Drop the ledger table so the init load's queries throw a real
+        // SQLiteException. NOT db.close(): closing cancels Room's query scope, and
+        // that CancellationException is cooperative cancellation the ViewModel
+        // correctly rethrows — so it would never reach the error handler.
+        db.openHelper.writableDatabase.execSQL("DROP TABLE completions")
+        val vm = AchievementsViewModel(repo)
+        val state = vm.state.value
+        assertFalse(state.loading)
+        assertNotNull(state.error)
     }
 }

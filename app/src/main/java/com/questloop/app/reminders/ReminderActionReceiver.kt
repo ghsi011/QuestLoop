@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationManagerCompat
-import com.questloop.app.MainActivity
 import com.questloop.app.QuestLoopApplication
 import com.questloop.core.generation.RoutineQuestFactory
 import com.questloop.core.model.CompletionResult
@@ -37,20 +36,24 @@ class ReminderActionReceiver : BroadcastReceiver() {
                     // instead of hand-wiring a divergent one.
                     val repo = (context.applicationContext as QuestLoopApplication).container.repository
                     val dayPart = if (slot == ReminderSlot.MORNING) DayPart.MORNING else DayPart.EVENING
-                    NotificationManagerCompat.from(context).cancel(slot.notificationId)
                     // Only complete a routine that's actually in today's plan — never
-                    // credit XP to a synthetic quest the user can't see. If the slot's
-                    // routine isn't planned today (e.g. dismissed), open the app instead.
+                    // credit XP to a synthetic quest the user can't see.
                     val routineIds = RoutineQuestFactory.routinesFor(dayPart).map { it.id }.toSet()
                     val planned = repo.todayPlan(epochDay, dayPart).quests
                         .map { it.quest }
                         .firstOrNull { it.id in routineIds }
                     if (planned != null) {
                         repo.completeQuest(planned, epochDay, CompletionResult.COMPLETED)
+                        // Clear the reminder only now that the completion landed; if it
+                        // failed, the notification (and its idempotent action) stays.
+                        NotificationManagerCompat.from(context).cancel(slot.notificationId)
                     } else {
-                        val open = Intent(context, MainActivity::class.java)
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        context.startActivity(open)
+                        // Nothing completable (already checked off in-app, or dismissed
+                        // for today). We can't start an activity from here — that's a
+                        // notification trampoline, silently blocked on Android 12+ — so
+                        // update the notification instead: tapping it opens the app via
+                        // its activity PendingIntent, which is allowed.
+                        ReminderNotifications.showAlreadyHandled(context, slot)
                     }
                 }
             } finally {

@@ -1,5 +1,6 @@
 package com.questloop.app.widget
 
+import android.appwidget.AppWidgetManager
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
@@ -67,4 +68,16 @@ private fun WidgetBody(titles: List<String>) {
 
 class QuestWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = QuestWidget()
+
+    override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
+        super.onUpdate(context, appWidgetManager, appWidgetIds)
+        // A widget was (re)added: make sure the day-boundary refresh alarm is armed.
+        runCatching { WidgetRefreshScheduler(context).scheduleNext() }
+    }
+
+    override fun onDisabled(context: Context) {
+        super.onDisabled(context)
+        // Last widget removed: scheduleNext() sees no instances and drops the alarm.
+        runCatching { WidgetRefreshScheduler(context).scheduleNext() }
+    }
 }

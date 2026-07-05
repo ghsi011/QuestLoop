@@ -76,16 +76,18 @@ deferred work. These reflect MVP choices, not permanent commitments.
   `scripts/setup-android.sh`; only the emulator suite is CI-only (no `/dev/kvm`).
   The full app pipeline lives in CI's `full-tests.yml` ("App build + lint + unit"
   plus the emulator job).
-- Achievements/badges/titles/collections are scaffolded conceptually but not yet
-  surfaced as a dedicated screen.
-- AI quest generation currently runs through the deterministic `FallbackSuggester`
-  behind the same guardrails; wiring a live model is a drop-in at the app/server
-  layer using `PromptLibrary`.
-- No calendar/health/todo integrations, no cloud sync, no social modes (all
-  future per SPEC §10).
+- Achievements ship with a data-driven engine and a dedicated screen (opened
+  from Today); titles, collections, and unlockable cosmetics remain future work.
+- AI quest generation runs against a live model — OpenRouter (key) or OpenAI
+  ("Sign in with ChatGPT"), both behind the same guardrails; the deterministic
+  `FallbackSuggester` remains the floor whenever AI is off or unavailable.
+- Calendar integration is read-only and local (`CalendarContract` free/busy +
+  deadline picking); no calendar write-back, health/todo integrations, cloud
+  sync, or social modes (all future per SPEC §10).
 - Reward weights are first-pass defaults pending the research in §16/§17.
-- Compose UI tests run on the JVM via Robolectric (`TodayContentTest`); broader
-  ViewModel and screenshot tests are still future work.
+- Compose UI is tested on the JVM via Robolectric plus an emulator smoke walk
+  (`AppSmokeTest`) that screenshots each screen in CI; screenshot *diffing* is
+  still future work.
 
 ## Minimal daily interaction loop
 

@@ -5,14 +5,16 @@ import org.junit.Test
 import java.io.File
 
 /**
- * Plain-JVM guard that runs in the normal CI job (unlike the emulator-only
- * [QuestLoopMigrationTest]): asserts an exported Room schema JSON exists for the
- * current [QuestLoopDatabase.SCHEMA_VERSION].
+ * Plain-JVM guard (no emulator needed, unlike [QuestLoopMigrationTest]): asserts
+ * an exported Room schema JSON exists for the current
+ * [QuestLoopDatabase.SCHEMA_VERSION].
  *
  * This catches the most common migration-discipline slip — bumping the version
- * but forgetting to export/commit the new schema — on every push, instead of
- * only when someone remembers the `[uitest]` marker. (The emulator test still
- * does the deeper job of replaying MIGRATIONS against the schema.)
+ * but forgetting to export/commit the new schema. It runs wherever
+ * `:app:testDebugUnitTest` runs: full-tests (nightly / manual / `[uitest]`) and,
+ * most importantly, release.yml's gate before an APK is published. It does NOT
+ * run on the per-push smoke gate, which is `:core`-only. (The emulator test
+ * still does the deeper job of replaying MIGRATIONS against the schema.)
  */
 class SchemaExportTest {
 

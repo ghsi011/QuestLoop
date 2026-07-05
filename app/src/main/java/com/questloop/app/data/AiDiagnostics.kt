@@ -6,8 +6,11 @@ import java.time.Instant
 
 /**
  * A tiny on-device log of AI request failures the user can export and share for
- * troubleshooting. It deliberately records only the model and the error reason —
- * never the API key or the user's quest text — so the log is safe to send.
+ * troubleshooting. Entries hold only the model and the error reason, and the
+ * caller scrubs credentials (API key, OAuth tokens, Bearer-shaped strings) via
+ * [redactSecrets] before recording. Provider error bodies are surfaced verbatim,
+ * though, so a line can echo fragments of the request that failed — the log is
+ * only ever shared by an explicit user action, never sent anywhere automatically.
  */
 interface AiDiagnostics {
     fun record(model: String, message: String)

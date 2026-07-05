@@ -1,5 +1,6 @@
 package com.questloop.app.ui.review
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.questloop.app.util.launchSafely
@@ -31,17 +32,23 @@ data class ReviewUiState(
     val aiAvailable: Boolean = false,
     /** True while the user-triggered AI summary is in flight. */
     val summarizing: Boolean = false,
+    /** Set when loading the tab failed; cleared by the next load attempt. */
+    val error: String? = null,
 )
 
-class ReviewViewModel(private val repository: QuestRepository) : ViewModel() {
+class ReviewViewModel(
+    private val repository: QuestRepository,
+    /** Injectable "today" so tests can pin the date; defaults to the shared [AppClock]. */
+    private val todayEpochDay: () -> Long = AppClock::todayEpochDay,
+) : ViewModel() {
 
     private val _state = MutableStateFlow(ReviewUiState())
     val state: StateFlow<ReviewUiState> = _state.asStateFlow()
 
     fun load() {
-        launchSafely {
-            _state.update { it.copy(loading = true) }
-            val today = AppClock.todayEpochDay()
+        launchSafely(onError = ::loadFailed) {
+            _state.update { it.copy(loading = true, error = null) }
+            val today = todayEpochDay()
             // Reviews look back (start-of-period → today); plans look forward
             // (today → end-of-period) over the same calendar week/month.
             val weekly = repository.review("This week", AppClock.startOfWeek(today), today)
@@ -52,6 +59,7 @@ class ReviewViewModel(private val repository: QuestRepository) : ViewModel() {
             _state.update {
                 it.copy(
                     loading = false,
+                    error = null,
                     weekly = weekly,
                     monthly = monthly,
                     weeklyPlan = weeklyPlan,
@@ -62,6 +70,12 @@ class ReviewViewModel(private val repository: QuestRepository) : ViewModel() {
                 )
             }
         }
+    }
+
+    /** A failed load releases the spinner and says so — never a silent blank tab. */
+    private fun loadFailed(t: Throwable) {
+        runCatching { Log.e("QuestLoop", "Review load failed", t) }
+        _state.update { it.copy(loading = false, error = "Couldn't load your reviews.") }
     }
 
     fun setMode(mode: ReviewMode) {
@@ -75,10 +89,13 @@ class ReviewViewModel(private val repository: QuestRepository) : ViewModel() {
         if (_state.value.summarizing) return
         launchSafely {
             _state.update { it.copy(summarizing = true) }
-            val weeklySummary = repository.narrateReview(weekly).text
-            val monthlySummary = repository.narrateReview(monthly).text
-            _state.update {
-                it.copy(summarizing = false, weeklySummary = weeklySummary, monthlySummary = monthlySummary)
+            try {
+                val weeklySummary = repository.narrateReview(weekly).text
+                val monthlySummary = repository.narrateReview(monthly).text
+                _state.update { it.copy(weeklySummary = weeklySummary, monthlySummary = monthlySummary) }
+            } finally {
+                // Reset in finally so a failure can't strand the button on a spinner.
+                _state.update { it.copy(summarizing = false) }
             }
         }
     }

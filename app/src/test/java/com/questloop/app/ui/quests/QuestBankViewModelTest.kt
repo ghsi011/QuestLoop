@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -117,5 +118,25 @@ class QuestBankViewModelTest {
         // Second add for the same id should be ignored (already in addedIds).
         vm.add(bankQuest)
         assertNull(vm.state.value.toast)
+    }
+
+    @Test
+    fun `a failed add releases the in-flight marker so retry still works`() = runTest {
+        // Drop the quests table so the insert throws a real SQLiteException instead
+        // of persisting. NOT db.close(): closing cancels Room's query scope, and that
+        // CancellationException is cooperative cancellation the ViewModel correctly
+        // rethrows — so it would never reach the error handler.
+        db.openHelper.writableDatabase.execSQL("DROP TABLE quests")
+        val vm = QuestBankViewModel(repo)
+        val bankQuest = QuestBank.catalog.first()
+        vm.add(bankQuest)
+        val state = vm.state.value
+        // The id must not stay stranded in `adding` (that would dead-end the row).
+        assertFalse(bankQuest.id in state.adding)
+        assertTrue(state.toast!!.contains(bankQuest.title))
+        // And a retry tap is not silently swallowed by the in-flight guard.
+        vm.consumeToast()
+        vm.add(bankQuest)
+        assertNotNull(vm.state.value.toast)
     }
 }

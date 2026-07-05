@@ -9,16 +9,19 @@ import com.questloop.core.model.QuestFrequency
 import com.questloop.core.model.QuestInstance
 import com.questloop.core.review.ReviewGenerator
 import kotlinx.coroutines.test.runTest
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class AiNarratorTest {
 
-    private fun narrator(response: String? = null, fail: Boolean = false) = AiNarrator(
+    private fun narrator(response: String? = null, fail: Boolean = false, cancel: Boolean = false) = AiNarrator(
         client = object : LlmClient {
             override suspend fun complete(systemPrompt: String, userPrompt: String): String {
+                if (cancel) throw CancellationException("cancelled")
                 if (fail) throw RuntimeException("network down")
                 return response ?: ""
             }
@@ -96,6 +99,19 @@ class AiNarratorTest {
         val out = narrator(fail = true).narrateReview(review)
         assertFalse(out.fromAi)
         assertEquals("14 of 20 done over 6 active days. Strongest area: health. work study ran low at 38%.", out.text)
+    }
+
+    @Test
+    fun `cancellation is rethrown instead of becoming a fallback`() = runTest {
+        val n = narrator(cancel = true)
+        assertFailsWith<CancellationException> { n.narrateReview(review) }
+        val facts = AiNarrator.PlanFacts.from(
+            plan(quest("a", QuestCategory.HEALTH, 20)),
+            checkIn = null,
+            availableMinutes = 45,
+            epochDay = 100,
+        )
+        assertFailsWith<CancellationException> { n.rationale(facts) }
     }
 
     @Test

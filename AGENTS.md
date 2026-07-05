@@ -41,6 +41,10 @@ QuestLoop: a gamified quest/habit Android app. Gradle multi-module:
 - **Releases**: tag pushes are 403-blocked, so releases are cut server-side by
   putting **`[release]`** in the commit message (empty commit is fine). It
   refreshes the rolling `v0.1.0-experimental` prerelease APK (debug-signed).
+  The release job gates on `:core:test` + `:app:testDebugUnitTest` + `lintDebug`
+  before publishing (full-tests only fires after a release is public), and a
+  release-signed build also attaches R8's `mapping.txt` to the release so
+  obfuscated crash logs stay retraceable.
 - **Reading CI status**: `mcp__github__actions_list` output is large and exceeds
   the tool token limit — it's saved to a file; parse it with `python3 -c "import
   json; ..."` rather than reading raw.
@@ -99,6 +103,8 @@ QuestLoop: a gamified quest/habit Android app. Gradle multi-module:
   The chatgpt.com Codex backend is reverse-engineered and **can't be tested in the
   sandbox** — validate live changes by hand. Tokens rotate on refresh: serialise
   refresh+persist (`aiAuthMutex`) so concurrent calls don't burn each other's token.
+  Disconnect + delete-all take the same mutex (and the refresh re-reads the config
+  before persisting) so a sign-out/wipe can't be resurrected by an in-flight refresh.
 - Hold a partial `WAKE_LOCK` around the network call so a slow response survives
   the screen turning off (`AiCallGuard`).
 - Surface the provider's error body; never silently echo the deterministic
@@ -120,8 +126,10 @@ QuestLoop: a gamified quest/habit Android app. Gradle multi-module:
   `intent.action`.
 
 **Reminders**
-- Self-healing one-shot alarms that re-arm on each fire (plus boot + app-open),
-  not `setInexactRepeating`. Stamp the firing epoch-day into the "Mark done"
+- Self-healing one-shot alarms that re-arm on each fire (plus boot, app-open,
+  and timezone/clock changes — armed triggers are fixed epoch instants, so a
+  zone change would otherwise fire them at the old zone's wall time), not
+  `setInexactRepeating`. Stamp the firing epoch-day into the "Mark done"
   intent so a late tap credits the right day.
 
 ## Voice & content

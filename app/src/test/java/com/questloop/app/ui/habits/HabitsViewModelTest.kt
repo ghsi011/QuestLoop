@@ -22,6 +22,8 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -29,6 +31,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import java.io.IOException
 import java.util.concurrent.Executor
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -41,6 +44,8 @@ class HabitsViewModelTest {
 
     /** Persists habit/bad-habit/goal lists so add/remove are observable via reload. */
     private class FakePrefs : ProfilePreferences {
+        /** When true, list writes throw like a failing DataStore would. */
+        var failWrites = false
         private val state = MutableStateFlow(UserProfile())
         override val profile: Flow<UserProfile> = state
         override suspend fun setBudgetCap(value: Double) {}
@@ -50,6 +55,7 @@ class HabitsViewModelTest {
         override suspend fun setStreakGraceDays(value: Int) {}
         override suspend fun setSensitiveOptIn(value: Boolean) {}
         override suspend fun setHabits(habits: List<Habit>) {
+            if (failWrites) throw IOException("write failed")
             state.value = state.value.copy(habits = habits)
         }
         override suspend fun setBadHabits(badHabits: List<BadHabit>) {
@@ -137,5 +143,23 @@ class HabitsViewModelTest {
         val id = vm.state.value.goals.first().id
         vm.removeGoal(id)
         assertTrue(vm.state.value.goals.isEmpty())
+    }
+
+    @Test
+    fun `a failed save surfaces an error instead of silently dropping the habit`() = runTest {
+        val prefs = FakePrefs().apply { failWrites = true }
+        val vm = HabitsViewModel(QuestRepository(db.questDao(), db.completionDao(), prefs))
+        vm.addHabit("Stretch", QuestCategory.HEALTH, targetPerWeek = 7)
+
+        val state = vm.state.value
+        assertNotNull(state.error)
+        assertFalse(state.loading)
+        assertTrue(state.habits.isEmpty())
+
+        // A successful retry lands the habit and clears the error.
+        prefs.failWrites = false
+        vm.addHabit("Stretch", QuestCategory.HEALTH, targetPerWeek = 7)
+        assertNull(vm.state.value.error)
+        assertEquals(1, vm.state.value.habits.size)
     }
 }
