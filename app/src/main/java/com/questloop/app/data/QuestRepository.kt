@@ -325,7 +325,13 @@ class QuestRepository(
         val instanceIdByQuest = candidates.values.associate { quest ->
             quest.id to "${quest.id}@${CompletionSlots.completionSlot(quest, epochDay)}"
         }
-        val recordsById = completionDao.findByInstanceIds(instanceIdByQuest.values.toList())
+        // Chunk the IN-list: Room binds one variable per id, and a large dataset (many
+        // quests/habits/goals, or an imported backup) can exceed SQLite's ~999-variable
+        // limit on older devices (minSdk 26) — which would fail the whole refresh, a
+        // regression the per-quest find() didn't have. Chunks stay well under the floor.
+        val recordsById = instanceIdByQuest.values
+            .chunked(SQLITE_MAX_IN_VARIABLES)
+            .flatMap { completionDao.findByInstanceIds(it) }
             .associate { it.instanceId to it.toModel() }
         val intervalRecords = instanceIdByQuest.mapNotNull { (questId, instanceId) ->
             recordsById[instanceId]?.let { questId to it }
@@ -1072,6 +1078,14 @@ class QuestRepository(
         clearAiDiagnostics()
     }
 }
+
+/**
+ * Max ids per `WHERE instanceId IN (...)` batch. SQLite's default
+ * SQLITE_MAX_VARIABLE_NUMBER is 999 on the older devices we support (minSdk 26);
+ * 900 leaves headroom for any other bound params and keeps large candidate sets
+ * from overflowing the limit and failing the whole lookup.
+ */
+private const val SQLITE_MAX_IN_VARIABLES = 900
 
 /**
  * Defense-in-depth for the user-shareable AI diagnostics log: scrub the API key
