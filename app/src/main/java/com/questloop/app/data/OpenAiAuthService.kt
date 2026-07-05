@@ -88,7 +88,7 @@ class OpenAiAuthService(
                     server.reuseAddress = true
                     server.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), OpenAiOAuth.REDIRECT_PORT), 1)
                     openUrl(OpenAiOAuth.authorizeUrl(pkce.challenge, state))
-                    val cb = awaitCallback(server, timeoutMs) ?: error("Sign-in timed out. Please try again.")
+                    val cb = awaitCallback(server, timeoutMs, state) ?: error("Sign-in timed out. Please try again.")
                     served.set(cb)
                     cb
                 }
@@ -155,12 +155,26 @@ class OpenAiAuthService(
             Result.failure(t)
         }
 
-    private data class Callback(val code: String?, val state: String?, val error: String?)
+    private data class Callback(val path: String, val code: String?, val state: String?, val error: String?)
 
     /**
-     * Waits (until [timeoutMs] elapses) for the loopback request that carries the
-     * OAuth `code`/`error`. Stray connections without those params (favicon fetches,
-     * connectivity probes) are answered and skipped so they don't abort the flow.
+     * True only for the request we actually care about: our redirect [path], our
+     * random [state] echoed back, and an OAuth `code`/`error` present. Anything else
+     * — a favicon fetch, a connectivity probe, or a co-installed app hitting
+     * 127.0.0.1:1455 with a forged `?error=` / a `?code=&state=wrong` — is a stray
+     * we keep listening past (see [awaitCallback]) rather than let it abort a genuine
+     * in-flight sign-in. Matching [state] (128-bit random, never leaves the app) is
+     * what makes a forged callback infeasible; a hostile app that pre-binds port 1455
+     * before us is the residual local-DoS loopback OAuth can't fully close.
+     */
+    private fun isOurCallback(cb: Callback, state: String): Boolean =
+        cb.path == OpenAiOAuth.CALLBACK_PATH && cb.state == state && (cb.code != null || cb.error != null)
+
+    /**
+     * Waits (until [timeoutMs] elapses) for the loopback request that carries our
+     * OAuth callback. Requests that aren't [isOurCallback] (wrong path, mismatched or
+     * missing `state`, no `code`/`error`) are answered with a neutral page and skipped
+     * so a stray or forged request can't abort the flow.
      *
      * A blocking [ServerSocket.accept] can't be interrupted by coroutine
      * cancellation, so the wait polls in slices of at most [ACCEPT_POLL_MS] and
@@ -168,28 +182,32 @@ class OpenAiAuthService(
      * unblocks within a slice and the caller's `use` releases port 1455 right
      * away instead of holding it until the deadline.
      */
-    private suspend fun awaitCallback(server: ServerSocket, timeoutMs: Long): Callback? {
+    private suspend fun awaitCallback(server: ServerSocket, timeoutMs: Long, state: String): Callback? {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (true) {
             currentCoroutineContext().ensureActive()
             val remaining = deadline - System.currentTimeMillis()
             if (remaining <= 0) return null
             server.soTimeout = remaining.coerceAtMost(ACCEPT_POLL_MS).toInt()
-            val cb = acceptOnce(server, deadline) ?: continue // slice elapsed → re-check cancellation/deadline
-            if (cb.code != null || cb.error != null) return cb
-            // else: a stray/slow request — keep waiting for the real callback.
+            val cb = acceptOnce(server, deadline, state) ?: continue // slice elapsed → re-check cancellation/deadline
+            if (isOurCallback(cb, state)) return cb
+            // else: a stray/forged/slow request — keep waiting for the real callback.
         }
     }
 
     /**
-     * Accepts one loopback request, parses its query, and replies with a page.
+     * Accepts one loopback request, parses its target, and replies with a page: the
+     * "You're signed in" page only for our genuine, state-matched success callback,
+     * and a neutral "return to QuestLoop" page for everything else — so a declined,
+     * forged, or stray request never claims a sign-in that didn't happen.
+     *
      * Returns null only when [ServerSocket.accept] itself times out (poll slice
      * elapsed; the caller re-checks cancellation and the overall deadline). A
      * connection that stalls without sending a request line is bounded by a
      * per-socket read timeout and skipped (empty [Callback]) so it can't hang
      * the sign-in past the deadline.
      */
-    private fun acceptOnce(server: ServerSocket, deadline: Long): Callback? {
+    private fun acceptOnce(server: ServerSocket, deadline: Long, state: String): Callback? {
         val socket = try {
             server.accept()
         } catch (e: SocketTimeoutException) {
@@ -205,15 +223,25 @@ class OpenAiAuthService(
                 // e.g. "GET /auth/callback?code=...&state=... HTTP/1.1"
                 BufferedReader(InputStreamReader(it.getInputStream())).readLine().orEmpty()
             } catch (e: SocketTimeoutException) {
-                return@use Callback(null, null, null) // stalled client → skip, keep listening
+                return@use Callback("", null, null, null) // stalled client → skip, keep listening
             }
-            val query = requestLine.substringAfter('?', "").substringBefore(' ')
-            val params = parseQuery(query)
+            // "GET /auth/callback?code=...&state=... HTTP/1.1" → target "/auth/callback?code=..."
+            val target = requestLine.substringAfter(' ', "").substringBefore(' ')
+            val path = target.substringBefore('?')
+            val params = parseQuery(target.substringAfter('?', ""))
+            val cb = Callback(path = path, code = params["code"], state = params["state"], error = params["error"])
+            // Success page only for the real, state-matched, code-bearing callback;
+            // a matched-but-declined provider redirect and every stray get the neutral page.
+            val response = if (isOurCallback(cb, state) && cb.error == null && !cb.code.isNullOrBlank()) {
+                SUCCESS_RESPONSE
+            } else {
+                NEUTRAL_RESPONSE
+            }
             it.getOutputStream().use { out ->
-                out.write(SUCCESS_RESPONSE.toByteArray())
+                out.write(response.toByteArray())
                 out.flush()
             }
-            Callback(code = params["code"], state = params["state"], error = params["error"])
+            cb
         }
     }
 
@@ -241,12 +269,22 @@ class OpenAiAuthService(
             "<!doctype html><html><body style=\"font-family:sans-serif;text-align:center;padding-top:3rem\">" +
                 "<h2>You're signed in</h2><p>You can close this tab and return to QuestLoop.</p></body></html>"
 
-        private val SUCCESS_RESPONSE = buildString {
+        // Served to anything that isn't our genuine success callback (a declined
+        // provider redirect, a forged/stray request, a favicon fetch). It makes no
+        // claim about sign-in, so a request we didn't honor can't show "You're signed in".
+        private val NEUTRAL_PAGE =
+            "<!doctype html><html><body style=\"font-family:sans-serif;text-align:center;padding-top:3rem\">" +
+                "<p>You can close this tab and return to QuestLoop.</p></body></html>"
+
+        private val SUCCESS_RESPONSE = httpResponse(SUCCESS_PAGE)
+        private val NEUTRAL_RESPONSE = httpResponse(NEUTRAL_PAGE)
+
+        private fun httpResponse(page: String): String = buildString {
             append("HTTP/1.1 200 OK\r\n")
             append("Content-Type: text/html; charset=utf-8\r\n")
-            append("Content-Length: ${SUCCESS_PAGE.toByteArray().size}\r\n")
+            append("Content-Length: ${page.toByteArray().size}\r\n")
             append("Connection: close\r\n\r\n")
-            append(SUCCESS_PAGE)
+            append(page)
         }
 
         private val sharedClient: OkHttpClient by lazy {

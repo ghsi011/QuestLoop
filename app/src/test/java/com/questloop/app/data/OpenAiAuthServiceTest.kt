@@ -99,8 +99,9 @@ class OpenAiAuthServiceTest {
      * the server's blocking accept() isn't deadlocked by the same thread. [extraParams]
      * is appended after a parsed-and-echoed `state` (when [echoState] is true).
      */
-    private fun driveCallback(authorizeUrl: String, query: (state: String) -> String) {
+    private fun driveCallback(authorizeUrl: String, delayMs: Long = 0, query: (state: String) -> String) {
         thread {
+            if (delayMs > 0) Thread.sleep(delayMs)
             val state = Regex("state=([^&]+)").find(authorizeUrl)?.groupValues?.get(1)?.let {
                 URLDecoder.decode(it, "UTF-8")
             }.orEmpty()
@@ -141,11 +142,45 @@ class OpenAiAuthServiceTest {
     }
 
     @Test
-    fun `sign-in rejects a mismatched state (CSRF guard)`() = runTest {
-        val result = service().signIn(timeoutMs = 5_000) { _ ->
-            driveCallback("state=ignored") { "code=x&state=not-the-real-state" }
+    fun `a forged callback with the wrong state does not abort a genuine sign-in`() = runTest {
+        // W31: a co-installed app hitting 127.0.0.1:1455 with a forged callback used to
+        // abort the flow (the wait returned on any code/error). Now a request whose state
+        // doesn't match our random one is treated as a stray and skipped, so the genuine
+        // browser callback that lands a beat later still completes the sign-in.
+        server.enqueue(
+            MockResponse().setResponseCode(200)
+                .setBody("""{"access_token":"at","refresh_token":"rt","expires_in":3600}"""),
+        )
+        val tokens = service().signIn(timeoutMs = 10_000) { url ->
+            driveCallback(url) { "code=forged&state=not-the-real-state" }
+            driveCallback(url, delayMs = 300) { state -> "code=real-code&state=$state" }
+        }.getOrThrow()
+
+        assertEquals("at", tokens.accessToken)
+        val exchange = server.takeRequest().body.readUtf8()
+        assertTrue("exchanges the genuine code, not the forged one", exchange.contains("code=real-code"))
+        assertFalse(exchange.contains("code=forged"))
+    }
+
+    @Test
+    fun `a non-success callback is answered with a neutral page, not a sign-in claim`() = runTest {
+        // W31: only our genuine, state-matched success callback gets "You're signed in";
+        // a forged or declined callback must not claim a sign-in that didn't happen.
+        val bound = CompletableDeferred<Unit>()
+        val signIn = launch(Dispatchers.IO) {
+            service().signIn(timeoutMs = 300_000) { bound.complete(Unit) }
         }
-        assertTrue(result.isFailure)
+        bound.await() // openUrl fires right after the listener is bound
+        val response = withContext(Dispatchers.IO) {
+            Socket("127.0.0.1", OpenAiOAuth.REDIRECT_PORT).use { socket ->
+                val request = "GET /auth/callback?error=access_denied&state=wrong HTTP/1.1\r\n" +
+                    "Host: localhost\r\nConnection: close\r\n\r\n"
+                socket.getOutputStream().apply { write(request.toByteArray()); flush() }
+                socket.getInputStream().readBytes().decodeToString()
+            }
+        }
+        assertFalse("a forged/declined callback must not claim a sign-in", response.contains("You're signed in"))
+        signIn.cancelAndJoin()
     }
 
     @Test
