@@ -1255,24 +1255,31 @@ quest titles are sent to the AI provider — they are not (dedup runs on-device 
 `AiQuestValidator`). It was re-implemented by hand to disclose the opt-in upload
 accurately: only the to-dos and goals the user types are sent.
 
-### Deferred to a clean follow-up (3)
+### Deferred to a clean follow-up (3) — now applied
 
-These were skipped rather than force-merged, because each collides with a higher-priority
-fix in code where a botched merge is worse than a temporary gap. All remain tracked here:
+These were skipped in the original PR (#11) rather than force-merged, because each collided
+with a higher-priority fix in code where a botched merge is worse than a temporary gap. All
+three were then reimplemented on top of the merged wave (follow-up):
 
-- **W21 — N+1 `DayContext` refactor ([4]/[11]/[34], perf, medium).** Eight conflict hunks
-  through the economy-critical status/dismissal code that the correctness fixes (W01/W19)
-  already rewrote. Deferred so it can be rebuilt cleanly on top of them; no behaviour
-  change is lost, only a performance optimization.
-- **W29 — Mark-done/double-tap/snackbar pinning tests ([21]/[22], test-only).** Add/add
-  conflict with W11's rewrite of the same receiver test; W29's "open-the-app fallback"
-  test encodes receiver behaviour that contradicts W11's trampoline fix. W11's receiver
-  tests remain in place.
-- **W31 — OAuth forged-callback CSRF guard ([31], low, partially-correct).** Five
-  interleaved conflict regions with W15's cancellation-aware rewrite of the same
-  `signIn`/`awaitCallback`/`acceptOnce` methods in security-critical auth code. W15 (the
-  confirmed, higher-severity fix) is applied; W31's state-validation is deferred to
-  reimplement on top of it rather than risk a hand-merge of two auth rewrites.
+- **W21 — N+1 `DayContext` refactor ([4]/[11]/[34], perf, medium).** ✅ Applied. Rebuilt on
+  top of the merged W01/W19 status rewrite: `buildDayContext` assembles the profile, the
+  candidate set, the last-completed map, and each candidate's current-interval record (one
+  `WHERE instanceId IN (:ids)` query via `CompletionDao.findByInstanceIds`) once per call;
+  `questOverview`/`todayPlan`/dismissal/progress all read from it instead of re-deriving
+  candidates and issuing a `find()` per quest. Behaviour-preserving — the existing economy
+  tests pin it.
+- **W29 — Mark-done/double-tap/snackbar pinning tests ([21]/[22], test-only).** ✅ Applied.
+  With W11 merged, extended its `ReminderActionReceiverTest` (rather than the add/add
+  conflict) with a stamped-prior-day credit test and a not-planned → open-the-app (no XP)
+  test, and removed the receiver's coverage exclusion; added `toastId` monotonic
+  re-fire (Today) and inFlight double-tap re-add (Completed) pinning tests.
+- **W31 — OAuth forged-callback CSRF guard ([31], low, partially-correct).** ✅ Applied on
+  top of W15's cancellation-aware rewrite: `awaitCallback` now treats any request that
+  isn't our redirect path + matched `state` as a stray and keeps listening (so a
+  co-installed app's forged `?error=`/`?code=&state=wrong` can't abort a genuine sign-in),
+  and only a real state-matched success gets the "You're signed in" page — everything else
+  gets a neutral page. Residual limit noted: a hostile app that pre-binds port 1455 is the
+  local-DoS loopback OAuth can't fully close.
 
 ### Validation
 

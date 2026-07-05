@@ -131,7 +131,10 @@ private val appCoverageExclusions = listOf(
     // Framework entry points not realistically exercised even on the emulator:
     "**/MainActivity*.*", "**/QuestLoopApplication*.*",
     "**/di/**", "**/ui/theme/**", "**/widget/**",
-    "**/reminders/BootReceiver*.*", "**/reminders/ReminderActionReceiver*.*",
+    // BootReceiver stays excluded (its ACTION_BOOT_COMPLETED path needs a device
+    // boot); ReminderActionReceiver is NOT excluded — ReminderActionReceiverTest
+    // drives its "Mark done" branches under Robolectric (W29).
+    "**/reminders/BootReceiver*.*",
     // EncryptedKeyStore is NOT excluded: emulator images ship a software-backed
     // Keystore (only Robolectric lacks one), so EncryptedKeyStoreTest drives it
     // for real in the emulator job that gates this coverage.

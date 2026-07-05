@@ -19,7 +19,9 @@ import com.questloop.core.model.UserProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -141,6 +143,27 @@ class CompletedViewModelTest {
         // Original plus the clone -> two active quests with the same title.
         val active = repo.questOverview(epochDay = today, dayPart = com.questloop.core.model.DayPart.MORNING)
         assertEquals(2, active.count { it.quest.title == "Quest a" })
+    }
+
+    @Test
+    fun `a double-tap re-add clones the quest only once`() = runTest {
+        // Re-add mints a fresh UUID, so a second tap before the first lands is a REAL
+        // duplicate (idempotency can't protect it). The inFlight guard must swallow it.
+        // StandardTestDispatcher keeps the first guarded coroutine pending while the
+        // second tap fires, reproducing the double-tap the Unconfined dispatcher can't.
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        repo.addQuest(quest("a"))
+        repo.completeQuest(quest("a"), epochDay = today, result = CompletionResult.COMPLETED)
+        val vm = CompletedViewModel(repo, todayEpochDay = { today })
+        advanceUntilIdle() // run the init load()
+        val entry = vm.state.value.entries.first()
+
+        vm.readd(entry) // sets inFlight, queues the clone
+        vm.readd(entry) // inFlight still set → must be a no-op
+        advanceUntilIdle()
+
+        val active = repo.questOverview(epochDay = today, dayPart = com.questloop.core.model.DayPart.MORNING)
+        assertEquals("only one clone despite the double tap", 2, active.count { it.quest.title == "Quest a" })
     }
 
     @Test

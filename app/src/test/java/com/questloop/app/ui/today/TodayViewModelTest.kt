@@ -133,4 +133,25 @@ class TodayViewModelTest {
         assertNull(vm.state.value.toast)
         assertNull(vm.state.value.pendingUndo)
     }
+
+    @Test
+    fun `every toast bumps toastId so an identical consecutive message still re-fires`() = runTest {
+        // Pins the documented one-shot-event fix: the snackbar LaunchedEffect keys on
+        // the monotonic toastId, not the message string, so a second identical toast
+        // isn't swallowed (and its Undo lost). A regression to keying on the string
+        // would leave toastId flat on the repeat.
+        repo.addQuest(quest())
+        val vm = TodayViewModel(repo)
+
+        vm.complete(quest(), CompletionResult.COMPLETED)
+        val first = vm.state.value
+        assertNotNull("a toast is shown", first.toast)
+        assertEquals(1, first.toastId)
+
+        // Same quest again — XP is idempotent, but the toast must still re-fire.
+        vm.complete(quest(), CompletionResult.COMPLETED)
+        val second = vm.state.value
+        assertNotNull("the repeat still shows a toast", second.toast)
+        assertEquals("toastId bumps even for an identical message", 2, second.toastId)
+    }
 }
