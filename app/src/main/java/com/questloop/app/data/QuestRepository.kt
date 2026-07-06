@@ -24,7 +24,6 @@ import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.DayPart
 import com.questloop.core.model.EnergyCheckIn
 import com.questloop.core.model.Quest
-import com.questloop.core.model.QuestFrequency
 import com.questloop.core.model.UserProfile
 import com.questloop.core.model.VerificationMethod
 import com.questloop.core.reward.Achievement
@@ -1009,17 +1008,18 @@ class QuestRepository(
     /**
      * Quick-add path for the home-screen widget: turns one line of free text into a
      * single quest via the same AI generation flow as [suggestQuests] (guardrails +
-     * deterministic fallback) and persists it immediately — no review step. The saved
-     * quest is forced to [QuestFrequency.ONE_OFF] (the widget's "jot a one-off todo"
-     * use case) and given a fresh user id so it can't collide with the suggestion's
-     * batch id. Returns the saved quest, or a plain error when the text couldn't be
-     * turned into a quest at all.
+     * deterministic fallback) and persists it immediately — no review step. The quest
+     * defaults to a one-off unless the note clearly reads as a recurring habit (the
+     * model decides), and is given a fresh user id so it can't collide with the
+     * suggestion's batch id. Returns the saved quest, or a plain error when the text
+     * couldn't be turned into a quest at all.
      */
     suspend fun addOneOffQuestFromText(text: String): QuickAddResult {
         val trimmed = text.trim()
         if (trimmed.isBlank()) return QuickAddResult.Empty
-        // The quick-add prompt asks the model for exactly one quest (see
-        // AiQuestService.suggestOne); we still force ONE_OFF as a hard guarantee.
+        // The quick-add prompt asks the model for exactly one quest, defaulting to a
+        // one-off unless the note clearly reads as a recurring habit (see
+        // AiQuestService.suggestOne). We keep whatever frequency it chose.
         val suggestion = suggestOneQuest(trimmed)
         val first = suggestion.quests.firstOrNull()
             ?: return QuickAddResult.Failed(
@@ -1028,7 +1028,6 @@ class QuestRepository(
         val quest = first.copy(
             id = "user-${java.util.UUID.randomUUID()}",
             title = first.title.trim(),
-            frequency = QuestFrequency.ONE_OFF,
         )
         addQuest(quest)
         return QuickAddResult.Added(quest, fromAi = suggestion.fromAi, error = suggestion.error)
@@ -1042,9 +1041,12 @@ class QuestRepository(
     private suspend fun suggestOneQuest(note: String): AiQuestService.Suggestion {
         val config = profileStore.getAiConfig()
         return if (config.usable) {
-            val existing = questDao.getActive().map { it.toModel() }
+            // No dedup against existing quests: this is a jotted one-off, and the
+            // user may legitimately re-add a similar task. (Deduping here also
+            // backfires — a rejected near-duplicate falls through to the fallback,
+            // which isn't deduped, so the "duplicate" gets saved anyway.)
             val suggestion = aiCallGuard.keepAwake {
-                AiQuestService(llmClient(config)).suggestOne(note, existing)
+                AiQuestService(llmClient(config)).suggestOne(note)
             }
             suggestion.error?.let { recordAiError(config, it, suggestion.errorDetail) }
             suggestion

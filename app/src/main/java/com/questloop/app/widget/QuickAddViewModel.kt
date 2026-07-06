@@ -45,8 +45,12 @@ class QuickAddViewModel(private val repository: QuestRepository) : ViewModel() {
             when (val result = repository.addOneOffQuestFromText(text)) {
                 is QuickAddResult.Added -> {
                     // Adding a real quest satisfies the "create your first quest"
-                    // onboarding step, same as the in-app add flow.
-                    repository.completeOnboardingQuest(SampleData.ONBOARDING_CREATE, AppClock.todayEpochDay())
+                    // onboarding step, same as the in-app add flow. Best-effort: the
+                    // quest is already saved, so a hiccup crediting onboarding must
+                    // NOT flip this into a failure (which would invite a duplicate re-add).
+                    runCatching {
+                        repository.completeOnboardingQuest(SampleData.ONBOARDING_CREATE, AppClock.todayEpochDay())
+                    }
                     _state.update { it.copy(submitting = false, addedTitle = result.quest.title) }
                 }
                 is QuickAddResult.Failed ->
@@ -56,4 +60,8 @@ class QuickAddViewModel(private val repository: QuestRepository) : ViewModel() {
             }
         }
     }
+
+    /** Clears the one-shot [QuickAddUiState.addedTitle] once the activity has shown
+     *  the confirmation, so it can't replay if the composition is recreated. */
+    fun consumeAdded() = _state.update { it.copy(addedTitle = null) }
 }

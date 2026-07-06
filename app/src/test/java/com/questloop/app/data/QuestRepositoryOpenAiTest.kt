@@ -167,15 +167,15 @@ class QuestRepositoryOpenAiTest {
     }
 
     @Test
-    fun `widget quick-add saves a single quest and forces it to one-off`() = runTest {
+    fun `widget quick-add saves a single quest and keeps the model's frequency`() = runTest {
         prefs.ai = AiConfig(
             enabled = true,
             provider = AiProvider.OPENAI,
             openAiTokens = OpenAiOAuth.OpenAiTokens("at", "rt", accountId = "acct", expiresAtEpochSec = Long.MAX_VALUE),
             openAiModel = "gpt-5.4",
         )
-        // The model returns a DAILY quest; the widget's no-review add must still
-        // persist it as a ONE_OFF (a jotted todo, not a recurring habit).
+        // The note clearly reads as a recurring habit, so the model returns DAILY;
+        // the widget respects that classification rather than forcing a one-off.
         val arrayJson =
             """[{\"title\":\"Water the plants\",\"category\":\"LIFE_ADMIN\",\"difficulty\":\"EASY\",\"frequency\":\"DAILY\"}]"""
         server.enqueue(
@@ -183,16 +183,16 @@ class QuestRepositoryOpenAiTest {
                 .setBody("""data: {"type":"response.output_text.delta","delta":"$arrayJson"}"""),
         )
 
-        val result = repo.addOneOffQuestFromText("water the plants")
+        val result = repo.addOneOffQuestFromText("water the plants every day")
 
         assertTrue(result is QuickAddResult.Added)
         assertTrue((result as QuickAddResult.Added).fromAi)
         assertEquals("Water the plants", result.quest.title)
-        assertEquals(QuestFrequency.ONE_OFF, result.quest.frequency)
+        assertEquals(QuestFrequency.DAILY, result.quest.frequency)
 
         val saved = db.questDao().getActive().map { it.toModel() }
         assertEquals("no review step — exactly one quest is persisted", 1, saved.size)
-        assertEquals(QuestFrequency.ONE_OFF, saved.single().frequency)
+        assertEquals(QuestFrequency.DAILY, saved.single().frequency)
     }
 
     @Test

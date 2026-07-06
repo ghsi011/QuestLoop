@@ -56,7 +56,10 @@ private fun WidgetBody(titles: List<String>) {
             modifier = GlanceModifier
                 .fillMaxSize()
                 .background(GlanceTheme.colors.background)
-                .padding(12.dp),
+                .padding(12.dp)
+                // Tapping the widget surface (anywhere outside the add box below)
+                // opens the app; the add box's own click takes precedence over this.
+                .clickable(actionStartActivity<MainActivity>()),
         ) {
             // Quick-add field. Widgets can't host an editable input, so this is a
             // tappable box that opens AddQuestActivity; what's typed there goes
@@ -72,15 +75,12 @@ private fun WidgetBody(titles: List<String>) {
                     .clickable(actionStartActivity<AddQuestActivity>()),
             )
             Spacer(GlanceModifier.height(8.dp))
-            // The rest of the widget still opens the app to today's plan.
-            Column(modifier = GlanceModifier.clickable(actionStartActivity<MainActivity>())) {
-                Text(
-                    if (titles.isEmpty()) "QuestLoop — all clear ✓" else "QuestLoop — ${titles.size} today",
-                    style = TextStyle(color = GlanceTheme.colors.onBackground),
-                )
-                titles.take(3).forEach { title ->
-                    Text("• $title", style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant))
-                }
+            Text(
+                if (titles.isEmpty()) "QuestLoop — all clear ✓" else "QuestLoop — ${titles.size} today",
+                style = TextStyle(color = GlanceTheme.colors.onBackground),
+            )
+            titles.take(3).forEach { title ->
+                Text("• $title", style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant))
             }
         }
     }

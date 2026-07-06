@@ -79,14 +79,20 @@ private fun QuickAddDialog(
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
-    // A saved quest is a one-shot signal: confirm it and close the dialog.
+    // A saved quest is a one-shot signal: consume it (so it can't replay on a
+    // recomposition), then confirm it and close the dialog.
     LaunchedEffect(state.addedTitle) {
-        state.addedTitle?.let(onAdded)
+        state.addedTitle?.let { title ->
+            viewModel.consumeAdded()
+            onAdded(title)
+        }
     }
 
     // Focus the field and raise the keyboard as soon as the dialog appears.
+    // requestFocus() can throw if the field node isn't placed yet on the first
+    // frame, so guard it — losing autofocus is fine, a crash is not.
     LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
+        runCatching { focusRequester.requestFocus() }
         keyboard?.show()
     }
 
@@ -100,7 +106,7 @@ private fun QuickAddDialog(
                 Text("Add a quest", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "We'll turn it into a one-off quest — no review needed.",
+                    "Jot down what's on your mind and we'll add it.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
