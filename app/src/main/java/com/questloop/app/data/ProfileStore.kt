@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import java.io.IOException
+import java.time.DayOfWeek
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "questloop_profile")
 
@@ -45,6 +46,9 @@ interface ProfilePreferences {
     /** Opt-in to using the device calendar's free time as today's budget (SPEC §10).
      *  Defaulted so test fakes need not implement it; [ProfileStore] persists it. */
     suspend fun setCalendarBudgetEnabled(value: Boolean) {}
+    /** The day the user's week starts on (default Sunday). Defaulted so test fakes
+     *  need not implement it; [ProfileStore] persists it. */
+    suspend fun setFirstDayOfWeek(day: DayOfWeek) {}
     /** The list setters refuse to overwrite a stored list that no longer decodes
      *  ([ProfileStore] throws [ProfileListCorruptException]), so a decode failure
      *  can't be compounded into permanent data loss by the next read-modify-write. */
@@ -101,6 +105,7 @@ class ProfileStore(
         val GRACE_DAYS = intPreferencesKey("streak_grace_days")
         val SENSITIVE_OPT_IN = intPreferencesKey("sensitive_opt_in")
         val CALENDAR_BUDGET = intPreferencesKey("calendar_budget_enabled")
+        val FIRST_DAY_OF_WEEK = intPreferencesKey("first_day_of_week")
         val FOCUS = stringSetPreferencesKey("focus_categories")
         val HABITS = stringPreferencesKey("habits_json")
         val BAD_HABITS = stringPreferencesKey("bad_habits_json")
@@ -132,6 +137,9 @@ class ProfileStore(
                 streakGraceDays = prefs[Keys.GRACE_DAYS] ?: 1,
                 sensitiveNotificationsOptIn = (prefs[Keys.SENSITIVE_OPT_IN] ?: 0) == 1,
                 calendarBudgetEnabled = (prefs[Keys.CALENDAR_BUDGET] ?: 0) == 1,
+                firstDayOfWeek = prefs[Keys.FIRST_DAY_OF_WEEK]
+                    ?.let { runCatching { DayOfWeek.of(it) }.getOrNull() }
+                    ?: DayOfWeek.SUNDAY,
                 focusCategories = (prefs[Keys.FOCUS] ?: emptySet())
                     .mapNotNull { runCatching { QuestCategory.valueOf(it) }.getOrNull() }
                     .toSet(),
@@ -196,6 +204,10 @@ class ProfileStore(
 
     override suspend fun setCalendarBudgetEnabled(value: Boolean) {
         dataStore.edit { it[Keys.CALENDAR_BUDGET] = if (value) 1 else 0 }
+    }
+
+    override suspend fun setFirstDayOfWeek(day: DayOfWeek) {
+        dataStore.edit { it[Keys.FIRST_DAY_OF_WEEK] = day.value }
     }
 
     override suspend fun setSensitiveOptIn(value: Boolean) {

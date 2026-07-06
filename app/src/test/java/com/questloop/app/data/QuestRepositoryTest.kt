@@ -49,9 +49,24 @@ class QuestRepositoryTest {
     private lateinit var db: QuestLoopDatabase
     private lateinit var repo: QuestRepository
 
-    private class FakePrefs(cap: Double = 0.0) : ProfilePreferences {
-        private val state = MutableStateFlow(UserProfile(preferences = UserPreferences(monthlyRewardBudgetCap = cap)))
+    private class FakePrefs(
+        cap: Double = 0.0,
+        // Pin Monday-start weeks so this file's calendar-week arithmetic (monday /
+        // sunday=monday+6 / nextMonday) stays unambiguous; the product default is
+        // Sunday, exercised by `a weekly quest anchors to the configured Sunday week`.
+        firstDayOfWeek: java.time.DayOfWeek = java.time.DayOfWeek.MONDAY,
+    ) : ProfilePreferences {
+        private val state = MutableStateFlow(
+            UserProfile(
+                preferences = UserPreferences(monthlyRewardBudgetCap = cap, firstDayOfWeek = firstDayOfWeek),
+            ),
+        )
         override val profile: Flow<UserProfile> = state
+        override suspend fun setFirstDayOfWeek(day: java.time.DayOfWeek) {
+            state.value = state.value.copy(
+                preferences = state.value.preferences.copy(firstDayOfWeek = day),
+            )
+        }
         override suspend fun setBudgetCap(value: Double) {}
         override suspend fun setMaxDaily(value: Int) {}
         override suspend fun setAvailableMinutes(value: Int) {}
@@ -788,6 +803,26 @@ class QuestRepositoryTest {
         )
         assertEquals(null, repo.todayProgress(nextMonday)["swim"])
         assertTrue(repo.todayPlan(nextMonday, DayPart.MIDDAY).quests.any { it.quest.id == "swim" })
+    }
+
+    @Test
+    fun `a weekly quest anchors to the configured Sunday-start week`() = runTest {
+        // The product default; the rest of this file pins Monday for unambiguous math.
+        repo.setFirstDayOfWeek(java.time.DayOfWeek.SUNDAY)
+        val swim = weeklySwim()
+        repo.addQuest(swim)
+        // Monday 6/22 falls in the Sunday-start week Sun 6/21 .. Sat 6/27.
+        repo.completeMeasured(swim, monday, 1) // 1/2
+
+        val saturday = monday + 5 // 6/27, still the same week
+        val nextSunday = monday + 6 // 6/28, the next Sunday-start week
+
+        // Same week: the partial persists.
+        assertEquals(1, repo.todayProgress(saturday)["swim"])
+        // Next week resets — the discriminator: under a Monday-start week 6/28 would
+        // still be the same interval (1/2); with a Sunday start it's a fresh 0/2.
+        assertEquals(null, repo.todayProgress(nextSunday)["swim"])
+        assertTrue(repo.todayPlan(nextSunday, DayPart.MIDDAY).quests.any { it.quest.id == "swim" })
     }
 
     @Test

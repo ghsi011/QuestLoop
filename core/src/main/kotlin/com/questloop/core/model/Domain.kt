@@ -1,6 +1,31 @@
 package com.questloop.core.model
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import java.time.DayOfWeek
+
+/**
+ * Serializes a [DayOfWeek] as its ISO number (1=Monday … 7=Sunday) so the
+ * exported/persisted profile stays a stable primitive across app versions,
+ * independent of enum ordering.
+ */
+object IsoDayOfWeekSerializer : KSerializer<DayOfWeek> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("DayOfWeek", PrimitiveKind.INT)
+
+    override fun serialize(encoder: Encoder, value: DayOfWeek) = encoder.encodeInt(value.value)
+
+    // Degrade a corrupt/out-of-range value (a hand-edited backup) to Sunday rather
+    // than throw — matching ProfileStore's read path, so one bad field can't reject
+    // an entire otherwise-valid import.
+    override fun deserialize(decoder: Decoder): DayOfWeek =
+        runCatching { DayOfWeek.of(decoder.decodeInt()) }.getOrDefault(DayOfWeek.SUNDAY)
+}
 
 /**
  * Core domain model for QuestLoop.
@@ -269,6 +294,16 @@ data class UserPreferences(
     val focusCategories: Set<QuestCategory> = emptySet(),
     /** Opt-in: use the device calendar's free time as today's time budget (SPEC §10). */
     val calendarBudgetEnabled: Boolean = false,
+    /**
+     * The day the user's week starts on. Defaults to Sunday (the Jewish/US week).
+     * Anchors weekly-quest interval resets (`questId@weekStart`) and the "this
+     * week" review/history windows. Changing it re-anchors the *current* week: a
+     * weekly quest logged earlier in the old week keys to a different slot, so it
+     * can reappear at 0 and be logged again (a known cost, like a timezone change;
+     * no progress migration).
+     */
+    @Serializable(with = IsoDayOfWeekSerializer::class)
+    val firstDayOfWeek: DayOfWeek = DayOfWeek.SUNDAY,
 )
 
 @Serializable

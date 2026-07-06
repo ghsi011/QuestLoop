@@ -49,11 +49,14 @@ class ReviewViewModel(
         launchSafely(onError = ::loadFailed) {
             _state.update { it.copy(loading = true, error = null) }
             val today = todayEpochDay()
+            // The week's boundaries follow the user's configured first day (default
+            // Sunday) so the review windows match how weekly quests reset.
+            val firstDay = repository.firstDayOfWeek()
             // Reviews look back (start-of-period → today); plans look forward
             // (today → end-of-period) over the same calendar week/month.
-            val weekly = repository.review("This week", AppClock.startOfWeek(today), today)
+            val weekly = repository.review("This week", AppClock.startOfWeek(today, firstDay), today)
             val monthly = repository.review("This month", AppClock.startOfMonth(today), today)
-            val weeklyPlan = repository.periodPlan("This week", today, AppClock.endOfWeek(today))
+            val weeklyPlan = repository.periodPlan("This week", today, AppClock.endOfWeek(today, firstDay))
             val monthlyPlan = repository.periodPlan("This month", today, AppClock.endOfMonth(today))
             // Always show the instant, factual summary; AI is opt-in via the button.
             _state.update {

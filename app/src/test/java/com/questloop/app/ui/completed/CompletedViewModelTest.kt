@@ -15,6 +15,7 @@ import com.questloop.core.model.Habit
 import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.QuestFrequency
+import com.questloop.core.model.UserPreferences
 import com.questloop.core.model.UserProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -47,7 +48,11 @@ class CompletedViewModelTest {
     private lateinit var repo: QuestRepository
 
     private class FakePrefs : ProfilePreferences {
-        private val state = MutableStateFlow(UserProfile())
+        // Pin Monday-start weeks so the WEEK-filter boundary test stays unambiguous
+        // (its fixture "today" is a Sunday, degenerate under the Sunday default).
+        private val state = MutableStateFlow(
+            UserProfile(preferences = UserPreferences(firstDayOfWeek = java.time.DayOfWeek.MONDAY)),
+        )
         override val profile: Flow<UserProfile> = state
         override suspend fun setBudgetCap(value: Double) {}
         override suspend fun setMaxDaily(value: Int) {}

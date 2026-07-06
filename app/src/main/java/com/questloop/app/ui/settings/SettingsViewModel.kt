@@ -9,6 +9,9 @@ import com.questloop.app.data.QuestRepository
 import com.questloop.app.data.ReminderConfig
 import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.UserPreferences
+import java.time.DayOfWeek
+import java.time.format.TextStyle
+import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -175,6 +178,13 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
     fun consumeOpenAuthUrl() = _state.update { it.copy(openAuthUrl = null) }
 
     fun setMaxDaily(value: Int) = update("Saved · up to $value quests a day") { repository.setMaxDaily(value) }
+
+    /** The day the user's week starts on (default Sunday). Re-anchors weekly-quest
+     *  interval resets and the "this week" review/history windows. */
+    fun setFirstDayOfWeek(day: DayOfWeek) =
+        update("Saved · week starts ${day.getDisplayName(TextStyle.FULL, Locale.getDefault())}") {
+            repository.setFirstDayOfWeek(day)
+        }
 
     fun setAvailableMinutes(value: Int) = update("Saved · ${value}m a day") { repository.setAvailableMinutes(value) }
 

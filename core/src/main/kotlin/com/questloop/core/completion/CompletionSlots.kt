@@ -3,6 +3,7 @@ package com.questloop.core.completion
 import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestFrequency
+import java.time.DayOfWeek
 import java.time.LocalDate
 
 /**
@@ -20,6 +21,11 @@ import java.time.LocalDate
  * Completed filters, review windows and forward plans can never drift from how
  * slots are keyed. Deterministic: time enters only as epoch days ([LocalDate] is
  * used for pure calendar arithmetic, never for reading the clock).
+ *
+ * The week's first day is a user preference ([UserPreferences.firstDayOfWeek],
+ * default Sunday), so every week-boundary function takes a [firstDayOfWeek]; the
+ * default is Sunday to match the product default, but callers on the economy path
+ * always pass the user's configured value. Month boundaries are unaffected.
  */
 object CompletionSlots {
 
@@ -53,40 +59,59 @@ object CompletionSlots {
      * via lastCompleted. For everything else (and daily quests, where the interval
      * *is* the day) it's the day itself, so behaviour is unchanged.
      */
-    fun completionSlot(quest: Quest, epochDay: Long): String = when {
+    // No default for [firstDayOfWeek]: this keys the XP-idempotency instanceId
+    // (`questId@slot`) on the economy path, so every caller must pass the user's
+    // configured start day — an omission is a compile error, never a silent Sunday.
+    fun completionSlot(
+        quest: Quest,
+        epochDay: Long,
+        firstDayOfWeek: DayOfWeek,
+    ): String = when {
         !accumulates(quest) -> epochDay.toString()
         quest.frequency == QuestFrequency.ONE_OFF -> "oneoff"
-        else -> intervalStartFor(quest.frequency, epochDay).toString()
+        else -> intervalStartFor(quest.frequency, epochDay, firstDayOfWeek).toString()
     }
 
-    /** Start of the calendar interval a frequency accumulates over: the ISO week's
-     *  Monday for WEEKLY, the 1st for MONTHLY, the day itself otherwise. */
-    fun intervalStartFor(frequency: QuestFrequency, epochDay: Long): Long = when (frequency) {
-        QuestFrequency.WEEKLY -> startOfWeek(epochDay)
+    /** Start of the calendar interval a frequency accumulates over: the start of the
+     *  week ([firstDayOfWeek]) for WEEKLY, the 1st for MONTHLY, the day itself otherwise. */
+    fun intervalStartFor(
+        frequency: QuestFrequency,
+        epochDay: Long,
+        firstDayOfWeek: DayOfWeek = DayOfWeek.SUNDAY,
+    ): Long = when (frequency) {
+        QuestFrequency.WEEKLY -> startOfWeek(epochDay, firstDayOfWeek)
         QuestFrequency.MONTHLY -> startOfMonth(epochDay)
         else -> epochDay
     }
 
     /** Start of the interval *after* the one containing [epochDay] — the day the
      *  quest's progress next resets (a day-long "interval" for other frequencies). */
-    fun nextIntervalStart(frequency: QuestFrequency, epochDay: Long): Long = when (frequency) {
-        QuestFrequency.WEEKLY -> startOfWeek(epochDay) + 7
+    fun nextIntervalStart(
+        frequency: QuestFrequency,
+        epochDay: Long,
+        firstDayOfWeek: DayOfWeek = DayOfWeek.SUNDAY,
+    ): Long = when (frequency) {
+        QuestFrequency.WEEKLY -> startOfWeek(epochDay, firstDayOfWeek) + 7
         QuestFrequency.MONTHLY -> LocalDate.ofEpochDay(epochDay).withDayOfMonth(1).plusMonths(1).toEpochDay()
         else -> epochDay + 1
     }
 
-    /** First day (Monday) of the ISO week [epochDay] falls in. */
-    fun startOfWeek(epochDay: Long): Long {
+    /** First day of the week [epochDay] falls in, where the week starts on
+     *  [firstDayOfWeek] (default Sunday). */
+    fun startOfWeek(epochDay: Long, firstDayOfWeek: DayOfWeek = DayOfWeek.SUNDAY): Long {
         val date = LocalDate.ofEpochDay(epochDay)
-        return date.minusDays((date.dayOfWeek.value - 1).toLong()).toEpochDay()
+        // Days from the week's first day up to (and including) today, 0..6.
+        val offset = (date.dayOfWeek.value - firstDayOfWeek.value + 7) % 7
+        return date.minusDays(offset.toLong()).toEpochDay()
     }
 
     /** First day of the calendar month [epochDay] falls in. */
     fun startOfMonth(epochDay: Long): Long =
         LocalDate.ofEpochDay(epochDay).withDayOfMonth(1).toEpochDay()
 
-    /** Last day (inclusive) of the ISO week [epochDay] falls in. */
-    fun endOfWeek(epochDay: Long): Long = startOfWeek(epochDay) + 6
+    /** Last day (inclusive) of the week [epochDay] falls in (starts on [firstDayOfWeek]). */
+    fun endOfWeek(epochDay: Long, firstDayOfWeek: DayOfWeek = DayOfWeek.SUNDAY): Long =
+        startOfWeek(epochDay, firstDayOfWeek) + 6
 
     /** Last day (inclusive) of the calendar month [epochDay] falls in. */
     fun endOfMonth(epochDay: Long): Long {

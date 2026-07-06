@@ -6,6 +6,7 @@ import com.questloop.core.model.Priority
 import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.QuestFrequency
+import java.time.DayOfWeek
 import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -153,16 +154,32 @@ class PeriodPlannerTest {
         val done = mapOf("swim" to wednesday)
 
         // Rest of this week: the interval is satisfied — Today hides the quest,
-        // and so does the plan.
-        val thisWeek = planner.plan("This week", wednesday, monday + 6, listOf(weeklySwim()), done)
+        // and so does the plan. (Monday-start weeks pinned for unambiguous math.)
+        val mon = DayOfWeek.MONDAY
+        val thisWeek = planner.plan("This week", wednesday, monday + 6, listOf(weeklySwim()), done, mon)
         assertTrue(thisWeek.items.isEmpty())
 
         // Next calendar week: due again from Monday (when Today resurfaces it),
         // not from the rolling wednesday+7.
-        val nextWeek = planner.plan("This week", monday + 7, monday + 13, listOf(weeklySwim()), done)
+        val nextWeek = planner.plan("This week", monday + 7, monday + 13, listOf(weeklySwim()), done, mon)
         val item = nextWeek.items.single()
         assertEquals(1, item.expectedOccurrences)
         assertEquals(monday + 7, item.firstDueEpochDay)
+    }
+
+    @Test
+    fun `a measured weekly quest follows the configured Sunday-start week`() {
+        // Default first-day is Sunday: the week containing Monday 6/22 starts Sun 6/21.
+        val sunday = monday - 1
+        val done = mapOf("swim" to monday) // logged Monday, within the Sun-start week
+        // Rest of that week (through Saturday 6/27): interval satisfied → nothing planned.
+        val thisWeek = planner.plan("This week", monday, sunday + 6, listOf(weeklySwim()), done)
+        assertTrue(thisWeek.items.isEmpty())
+        // The next Sunday opens a fresh interval: due again from that Sunday.
+        val nextWeek = planner.plan("This week", sunday + 7, sunday + 13, listOf(weeklySwim()), done)
+        val item = nextWeek.items.single()
+        assertEquals(1, item.expectedOccurrences)
+        assertEquals(sunday + 7, item.firstDueEpochDay)
     }
 
     @Test
@@ -196,7 +213,7 @@ class PeriodPlannerTest {
         // and the quest is unmet in both — doable now (from Wednesday) and again
         // once next week resets it — where rolling math would count just one.
         val wednesday = monday + 2
-        val plan = planner.plan("This week", wednesday, monday + 7, listOf(weeklySwim()))
+        val plan = planner.plan("This week", wednesday, monday + 7, listOf(weeklySwim()), firstDayOfWeek = DayOfWeek.MONDAY)
         val item = plan.items.single()
         assertEquals(2, item.expectedOccurrences)
         assertEquals(wednesday, item.firstDueEpochDay)

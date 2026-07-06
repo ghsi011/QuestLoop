@@ -61,7 +61,21 @@ import com.questloop.app.reminders.ReminderScheduler
 import com.questloop.app.ui.components.InfoCard
 import com.questloop.app.ui.components.SectionHeader
 import com.questloop.app.ui.components.pretty
+import androidx.compose.ui.platform.LocalConfiguration
 import com.questloop.core.model.QuestCategory
+import java.time.DayOfWeek
+import java.time.format.TextStyle
+
+/** Day choices for the "start of the week" picker, Sunday first (the default). */
+private val weekStartOptions: List<DayOfWeek> = listOf(
+    DayOfWeek.SUNDAY,
+    DayOfWeek.MONDAY,
+    DayOfWeek.TUESDAY,
+    DayOfWeek.WEDNESDAY,
+    DayOfWeek.THURSDAY,
+    DayOfWeek.FRIDAY,
+    DayOfWeek.SATURDAY,
+)
 
 @Composable
 fun SettingsScreen(
@@ -73,6 +87,8 @@ fun SettingsScreen(
     val prefs = state.prefs
     var confirmDelete by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    // Observe the locale so day-name labels recompose if it changes.
+    val locale = LocalConfiguration.current.locales[0]
 
     // (Re)schedule reminder alarms whenever the config changes — but not while the
     // initial load is in flight: state.reminders is still the placeholder default
@@ -198,6 +214,31 @@ fun SettingsScreen(
                     valueRange = 1f..12f,
                     steps = 10,
                 )
+            }
+        }
+
+        Card(Modifier.fillMaxWidth()) {
+            Column(
+                Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("Start of the week", fontWeight = FontWeight.SemiBold)
+                Text(
+                    "The day your week begins. It sets your \"this week\" review and when weekly " +
+                        "counting and timing goals roll over.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                // Sunday first (the default — the Jewish/US week), then round the week.
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    weekStartOptions.forEach { day ->
+                        FilterChip(
+                            selected = prefs.firstDayOfWeek == day,
+                            onClick = { viewModel.setFirstDayOfWeek(day) },
+                            label = { Text(day.getDisplayName(TextStyle.SHORT, locale)) },
+                        )
+                    }
+                }
             }
         }
 

@@ -76,6 +76,11 @@ class QuestRepositoryBranchesTest {
                 preferences = state.value.preferences.copy(streakGraceDays = value),
             )
         }
+        override suspend fun setFirstDayOfWeek(day: java.time.DayOfWeek) {
+            state.value = state.value.copy(
+                preferences = state.value.preferences.copy(firstDayOfWeek = day),
+            )
+        }
         override suspend fun setSensitiveOptIn(value: Boolean) {
             state.value = state.value.copy(
                 preferences = state.value.preferences.copy(sensitiveNotificationsOptIn = value),
@@ -277,10 +282,13 @@ class QuestRepositoryBranchesTest {
         repo.addGoal(Goal(id = "g1", title = "Read more", category = QuestCategory.PERSONAL_GROWTH))
         repo.setBudgetCap(75.0)
         prefs.setStreakGraceDays(2)
+        repo.setFirstDayOfWeek(java.time.DayOfWeek.MONDAY) // non-default, must survive the round-trip
 
         val json = repo.exportJson()
         repo.deleteAllData()
         assertTrue(repo.profile.first().habits.isEmpty())
+        // Wipe reset the week start to the Sunday default; import must restore Monday.
+        assertEquals(java.time.DayOfWeek.SUNDAY, repo.profile.first().preferences.firstDayOfWeek)
 
         repo.importJson(json)
         val restored = repo.profile.first()
@@ -289,6 +297,7 @@ class QuestRepositoryBranchesTest {
         assertTrue(restored.goals.any { it.id == "g1" })
         assertEquals(75.0, restored.preferences.monthlyRewardBudgetCap, 0.0001)
         assertEquals(2, restored.preferences.streakGraceDays)
+        assertEquals(java.time.DayOfWeek.MONDAY, restored.preferences.firstDayOfWeek)
     }
 
     // --- completion result branches ----------------------------------------

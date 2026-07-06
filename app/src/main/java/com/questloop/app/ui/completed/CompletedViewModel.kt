@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import java.time.DayOfWeek
 
 /** Time window for the completed-quest history. */
 enum class HistoryFilter(val label: String) {
@@ -59,7 +60,7 @@ class CompletedViewModel(
     fun load() {
         launchSafely {
             _state.update { it.copy(loading = true) }
-            val entries = repository.completedHistory(rangeFor(_state.value.filter))
+            val entries = repository.completedHistory(rangeFor(_state.value.filter, repository.firstDayOfWeek()))
             _state.update { it.copy(loading = false, entries = entries) }
         }
     }
@@ -114,17 +115,17 @@ class CompletedViewModel(
 
     /** Reload synchronously within an already-running guarded action (no nested launch). */
     private suspend fun reload() {
-        val entries = repository.completedHistory(rangeFor(_state.value.filter))
+        val entries = repository.completedHistory(rangeFor(_state.value.filter, repository.firstDayOfWeek()))
         _state.update { it.copy(loading = false, entries = entries) }
     }
 
     fun consumeMessage() = _state.update { it.copy(message = null) }
 
-    private fun rangeFor(filter: HistoryFilter): LongRange? {
+    private fun rangeFor(filter: HistoryFilter, firstDayOfWeek: DayOfWeek): LongRange? {
         val today = todayEpochDay()
         return when (filter) {
             HistoryFilter.TODAY -> today..today
-            HistoryFilter.WEEK -> AppClock.startOfWeek(today)..today
+            HistoryFilter.WEEK -> AppClock.startOfWeek(today, firstDayOfWeek)..today
             HistoryFilter.MONTH -> AppClock.startOfMonth(today)..today
             HistoryFilter.ALL -> null
         }
