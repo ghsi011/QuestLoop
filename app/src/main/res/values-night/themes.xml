@@ -4,4 +4,11 @@
          in dark mode (matches values/themes.xml's light variant). Compose applies
          the Material3 colour scheme at runtime via isSystemInDarkTheme(). -->
     <style name="Theme.QuestLoop" parent="android:Theme.Material.NoActionBar" />
+
+    <!-- Dark variant of the transparent AddQuestActivity window (see values/themes.xml). -->
+    <style name="Theme.QuestLoop.Transparent">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
 </resources>

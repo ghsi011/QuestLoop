@@ -124,6 +124,47 @@ class AiQuestService(
         errorDetail = errorDetail,
     )
 
+    /**
+     * Turns one quick free-text [note] into EXACTLY ONE quest for the home-screen
+     * widget's no-review quick-add, through the same guardrails + deterministic
+     * fallback as [suggest]. Unlike [suggest], the prompt asks the model for a
+     * single quest (and the result is capped at one), so the caller can persist it
+     * directly without a review step.
+     */
+    suspend fun suggestOne(note: String, existing: List<Quest> = emptyList()): Suggestion {
+        val trimmed = note.trim()
+        if (trimmed.isBlank()) {
+            return Suggestion(emptyList(), fromAi = false, error = "Add a few words to turn into a quest.")
+        }
+        val payload = PromptLibrary.questGenerationUserPayload(
+            availableMinutes = 120,
+            energy = null,
+            todos = listOf(trimmed),
+            goals = emptyList(),
+            focusAreas = emptyList(),
+        ) + "\n\n" + SINGLE_SCHEMA_INSTRUCTION
+        val attempt = runCatchingCancellable { client.complete(PromptLibrary.QUICK_ADD_SYSTEM, payload) }
+        if (attempt.isFailure) {
+            val failure = describeFailure(attempt.exceptionOrNull())
+            return oneFallback(trimmed, failure.message, failure.detail)
+        }
+        val proposed = attempt.getOrNull()?.let(::parse)?.mapIndexedNotNull(::toQuest).orEmpty()
+        // Cap at one: even if the model over-produces, the widget adds a single quest.
+        val accepted = validator.validate(proposed, existing).accepted.take(1)
+        return when {
+            accepted.isNotEmpty() -> Suggestion(accepted, fromAi = true)
+            proposed.isEmpty() -> oneFallback(trimmed, "AI returned an unexpected response.")
+            else -> oneFallback(trimmed, "AI suggestions didn't pass the safety checks.")
+        }
+    }
+
+    private fun oneFallback(note: String, error: String?, errorDetail: String? = null) = Suggestion(
+        quests = FallbackSuggester.suggest(listOf(note), emptySet()).take(1),
+        fromAi = false,
+        error = error,
+        errorDetail = errorDetail,
+    )
+
     private fun fallback(input: Input, error: String?, errorDetail: String? = null) = Suggestion(
         quests = FallbackSuggester.suggest(input.todos, input.focusAreas.toSet()),
         fromAi = false,
@@ -232,7 +273,8 @@ class AiQuestService(
         /** Plain copy for connectivity failures; the raw exception rides along in [Suggestion.errorDetail]. */
         private const val CANT_REACH_AI = "Couldn't reach the AI. Check your connection and try again."
 
-        val SCHEMA_INSTRUCTION: String = buildString {
+        /** The object-shape spec shared by the multi- and single-quest instructions. */
+        private val SCHEMA_BODY: String = buildString {
             appendLine("Respond with ONLY a JSON array (no prose, no markdown fences).")
             appendLine("Each element is an object:")
             appendLine("  {")
@@ -246,8 +288,13 @@ class AiQuestService(
             appendLine("    \"targetCount\": integer (only for QUANTITATIVE),")
             appendLine("    \"unit\": short string (only for QUANTITATIVE, e.g. \"glasses\"),")
             appendLine("    \"rationale\": short string")
-            appendLine("  }")
-            append("Return at most 6 quests.")
+            append("  }")
         }
+
+        val SCHEMA_INSTRUCTION: String = "$SCHEMA_BODY\nReturn at most 6 quests."
+
+        /** Quick-add variant: force a single-element array so the widget adds one quest. */
+        val SINGLE_SCHEMA_INSTRUCTION: String =
+            "$SCHEMA_BODY\nReturn EXACTLY ONE quest (a single-element JSON array)."
     }
 }

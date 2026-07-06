@@ -5,4 +5,14 @@
          setting, so the launch background matches the OS default and Compose's
          isSystemInDarkTheme() colours (no white flash in dark mode). -->
     <style name="Theme.QuestLoop" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- Transparent window for AddQuestActivity: the widget's quick-add opens a
+         Compose Dialog, which draws its own scrim, so the hosting activity itself
+         stays see-through (no opaque flash over the home screen). Inherits the
+         light Theme.QuestLoop by dot-name; the night variant does the same. -->
+    <style name="Theme.QuestLoop.Transparent">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
 </resources>

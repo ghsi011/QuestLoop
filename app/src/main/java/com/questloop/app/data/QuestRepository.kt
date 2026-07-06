@@ -1006,6 +1006,59 @@ class QuestRepository(
     }
 
     /**
+     * Quick-add path for the home-screen widget: turns one line of free text into a
+     * single quest via the same AI generation flow as [suggestQuests] (guardrails +
+     * deterministic fallback) and persists it immediately — no review step. The quest
+     * defaults to a one-off unless the note clearly reads as a recurring habit (the
+     * model decides), and is given a fresh user id so it can't collide with the
+     * suggestion's batch id. Returns the saved quest, or a plain error when the text
+     * couldn't be turned into a quest at all.
+     */
+    suspend fun addOneOffQuestFromText(text: String): QuickAddResult {
+        val trimmed = text.trim()
+        if (trimmed.isBlank()) return QuickAddResult.Empty
+        // The quick-add prompt asks the model for exactly one quest, defaulting to a
+        // one-off unless the note clearly reads as a recurring habit (see
+        // AiQuestService.suggestOne). We keep whatever frequency it chose.
+        val suggestion = suggestOneQuest(trimmed)
+        val first = suggestion.quests.firstOrNull()
+            ?: return QuickAddResult.Failed(
+                suggestion.error ?: "Couldn't turn that into a quest — try rephrasing.",
+            )
+        val quest = first.copy(
+            id = "user-${java.util.UUID.randomUUID()}",
+            title = first.title.trim(),
+        )
+        addQuest(quest)
+        return QuickAddResult.Added(quest, fromAi = suggestion.fromAi, error = suggestion.error)
+    }
+
+    /**
+     * The single-quest sibling of [suggestQuests] used by [addOneOffQuestFromText]:
+     * routes through [AiQuestService.suggestOne] (whose prompt asks for exactly one
+     * quest) with the same wake-lock, error-recording, and always-safe fallback.
+     */
+    private suspend fun suggestOneQuest(note: String): AiQuestService.Suggestion {
+        val config = profileStore.getAiConfig()
+        return if (config.usable) {
+            // No dedup against existing quests: this is a jotted one-off, and the
+            // user may legitimately re-add a similar task. (Deduping here also
+            // backfires — a rejected near-duplicate falls through to the fallback,
+            // which isn't deduped, so the "duplicate" gets saved anyway.)
+            val suggestion = aiCallGuard.keepAwake {
+                AiQuestService(llmClient(config)).suggestOne(note)
+            }
+            suggestion.error?.let { recordAiError(config, it, suggestion.errorDetail) }
+            suggestion
+        } else {
+            AiQuestService.Suggestion(
+                quests = com.questloop.core.ai.FallbackSuggester.suggest(listOf(note), emptySet()).take(1),
+                fromAi = false,
+            )
+        }
+    }
+
+    /**
      * Breaks one goal into a short ladder of reviewable quests via the configured
      * AI provider (guardrails + dedup against existing quests). When AI is off,
      * returns a single deterministic starter step so the feature always does
@@ -1093,6 +1146,24 @@ class QuestRepository(
         // The exportable AI error log is on-device data too — a full wipe removes it.
         clearAiDiagnostics()
     }
+}
+
+/**
+ * Outcome of the widget's no-review quick-add ([QuestRepository.addOneOffQuestFromText]).
+ */
+sealed interface QuickAddResult {
+    /**
+     * A quest was saved. [fromAi] is false when the deterministic fallback produced
+     * it (AI off or unavailable); [error] carries the reason AI was skipped/failed
+     * when a fallback quest was added anyway, so the caller can note it.
+     */
+    data class Added(val quest: Quest, val fromAi: Boolean, val error: String? = null) : QuickAddResult
+
+    /** AI/fallback returned nothing usable; [message] is plain, user-facing copy. */
+    data class Failed(val message: String) : QuickAddResult
+
+    /** The text was blank — nothing to add. */
+    data object Empty : QuickAddResult
 }
 
 /**

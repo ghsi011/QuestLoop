@@ -77,6 +77,37 @@ class AiQuestServiceTest {
     }
 
     @Test
+    fun `quick-add returns exactly one quest even if the model over-produces`() = runTest {
+        val svc = service(
+            """[
+              {"title":"Book a dentist appointment","category":"LIFE_ADMIN","difficulty":"EASY"},
+              {"title":"Floss every night","category":"HEALTH","difficulty":"EASY","frequency":"DAILY"},
+              {"title":"Buy toothpaste","category":"LIFE_ADMIN","difficulty":"TRIVIAL"}
+            ]""",
+        )
+        val result = svc.suggestOne("dentist")
+        assertTrue(result.fromAi)
+        assertEquals(1, result.quests.size)
+        assertEquals("Book a dentist appointment", result.quests.single().title)
+    }
+
+    @Test
+    fun `quick-add falls back to one quest when the model fails`() = runTest {
+        val result = service(fail = true).suggestOne("water the plants")
+        assertFalse(result.fromAi)
+        assertEquals(1, result.quests.size)
+        assertNotNull(result.error)
+    }
+
+    @Test
+    fun `blank quick-add note yields nothing`() = runTest {
+        val result = service("[]").suggestOne("   ")
+        assertTrue(result.quests.isEmpty())
+        assertFalse(result.fromAi)
+        assertNotNull(result.error)
+    }
+
+    @Test
     fun `goal decomposition dedups against existing quests`() = runTest {
         val svc = service(
             """[

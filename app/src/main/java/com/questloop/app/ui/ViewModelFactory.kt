@@ -14,10 +14,12 @@ import com.questloop.app.ui.review.ReviewViewModel
 import com.questloop.app.ui.rewards.RewardsViewModel
 import com.questloop.app.ui.settings.SettingsViewModel
 import com.questloop.app.ui.today.TodayViewModel
+import com.questloop.app.widget.QuickAddViewModel
 
 /** Builds a [ViewModelProvider.Factory] wiring every ViewModel to the repository. */
 fun appViewModelFactory(repository: QuestRepository): ViewModelProvider.Factory = viewModelFactory {
     initializer { TodayViewModel(repository) }
+    initializer { QuickAddViewModel(repository) }
     initializer { QuestsViewModel(repository) }
     initializer { QuestBankViewModel(repository) }
     initializer { AddQuestViewModel(repository) }
