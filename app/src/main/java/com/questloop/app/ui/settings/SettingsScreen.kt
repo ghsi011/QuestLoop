@@ -224,7 +224,8 @@ fun SettingsScreen(
             ) {
                 Text("Start of the week", fontWeight = FontWeight.SemiBold)
                 Text(
-                    "The day your week begins. Weekly quests and the \"this week\" review reset on this day.",
+                    "The day your week begins. It sets your \"this week\" review and when weekly " +
+                        "counting and timing goals roll over.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
