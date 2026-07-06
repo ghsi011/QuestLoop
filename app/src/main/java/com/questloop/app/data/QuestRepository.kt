@@ -1018,9 +1018,9 @@ class QuestRepository(
     suspend fun addOneOffQuestFromText(text: String): QuickAddResult {
         val trimmed = text.trim()
         if (trimmed.isBlank()) return QuickAddResult.Empty
-        val suggestion = suggestQuests(listOf(trimmed))
-        // The generator can return several quests; the widget adds just the first,
-        // as a one-off. suggestQuests already records any AI error for diagnostics.
+        // The quick-add prompt asks the model for exactly one quest (see
+        // AiQuestService.suggestOne); we still force ONE_OFF as a hard guarantee.
+        val suggestion = suggestOneQuest(trimmed)
         val first = suggestion.quests.firstOrNull()
             ?: return QuickAddResult.Failed(
                 suggestion.error ?: "Couldn't turn that into a quest — try rephrasing.",
@@ -1032,6 +1032,28 @@ class QuestRepository(
         )
         addQuest(quest)
         return QuickAddResult.Added(quest, fromAi = suggestion.fromAi, error = suggestion.error)
+    }
+
+    /**
+     * The single-quest sibling of [suggestQuests] used by [addOneOffQuestFromText]:
+     * routes through [AiQuestService.suggestOne] (whose prompt asks for exactly one
+     * quest) with the same wake-lock, error-recording, and always-safe fallback.
+     */
+    private suspend fun suggestOneQuest(note: String): AiQuestService.Suggestion {
+        val config = profileStore.getAiConfig()
+        return if (config.usable) {
+            val existing = questDao.getActive().map { it.toModel() }
+            val suggestion = aiCallGuard.keepAwake {
+                AiQuestService(llmClient(config)).suggestOne(note, existing)
+            }
+            suggestion.error?.let { recordAiError(config, it, suggestion.errorDetail) }
+            suggestion
+        } else {
+            AiQuestService.Suggestion(
+                quests = com.questloop.core.ai.FallbackSuggester.suggest(listOf(note), emptySet()).take(1),
+                fromAi = false,
+            )
+        }
     }
 
     /**
