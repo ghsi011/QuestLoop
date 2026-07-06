@@ -20,7 +20,11 @@ object IsoDayOfWeekSerializer : KSerializer<DayOfWeek> {
 
     override fun serialize(encoder: Encoder, value: DayOfWeek) = encoder.encodeInt(value.value)
 
-    override fun deserialize(decoder: Decoder): DayOfWeek = DayOfWeek.of(decoder.decodeInt())
+    // Degrade a corrupt/out-of-range value (a hand-edited backup) to Sunday rather
+    // than throw — matching ProfileStore's read path, so one bad field can't reject
+    // an entire otherwise-valid import.
+    override fun deserialize(decoder: Decoder): DayOfWeek =
+        runCatching { DayOfWeek.of(decoder.decodeInt()) }.getOrDefault(DayOfWeek.SUNDAY)
 }
 
 /**
@@ -293,7 +297,10 @@ data class UserPreferences(
     /**
      * The day the user's week starts on. Defaults to Sunday (the Jewish/US week).
      * Anchors weekly-quest interval resets (`questId@weekStart`) and the "this
-     * week" review/history windows, so changing it re-anchors the current week.
+     * week" review/history windows. Changing it re-anchors the *current* week: a
+     * weekly quest logged earlier in the old week keys to a different slot, so it
+     * can reappear at 0 and be logged again (a known cost, like a timezone change;
+     * no progress migration).
      */
     @Serializable(with = IsoDayOfWeekSerializer::class)
     val firstDayOfWeek: DayOfWeek = DayOfWeek.SUNDAY,

@@ -59,10 +59,13 @@ object CompletionSlots {
      * via lastCompleted. For everything else (and daily quests, where the interval
      * *is* the day) it's the day itself, so behaviour is unchanged.
      */
+    // No default for [firstDayOfWeek]: this keys the XP-idempotency instanceId
+    // (`questId@slot`) on the economy path, so every caller must pass the user's
+    // configured start day — an omission is a compile error, never a silent Sunday.
     fun completionSlot(
         quest: Quest,
         epochDay: Long,
-        firstDayOfWeek: DayOfWeek = DayOfWeek.SUNDAY,
+        firstDayOfWeek: DayOfWeek,
     ): String = when {
         !accumulates(quest) -> epochDay.toString()
         quest.frequency == QuestFrequency.ONE_OFF -> "oneoff"

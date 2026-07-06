@@ -8,7 +8,6 @@ import com.questloop.core.model.Quest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import java.time.DayOfWeek
 
@@ -61,14 +60,10 @@ class CompletedViewModel(
     fun load() {
         launchSafely {
             _state.update { it.copy(loading = true) }
-            val entries = repository.completedHistory(rangeFor(_state.value.filter, firstDayOfWeek()))
+            val entries = repository.completedHistory(rangeFor(_state.value.filter, repository.firstDayOfWeek()))
             _state.update { it.copy(loading = false, entries = entries) }
         }
     }
-
-    /** The user's configured first day of the week (default Sunday), for the WEEK filter. */
-    private suspend fun firstDayOfWeek(): DayOfWeek =
-        repository.profile.first().preferences.firstDayOfWeek
 
     /** Runs one mutating action at a time; a re-entrant call while [inFlight] is a no-op. */
     private fun guarded(block: suspend () -> Unit) {
@@ -120,7 +115,7 @@ class CompletedViewModel(
 
     /** Reload synchronously within an already-running guarded action (no nested launch). */
     private suspend fun reload() {
-        val entries = repository.completedHistory(rangeFor(_state.value.filter, firstDayOfWeek()))
+        val entries = repository.completedHistory(rangeFor(_state.value.filter, repository.firstDayOfWeek()))
         _state.update { it.copy(loading = false, entries = entries) }
     }
 

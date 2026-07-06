@@ -64,25 +64,26 @@ class CompletionSlotsTest {
     @Test
     fun `a weekly measured quest is slotted to the start of its week (default Sunday)`() {
         val swim = quest(QuestFrequency.WEEKLY, CompletionStyle.QUANTITATIVE)
-        // Default first-day is Sunday, so the week containing Monday 2026-06-22
-        // starts on Sunday 2026-06-21.
+        // Sunday start: the week containing Monday 2026-06-22 starts on Sunday 2026-06-21.
+        val sun = DayOfWeek.SUNDAY
         val sunday = monday - 1
-        assertEquals(sunday.toString(), CompletionSlots.completionSlot(swim, monday))
-        assertEquals(sunday.toString(), CompletionSlots.completionSlot(swim, sunday)) // the Sunday itself
-        assertEquals(sunday.toString(), CompletionSlots.completionSlot(swim, monday + 5)) // Saturday 6/27
+        assertEquals(sunday.toString(), CompletionSlots.completionSlot(swim, monday, sun))
+        assertEquals(sunday.toString(), CompletionSlots.completionSlot(swim, sunday, sun)) // the Sunday itself
+        assertEquals(sunday.toString(), CompletionSlots.completionSlot(swim, monday + 5, sun)) // Saturday 6/27
         // The following Sunday opens a fresh slot.
-        assertEquals((sunday + 7).toString(), CompletionSlots.completionSlot(swim, sunday + 7))
+        assertEquals((sunday + 7).toString(), CompletionSlots.completionSlot(swim, sunday + 7, sun))
     }
 
     @Test
     fun `a monthly measured quest is slotted to the first of its month`() {
         val budget = quest(QuestFrequency.MONTHLY, CompletionStyle.DURATION)
+        val sun = DayOfWeek.SUNDAY // month slots don't depend on the week's first day
         val jun1 = LocalDate.of(2026, 6, 1).toEpochDay()
-        assertEquals(jun1.toString(), CompletionSlots.completionSlot(budget, jun1))
-        assertEquals(jun1.toString(), CompletionSlots.completionSlot(budget, LocalDate.of(2026, 6, 30).toEpochDay()))
+        assertEquals(jun1.toString(), CompletionSlots.completionSlot(budget, jun1, sun))
+        assertEquals(jun1.toString(), CompletionSlots.completionSlot(budget, LocalDate.of(2026, 6, 30).toEpochDay(), sun))
         assertEquals(
             LocalDate.of(2026, 7, 1).toEpochDay().toString(),
-            CompletionSlots.completionSlot(budget, LocalDate.of(2026, 7, 1).toEpochDay()),
+            CompletionSlots.completionSlot(budget, LocalDate.of(2026, 7, 1).toEpochDay(), sun),
         )
     }
 
@@ -90,7 +91,7 @@ class CompletionSlotsTest {
     fun `everything else is slotted to the day itself`() {
         val wednesday = monday + 2
         fun slot(frequency: QuestFrequency, style: CompletionStyle) =
-            CompletionSlots.completionSlot(quest(frequency, style), wednesday)
+            CompletionSlots.completionSlot(quest(frequency, style), wednesday, DayOfWeek.SUNDAY)
         // Measured daily: per-day semantics.
         assertEquals(wednesday.toString(), slot(QuestFrequency.DAILY, CompletionStyle.QUANTITATIVE))
         // Weekly/monthly but binary/subjective: keyed to the day it was done.
@@ -104,8 +105,8 @@ class CompletionSlotsTest {
         // A ONE_OFF measured quest keys every day to the same lifetime slot, so
         // progress accumulates across days into one record instead of resetting daily.
         val readPages = quest(QuestFrequency.ONE_OFF, CompletionStyle.DURATION)
-        assertEquals("oneoff", CompletionSlots.completionSlot(readPages, wednesday))
-        assertEquals("oneoff", CompletionSlots.completionSlot(readPages, wednesday + 5))
+        assertEquals("oneoff", CompletionSlots.completionSlot(readPages, wednesday, DayOfWeek.SUNDAY))
+        assertEquals("oneoff", CompletionSlots.completionSlot(readPages, wednesday + 5, DayOfWeek.SUNDAY))
     }
 
     @Test

@@ -341,8 +341,9 @@ class QuestRepository(
         return DayContext(epochDay, profile, stored, derivedHabits, candidates, lastCompleted, intervalRecords)
     }
 
-    /** The user's configured first day of the week (default Sunday), for interval math. */
-    private suspend fun firstDayOfWeek(): DayOfWeek =
+    /** The user's configured first day of the week (default Sunday). Single accessor
+     *  so the repository and its ViewModels don't each re-derive it off the profile. */
+    suspend fun firstDayOfWeek(): DayOfWeek =
         profileStore.profile.first().preferences.firstDayOfWeek
 
     /** A measured quest's accumulated progress this interval (count or minutes). */
@@ -827,6 +828,7 @@ class QuestRepository(
                 profileStore.setFocusCategories(prefs.focusCategories)
                 profileStore.setStreakGraceDays(prefs.streakGraceDays)
                 profileStore.setSensitiveOptIn(prefs.sensitiveNotificationsOptIn)
+                profileStore.setFirstDayOfWeek(prefs.firstDayOfWeek)
                 Triple(h, b, g)
             }
 

@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import com.questloop.app.util.launchSafely
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.ui.AppClock
-import kotlinx.coroutines.flow.first
 import com.questloop.core.ai.AiNarrator
 import com.questloop.core.generation.PeriodPlanner
 import com.questloop.core.review.ReviewGenerator
@@ -52,7 +51,7 @@ class ReviewViewModel(
             val today = todayEpochDay()
             // The week's boundaries follow the user's configured first day (default
             // Sunday) so the review windows match how weekly quests reset.
-            val firstDay = repository.profile.first().preferences.firstDayOfWeek
+            val firstDay = repository.firstDayOfWeek()
             // Reviews look back (start-of-period → today); plans look forward
             // (today → end-of-period) over the same calendar week/month.
             val weekly = repository.review("This week", AppClock.startOfWeek(today, firstDay), today)
