@@ -62,6 +62,16 @@
             </intent-filter>
         </receiver>
 
+        <!-- Quick-add dialog opened from the home-screen widget's "Add a quest" box.
+             Transparent window hosting a Compose Dialog; not exported (only our own
+             widget launches it via an explicit intent). -->
+        <activity
+            android:name=".widget.AddQuestActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.QuestLoop.Transparent" />
+
         <receiver
             android:name=".widget.QuestWidgetReceiver"
             android:exported="true">

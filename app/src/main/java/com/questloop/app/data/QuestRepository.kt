@@ -24,6 +24,7 @@ import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.DayPart
 import com.questloop.core.model.EnergyCheckIn
 import com.questloop.core.model.Quest
+import com.questloop.core.model.QuestFrequency
 import com.questloop.core.model.UserProfile
 import com.questloop.core.model.VerificationMethod
 import com.questloop.core.reward.Achievement
@@ -1006,6 +1007,34 @@ class QuestRepository(
     }
 
     /**
+     * Quick-add path for the home-screen widget: turns one line of free text into a
+     * single quest via the same AI generation flow as [suggestQuests] (guardrails +
+     * deterministic fallback) and persists it immediately — no review step. The saved
+     * quest is forced to [QuestFrequency.ONE_OFF] (the widget's "jot a one-off todo"
+     * use case) and given a fresh user id so it can't collide with the suggestion's
+     * batch id. Returns the saved quest, or a plain error when the text couldn't be
+     * turned into a quest at all.
+     */
+    suspend fun addOneOffQuestFromText(text: String): QuickAddResult {
+        val trimmed = text.trim()
+        if (trimmed.isBlank()) return QuickAddResult.Empty
+        val suggestion = suggestQuests(listOf(trimmed))
+        // The generator can return several quests; the widget adds just the first,
+        // as a one-off. suggestQuests already records any AI error for diagnostics.
+        val first = suggestion.quests.firstOrNull()
+            ?: return QuickAddResult.Failed(
+                suggestion.error ?: "Couldn't turn that into a quest — try rephrasing.",
+            )
+        val quest = first.copy(
+            id = "user-${java.util.UUID.randomUUID()}",
+            title = first.title.trim(),
+            frequency = QuestFrequency.ONE_OFF,
+        )
+        addQuest(quest)
+        return QuickAddResult.Added(quest, fromAi = suggestion.fromAi, error = suggestion.error)
+    }
+
+    /**
      * Breaks one goal into a short ladder of reviewable quests via the configured
      * AI provider (guardrails + dedup against existing quests). When AI is off,
      * returns a single deterministic starter step so the feature always does
@@ -1093,6 +1122,24 @@ class QuestRepository(
         // The exportable AI error log is on-device data too — a full wipe removes it.
         clearAiDiagnostics()
     }
+}
+
+/**
+ * Outcome of the widget's no-review quick-add ([QuestRepository.addOneOffQuestFromText]).
+ */
+sealed interface QuickAddResult {
+    /**
+     * A quest was saved. [fromAi] is false when the deterministic fallback produced
+     * it (AI off or unavailable); [error] carries the reason AI was skipped/failed
+     * when a fallback quest was added anyway, so the caller can note it.
+     */
+    data class Added(val quest: Quest, val fromAi: Boolean, val error: String? = null) : QuickAddResult
+
+    /** AI/fallback returned nothing usable; [message] is plain, user-facing copy. */
+    data class Failed(val message: String) : QuickAddResult
+
+    /** The text was blank — nothing to add. */
+    data object Empty : QuickAddResult
 }
 
 /**

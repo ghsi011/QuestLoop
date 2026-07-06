@@ -8,6 +8,7 @@ import com.questloop.core.model.EnergyCheckIn
 import com.questloop.core.model.Goal
 import com.questloop.core.model.Habit
 import com.questloop.core.model.QuestCategory
+import com.questloop.core.model.QuestFrequency
 import com.questloop.core.model.UserProfile
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -163,6 +164,35 @@ class QuestRepositoryOpenAiTest {
         assertEquals("no refresh when the token is fresh", 0, auth.refreshCount)
         // The request reached the Codex endpoint with the bearer token.
         assertEquals("Bearer at", server.takeRequest().getHeader("Authorization"))
+    }
+
+    @Test
+    fun `widget quick-add saves a single quest and forces it to one-off`() = runTest {
+        prefs.ai = AiConfig(
+            enabled = true,
+            provider = AiProvider.OPENAI,
+            openAiTokens = OpenAiOAuth.OpenAiTokens("at", "rt", accountId = "acct", expiresAtEpochSec = Long.MAX_VALUE),
+            openAiModel = "gpt-5.4",
+        )
+        // The model returns a DAILY quest; the widget's no-review add must still
+        // persist it as a ONE_OFF (a jotted todo, not a recurring habit).
+        val arrayJson =
+            """[{\"title\":\"Water the plants\",\"category\":\"LIFE_ADMIN\",\"difficulty\":\"EASY\",\"frequency\":\"DAILY\"}]"""
+        server.enqueue(
+            MockResponse().setResponseCode(200)
+                .setBody("""data: {"type":"response.output_text.delta","delta":"$arrayJson"}"""),
+        )
+
+        val result = repo.addOneOffQuestFromText("water the plants")
+
+        assertTrue(result is QuickAddResult.Added)
+        assertTrue((result as QuickAddResult.Added).fromAi)
+        assertEquals("Water the plants", result.quest.title)
+        assertEquals(QuestFrequency.ONE_OFF, result.quest.frequency)
+
+        val saved = db.questDao().getActive().map { it.toModel() }
+        assertEquals("no review step — exactly one quest is persisted", 1, saved.size)
+        assertEquals(QuestFrequency.ONE_OFF, saved.single().frequency)
     }
 
     @Test
