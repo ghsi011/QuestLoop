@@ -84,6 +84,11 @@ class SettingsViewModelTest {
                 preferences = state.value.preferences.copy(maxDailyQuests = value),
             )
         }
+        override suspend fun setFirstDayOfWeek(day: java.time.DayOfWeek) {
+            state.value = state.value.copy(
+                preferences = state.value.preferences.copy(firstDayOfWeek = day),
+            )
+        }
         override suspend fun setAvailableMinutes(value: Int) {
             state.value = state.value.copy(
                 preferences = state.value.preferences.copy(defaultAvailableMinutes = value),
@@ -169,6 +174,16 @@ class SettingsViewModelTest {
         val vm = SettingsViewModel(repo)
         vm.setMaxDaily(5)
         assertEquals(5, vm.state.value.prefs.maxDailyQuests)
+        assertNotNull(vm.state.value.savedMessage)
+    }
+
+    @Test
+    fun `the first day of the week defaults to Sunday and persists a change`() = runTest {
+        val vm = SettingsViewModel(repo)
+        assertEquals(java.time.DayOfWeek.SUNDAY, vm.state.value.prefs.firstDayOfWeek)
+
+        vm.setFirstDayOfWeek(java.time.DayOfWeek.MONDAY)
+        assertEquals(java.time.DayOfWeek.MONDAY, vm.state.value.prefs.firstDayOfWeek)
         assertNotNull(vm.state.value.savedMessage)
     }
 

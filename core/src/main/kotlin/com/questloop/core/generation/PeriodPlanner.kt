@@ -4,6 +4,7 @@ import com.questloop.core.completion.CompletionSlots
 import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.QuestFrequency
+import java.time.DayOfWeek
 
 /**
  * Builds a forward-looking **weekly or monthly plan** from the candidate pool
@@ -63,6 +64,7 @@ class PeriodPlanner {
      * @param toEpochDay inclusive end of the window (epoch day).
      * @param candidates the active quest pool (real quests + derived habit/goal quests).
      * @param lastCompletedByQuest most recent completion day per quest id; absent = never.
+     * @param firstDayOfWeek the user's week start (default Sunday), for weekly interval math.
      */
     fun plan(
         periodLabel: String,
@@ -70,6 +72,7 @@ class PeriodPlanner {
         toEpochDay: Long,
         candidates: List<Quest>,
         lastCompletedByQuest: Map<String, Long> = emptyMap(),
+        firstDayOfWeek: DayOfWeek = DayOfWeek.SUNDAY,
     ): PeriodPlan {
         val items = candidates.mapNotNull { quest ->
             val lastCompleted = lastCompletedByQuest[quest.id]
@@ -82,7 +85,7 @@ class PeriodPlanner {
             // from this month's plan even though Today resurfaces it from the 1st).
             val interval = CompletionSlots.hasCalendarInterval(quest)
             val (occurrences, firstDue) = if (interval) {
-                intervalSchedule(quest.frequency, fromEpochDay, toEpochDay, lastCompleted)
+                intervalSchedule(quest.frequency, fromEpochDay, toEpochDay, lastCompleted, firstDayOfWeek)
             } else {
                 QuestScheduler.expectedOccurrences(quest.frequency, fromEpochDay, toEpochDay, lastCompleted) to
                     QuestScheduler.firstDueDay(quest.frequency, fromEpochDay, toEpochDay, lastCompleted)
@@ -92,7 +95,7 @@ class PeriodPlanner {
             // one-off (or a recurring quest already satisfied for its period) must
             // not linger in the plan as "Due …"/"Overdue" forever.
             val unmet = if (interval) {
-                intervalDue(quest.frequency, toEpochDay, lastCompleted)
+                intervalDue(quest.frequency, toEpochDay, lastCompleted, firstDayOfWeek)
             } else {
                 QuestScheduler.isDue(quest.frequency, toEpochDay, lastCompleted)
             }
@@ -143,28 +146,34 @@ class PeriodPlanner {
         from: Long,
         to: Long,
         lastCompleted: Long?,
+        firstDayOfWeek: DayOfWeek,
     ): Pair<Int, Long?> {
         if (from > to) return 0 to null
-        val satisfied = lastCompleted?.let { CompletionSlots.intervalStartFor(frequency, it) }
+        val satisfied = lastCompleted?.let { CompletionSlots.intervalStartFor(frequency, it, firstDayOfWeek) }
         var occurrences = 0
         var firstDue: Long? = null
-        var start = CompletionSlots.intervalStartFor(frequency, from)
+        var start = CompletionSlots.intervalStartFor(frequency, from, firstDayOfWeek)
         while (start <= to) {
             if (start != satisfied) {
                 occurrences++
                 if (firstDue == null) firstDue = maxOf(from, start)
             }
-            start = CompletionSlots.nextIntervalStart(frequency, start)
+            start = CompletionSlots.nextIntervalStart(frequency, start, firstDayOfWeek)
         }
         return occurrences to firstDue
     }
 
     /** Interval counterpart of [QuestScheduler.isDue]: due on [day] unless the
      *  last completion falls in the same calendar interval. */
-    private fun intervalDue(frequency: QuestFrequency, day: Long, lastCompleted: Long?): Boolean =
+    private fun intervalDue(
+        frequency: QuestFrequency,
+        day: Long,
+        lastCompleted: Long?,
+        firstDayOfWeek: DayOfWeek,
+    ): Boolean =
         lastCompleted == null ||
-            CompletionSlots.intervalStartFor(frequency, lastCompleted) !=
-            CompletionSlots.intervalStartFor(frequency, day)
+            CompletionSlots.intervalStartFor(frequency, lastCompleted, firstDayOfWeek) !=
+            CompletionSlots.intervalStartFor(frequency, day, firstDayOfWeek)
 
     /**
      * Most-pressing first: overdue, then due-this-period (earliest deadline

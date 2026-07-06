@@ -5,6 +5,7 @@ import com.questloop.core.model.Difficulty
 import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestCategory
 import com.questloop.core.model.QuestFrequency
+import java.time.DayOfWeek
 import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -50,13 +51,27 @@ class CompletionSlotsTest {
     }
 
     @Test
-    fun `a weekly measured quest is slotted to the Monday of its week`() {
+    fun `a weekly measured quest is slotted to the Monday of its week (Monday start)`() {
         val swim = quest(QuestFrequency.WEEKLY, CompletionStyle.QUANTITATIVE)
-        assertEquals(monday.toString(), CompletionSlots.completionSlot(swim, monday))
-        assertEquals(monday.toString(), CompletionSlots.completionSlot(swim, monday + 2)) // Wednesday
-        assertEquals(monday.toString(), CompletionSlots.completionSlot(swim, monday + 6)) // Sunday
+        val mon = DayOfWeek.MONDAY
+        assertEquals(monday.toString(), CompletionSlots.completionSlot(swim, monday, mon))
+        assertEquals(monday.toString(), CompletionSlots.completionSlot(swim, monday + 2, mon)) // Wednesday
+        assertEquals(monday.toString(), CompletionSlots.completionSlot(swim, monday + 6, mon)) // Sunday
         // The next calendar week is a fresh slot.
-        assertEquals((monday + 7).toString(), CompletionSlots.completionSlot(swim, monday + 7))
+        assertEquals((monday + 7).toString(), CompletionSlots.completionSlot(swim, monday + 7, mon))
+    }
+
+    @Test
+    fun `a weekly measured quest is slotted to the start of its week (default Sunday)`() {
+        val swim = quest(QuestFrequency.WEEKLY, CompletionStyle.QUANTITATIVE)
+        // Default first-day is Sunday, so the week containing Monday 2026-06-22
+        // starts on Sunday 2026-06-21.
+        val sunday = monday - 1
+        assertEquals(sunday.toString(), CompletionSlots.completionSlot(swim, monday))
+        assertEquals(sunday.toString(), CompletionSlots.completionSlot(swim, sunday)) // the Sunday itself
+        assertEquals(sunday.toString(), CompletionSlots.completionSlot(swim, monday + 5)) // Saturday 6/27
+        // The following Sunday opens a fresh slot.
+        assertEquals((sunday + 7).toString(), CompletionSlots.completionSlot(swim, sunday + 7))
     }
 
     @Test
@@ -96,7 +111,8 @@ class CompletionSlotsTest {
     @Test
     fun `intervalStartFor falls back to the day for non-calendar frequencies`() {
         val wednesday = monday + 2
-        assertEquals(monday, CompletionSlots.intervalStartFor(QuestFrequency.WEEKLY, wednesday))
+        val mon = DayOfWeek.MONDAY
+        assertEquals(monday, CompletionSlots.intervalStartFor(QuestFrequency.WEEKLY, wednesday, mon))
         assertEquals(
             LocalDate.of(2026, 6, 1).toEpochDay(),
             CompletionSlots.intervalStartFor(QuestFrequency.MONTHLY, wednesday),
@@ -107,9 +123,10 @@ class CompletionSlotsTest {
 
     @Test
     fun `nextIntervalStart advances to the following week, month, or day`() {
-        // Any day of the week advances to the next Monday.
-        assertEquals(monday + 7, CompletionSlots.nextIntervalStart(QuestFrequency.WEEKLY, monday))
-        assertEquals(monday + 7, CompletionSlots.nextIntervalStart(QuestFrequency.WEEKLY, monday + 6))
+        // Any day of the week advances to the next Monday (Monday-start weeks here).
+        val mon = DayOfWeek.MONDAY
+        assertEquals(monday + 7, CompletionSlots.nextIntervalStart(QuestFrequency.WEEKLY, monday, mon))
+        assertEquals(monday + 7, CompletionSlots.nextIntervalStart(QuestFrequency.WEEKLY, monday + 6, mon))
         // Any day of the month advances to the 1st of the next month (across years too).
         assertEquals(
             LocalDate.of(2026, 7, 1).toEpochDay(),
@@ -123,14 +140,29 @@ class CompletionSlotsTest {
     }
 
     @Test
-    fun `week boundaries bracket the ISO week`() {
+    fun `week boundaries bracket the ISO week (Monday start)`() {
+        val mon = DayOfWeek.MONDAY
         val sunday = monday + 6
-        assertEquals(monday, CompletionSlots.startOfWeek(monday))
-        assertEquals(monday, CompletionSlots.startOfWeek(sunday))
-        assertEquals(sunday, CompletionSlots.endOfWeek(monday))
-        assertEquals(sunday, CompletionSlots.endOfWeek(sunday))
+        assertEquals(monday, CompletionSlots.startOfWeek(monday, mon))
+        assertEquals(monday, CompletionSlots.startOfWeek(sunday, mon))
+        assertEquals(sunday, CompletionSlots.endOfWeek(monday, mon))
+        assertEquals(sunday, CompletionSlots.endOfWeek(sunday, mon))
         // The day after Sunday belongs to the next week.
-        assertEquals(monday + 7, CompletionSlots.startOfWeek(sunday + 1))
+        assertEquals(monday + 7, CompletionSlots.startOfWeek(sunday + 1, mon))
+    }
+
+    @Test
+    fun `week boundaries bracket the Sunday-Saturday week (default)`() {
+        // Default first-day is Sunday: the week runs Sun 6/21 .. Sat 6/27.
+        val sunday = monday - 1
+        val saturday = monday + 5
+        assertEquals(sunday, CompletionSlots.startOfWeek(sunday))
+        assertEquals(sunday, CompletionSlots.startOfWeek(monday)) // Monday belongs to that week
+        assertEquals(sunday, CompletionSlots.startOfWeek(saturday))
+        assertEquals(saturday, CompletionSlots.endOfWeek(sunday))
+        assertEquals(saturday, CompletionSlots.endOfWeek(saturday))
+        // The next Sunday opens the following week.
+        assertEquals(sunday + 7, CompletionSlots.startOfWeek(saturday + 1))
     }
 
     @Test

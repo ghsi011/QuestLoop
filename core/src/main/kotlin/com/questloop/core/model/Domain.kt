@@ -1,6 +1,27 @@
 package com.questloop.core.model
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import java.time.DayOfWeek
+
+/**
+ * Serializes a [DayOfWeek] as its ISO number (1=Monday … 7=Sunday) so the
+ * exported/persisted profile stays a stable primitive across app versions,
+ * independent of enum ordering.
+ */
+object IsoDayOfWeekSerializer : KSerializer<DayOfWeek> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("DayOfWeek", PrimitiveKind.INT)
+
+    override fun serialize(encoder: Encoder, value: DayOfWeek) = encoder.encodeInt(value.value)
+
+    override fun deserialize(decoder: Decoder): DayOfWeek = DayOfWeek.of(decoder.decodeInt())
+}
 
 /**
  * Core domain model for QuestLoop.
@@ -269,6 +290,13 @@ data class UserPreferences(
     val focusCategories: Set<QuestCategory> = emptySet(),
     /** Opt-in: use the device calendar's free time as today's time budget (SPEC §10). */
     val calendarBudgetEnabled: Boolean = false,
+    /**
+     * The day the user's week starts on. Defaults to Sunday (the Jewish/US week).
+     * Anchors weekly-quest interval resets (`questId@weekStart`) and the "this
+     * week" review/history windows, so changing it re-anchors the current week.
+     */
+    @Serializable(with = IsoDayOfWeekSerializer::class)
+    val firstDayOfWeek: DayOfWeek = DayOfWeek.SUNDAY,
 )
 
 @Serializable

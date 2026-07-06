@@ -11,6 +11,7 @@ import com.questloop.core.completion.CompletionSlots
 import com.questloop.core.generation.AdminFundFactory
 import com.questloop.core.generation.HabitQuestFactory
 import com.questloop.core.generation.PeriodPlanner
+import java.time.DayOfWeek
 import com.questloop.core.generation.QuestGenerator
 import com.questloop.core.generation.QuestScheduler
 import com.questloop.core.generation.RewardFundState
@@ -322,8 +323,9 @@ class QuestRepository(
         val lastCompleted = completionDao.lastCompletedDays().associate { it.questId to it.lastDay }
         // Map each candidate to its current-interval instanceId, then fetch them all
         // in a single point-query instead of one find() per quest.
+        val firstDay = profile.preferences.firstDayOfWeek
         val instanceIdByQuest = candidates.values.associate { quest ->
-            quest.id to "${quest.id}@${CompletionSlots.completionSlot(quest, epochDay)}"
+            quest.id to "${quest.id}@${CompletionSlots.completionSlot(quest, epochDay, firstDay)}"
         }
         // Chunk the IN-list: Room binds one variable per id, and a large dataset (many
         // quests/habits/goals, or an imported backup) can exceed SQLite's ~999-variable
@@ -339,14 +341,19 @@ class QuestRepository(
         return DayContext(epochDay, profile, stored, derivedHabits, candidates, lastCompleted, intervalRecords)
     }
 
+    /** The user's configured first day of the week (default Sunday), for interval math. */
+    private suspend fun firstDayOfWeek(): DayOfWeek =
+        profileStore.profile.first().preferences.firstDayOfWeek
+
     /** A measured quest's accumulated progress this interval (count or minutes). */
-    private suspend fun intervalProgress(quest: Quest, epochDay: Long): Int {
+    private suspend fun intervalProgress(quest: Quest, epochDay: Long, firstDayOfWeek: DayOfWeek): Int {
         val target = when (quest.completionStyle) {
             CompletionStyle.QUANTITATIVE -> quest.targetCount ?: return 0
             CompletionStyle.DURATION -> quest.estimatedMinutes
             else -> return 0
         }
-        val rec = completionDao.find("${quest.id}@${CompletionSlots.completionSlot(quest, epochDay)}") ?: return 0
+        val slot = CompletionSlots.completionSlot(quest, epochDay, firstDayOfWeek)
+        val rec = completionDao.find("${quest.id}@$slot") ?: return 0
         return (rec.fraction * target).roundToInt()
     }
 
@@ -468,7 +475,8 @@ class QuestRepository(
             // left behind, and the returned outcome's reported total/level are honest.
             // A same-slot edit keeps the same instanceId, so completeQuestLocked nets
             // the prior grant itself (nothing to delete).
-            val newInstanceId = "${updatedQuest.id}@${CompletionSlots.completionSlot(updatedQuest, existing.epochDay)}"
+            val slot = CompletionSlots.completionSlot(updatedQuest, existing.epochDay, firstDayOfWeek())
+            val newInstanceId = "${updatedQuest.id}@$slot"
             if (newInstanceId != instanceId) completionDao.delete(instanceId)
             completeQuestLocked(
                 updatedQuest, existing.epochDay, existing.result, existing.fraction, existing.verification,
@@ -534,7 +542,8 @@ class QuestRepository(
         // marked active by this quest (other quests/routines on those days still are).
         // This is the cost of clean interval accumulation + over-completion scoring
         // (which needs a single record carrying the cumulative fraction).
-        val slot = CompletionSlots.completionSlot(quest, epochDay)
+        val firstDay = firstDayOfWeek()
+        val slot = CompletionSlots.completionSlot(quest, epochDay, firstDay)
         val instanceId = "${quest.id}@$slot"
         val existing = completionDao.find(instanceId)
         val ledgerSum = completionDao.totalXp()
@@ -593,7 +602,7 @@ class QuestRepository(
      * and credited proportionally — never penalised (SPEC §8).
      */
     suspend fun completeMeasured(quest: Quest, epochDay: Long, value: Int): CompleteOutcome = completionMutex.withLock {
-        val existingProgress = intervalProgress(quest, epochDay)
+        val existingProgress = intervalProgress(quest, epochDay, firstDayOfWeek())
         val allowOver = quest.allowOverCompletion
         val scaled = when (quest.completionStyle) {
             CompletionStyle.QUANTITATIVE ->
@@ -663,7 +672,10 @@ class QuestRepository(
         val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals) +
             adminFundQuests(fromEpochDay, profile, lastCompleted)
         val candidates = questDao.getActive().map { it.toModel() } + derived
-        return periodPlanner.plan(periodLabel, fromEpochDay, toEpochDay, candidates, lastCompleted)
+        return periodPlanner.plan(
+            periodLabel, fromEpochDay, toEpochDay, candidates, lastCompleted,
+            profile.preferences.firstDayOfWeek,
+        )
     }
 
     suspend fun allowance(fromEpochDay: Long, toEpochDay: Long): RewardAllowanceCalculator.AllowanceResult {
@@ -721,6 +733,8 @@ class QuestRepository(
         profileStore.setFocusCategories(cats)
 
     suspend fun setCalendarBudgetEnabled(value: Boolean) = profileStore.setCalendarBudgetEnabled(value)
+
+    suspend fun setFirstDayOfWeek(day: DayOfWeek) = profileStore.setFirstDayOfWeek(day)
 
     suspend fun addHabit(habit: Habit) = profileMutex.withLock {
         val current = profileStore.profile.first().habits
