@@ -15,6 +15,10 @@ interface QuestDao {
     @Query("SELECT * FROM quests WHERE archived = 0")
     suspend fun getActive(): List<QuestEntity>
 
+    /** Keyed lookup of a single active quest (e.g. the widget's completion menu). */
+    @Query("SELECT * FROM quests WHERE archived = 0 AND id = :id LIMIT 1")
+    suspend fun getActiveById(id: String): QuestEntity?
+
     /** Every quest including archived — used for a complete export. */
     @Query("SELECT * FROM quests")
     suspend fun getAll(): List<QuestEntity>

@@ -64,12 +64,26 @@
 
         <!-- Quick-add dialog opened from the home-screen widget's "Add a quest" box.
              Transparent window hosting a Compose Dialog; not exported (only our own
-             widget launches it via an explicit intent). -->
+             widget launches it via an explicit intent). taskAffinity="" keeps it in
+             its own task so it floats over the home screen instead of joining (and
+             surfacing) the app's MainActivity task. -->
         <activity
             android:name=".widget.AddQuestActivity"
             android:exported="false"
             android:excludeFromRecents="true"
             android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/Theme.QuestLoop.Transparent" />
+
+        <!-- Completion menu opened from a widget task row. Same over-the-home-screen
+             transparent dialog; carries the quest id as an intent extra. NOT singleTop:
+             each row carries a distinct quest, so every tap gets a fresh instance (and
+             a fresh ViewModel reading its own intent) rather than reusing a stale one. -->
+        <activity
+            android:name=".widget.CompleteQuestActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
             android:theme="@style/Theme.QuestLoop.Transparent" />
 
         <receiver

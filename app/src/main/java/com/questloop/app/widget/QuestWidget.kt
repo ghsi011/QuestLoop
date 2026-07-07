@@ -2,16 +2,22 @@ package com.questloop.app.widget
 
 import android.appwidget.AppWidgetManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
+import androidx.glance.LocalContext
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
+import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.cornerRadius
+import androidx.glance.appwidget.lazy.LazyColumn
+import androidx.glance.appwidget.lazy.items
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.Column
@@ -22,48 +28,45 @@ import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
-import com.questloop.app.MainActivity
 import com.questloop.app.QuestLoopApplication
 import com.questloop.core.model.DayPart
 import java.time.LocalDate
 import java.time.LocalTime
 
+/** A task shown on the widget: enough to render a row and open its completion menu. */
+private data class WidgetTask(val id: String, val title: String)
+
 /**
- * Home-screen widget showing today's top quests at a glance (SPEC §3 minimal
- * interaction). Tapping it opens the app. Data is read directly from Room when
- * the widget updates.
+ * Home-screen widget (SPEC §3 minimal interaction). Shows the "Add a quest" box plus
+ * every daily/one-off task still due today, in a scrollable list. Every interaction —
+ * adding a quest, ticking one off — happens in a lightweight dialog over the home
+ * screen; the widget never opens the app. Data is read directly from Room on update.
  */
 class QuestWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val titles = runCatching {
+        val epochDay = LocalDate.now().toEpochDay()
+        val tasks = runCatching {
             // Reuse the app's single wired repository rather than hand-wiring one.
             val repo = (context.applicationContext as QuestLoopApplication).container.repository
-            val plan = repo.todayPlan(
-                LocalDate.now().toEpochDay(),
-                DayPart.fromHour(LocalTime.now().hour),
-            )
-            plan.quests.map { it.quest.title }
+            repo.widgetQuickTasks(epochDay, DayPart.fromHour(LocalTime.now().hour))
+                .map { WidgetTask(it.id, it.title) }
         }.getOrDefault(emptyList())
 
-        provideContent { WidgetBody(titles) }
+        provideContent { WidgetBody(tasks) }
     }
 }
 
 @Composable
-private fun WidgetBody(titles: List<String>) {
+private fun WidgetBody(tasks: List<WidgetTask>) {
     GlanceTheme {
         Column(
             modifier = GlanceModifier
                 .fillMaxSize()
                 .background(GlanceTheme.colors.background)
-                .padding(12.dp)
-                // Tapping the widget surface (anywhere outside the add box below)
-                // opens the app; the add box's own click takes precedence over this.
-                .clickable(actionStartActivity<MainActivity>()),
+                .padding(12.dp),
         ) {
             // Quick-add field. Widgets can't host an editable input, so this is a
-            // tappable box that opens AddQuestActivity; what's typed there goes
-            // straight to AI generation and is saved as a one-off quest (no review).
+            // tappable box that opens AddQuestActivity over the home screen.
             Text(
                 "＋  Add a quest…",
                 style = TextStyle(color = GlanceTheme.colors.onSecondaryContainer),
@@ -75,15 +78,41 @@ private fun WidgetBody(titles: List<String>) {
                     .clickable(actionStartActivity<AddQuestActivity>()),
             )
             Spacer(GlanceModifier.height(8.dp))
+            // Scoped to daily/one-off quests, so this is a plain count — not a claim
+            // that the whole day is done (habits live on the Habits screen).
             Text(
-                if (titles.isEmpty()) "QuestLoop — all clear ✓" else "QuestLoop — ${titles.size} today",
+                if (tasks.isEmpty()) "Nothing to tick off" else "${tasks.size} to do",
                 style = TextStyle(color = GlanceTheme.colors.onBackground),
             )
-            titles.take(3).forEach { title ->
-                Text("• $title", style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant))
+            Spacer(GlanceModifier.height(4.dp))
+            // Every due daily/one-off task, scrollable so they all fit. Tapping a row
+            // opens its completion menu (also over the home screen).
+            LazyColumn(modifier = GlanceModifier.fillMaxSize()) {
+                items(tasks) { task ->
+                    TaskRow(task)
+                }
             }
         }
     }
+}
+
+@Composable
+private fun TaskRow(task: WidgetTask) {
+    val context = LocalContext.current
+    // Distinct data per row so each row's PendingIntent is unique — PendingIntent
+    // equality ignores extras, so without this all rows would share one intent. The
+    // completion day is resolved when the menu opens, so it isn't baked in here.
+    val intent = Intent(context, CompleteQuestActivity::class.java)
+        .setData(Uri.parse("questloop://complete/${task.id}"))
+        .putExtra(CompleteQuestActivity.EXTRA_QUEST_ID, task.id)
+    Text(
+        "○  ${task.title}",
+        style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant),
+        modifier = GlanceModifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+            .clickable(actionStartActivity(intent)),
+    )
 }
 
 class QuestWidgetReceiver : GlanceAppWidgetReceiver() {
