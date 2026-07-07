@@ -24,6 +24,7 @@ import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.DayPart
 import com.questloop.core.model.EnergyCheckIn
 import com.questloop.core.model.Quest
+import com.questloop.core.model.QuestFrequency
 import com.questloop.core.model.UserProfile
 import com.questloop.core.model.VerificationMethod
 import com.questloop.core.reward.Achievement
@@ -171,6 +172,25 @@ class QuestRepository(
             )
         }
     }
+
+    /**
+     * The widget's tick-off list: daily and one-off quests that are due today and
+     * not yet done. Excludes habit-derived quests (managed on the Habits screen) and
+     * anything already completed for today, so the home-screen widget only shows what
+     * the user can still act on. Ordered plan-first so the most relevant sit on top.
+     */
+    suspend fun widgetQuickTasks(epochDay: Long, dayPart: DayPart): List<Quest> =
+        questOverview(epochDay, dayPart)
+            .filter {
+                it.dueToday && !it.done &&
+                    (it.quest.frequency == QuestFrequency.DAILY || it.quest.frequency == QuestFrequency.ONE_OFF)
+            }
+            .sortedByDescending { it.inTodaysPlan }
+            .map { it.quest }
+
+    /** Looks up a single active quest by id (used by the widget's completion menu). */
+    suspend fun activeQuestById(id: String): Quest? =
+        questDao.getActive().firstOrNull { it.id == id }?.toModel()
 
     suspend fun seedIfEmpty() {
         if (questDao.count() == 0) {

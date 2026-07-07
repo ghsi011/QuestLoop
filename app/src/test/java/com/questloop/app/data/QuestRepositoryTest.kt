@@ -961,4 +961,27 @@ class QuestRepositoryTest {
         // Windowed: the range bounds the slice, and the result filter still applies.
         assertEquals(listOf("b"), repo.completedHistory(range = 11L..13L).map { it.record.questId })
     }
+
+    @Test
+    fun `widget quick tasks are the due daily and one-off quests, minus done and other cadences`() = runTest {
+        repo.addQuest(quest("daily", frequency = QuestFrequency.DAILY))
+        repo.addQuest(quest("oneoff", frequency = QuestFrequency.ONE_OFF))
+        repo.addQuest(quest("weekly", frequency = QuestFrequency.WEEKLY))
+        repo.addQuest(quest("donetoday", frequency = QuestFrequency.DAILY))
+        repo.completeQuest(quest("donetoday", frequency = QuestFrequency.DAILY), epochDay = 1, result = CompletionResult.COMPLETED)
+
+        val ids = repo.widgetQuickTasks(epochDay = 1, dayPart = DayPart.MORNING).map { it.id }
+
+        assertTrue("daily is shown", "daily" in ids)
+        assertTrue("one-off is shown", "oneoff" in ids)
+        assertFalse("weekly is not a quick task", "weekly" in ids)
+        assertFalse("a quest done today drops off", "donetoday" in ids)
+    }
+
+    @Test
+    fun `activeQuestById returns the quest, or null when absent`() = runTest {
+        repo.addQuest(quest("here"))
+        assertEquals("Quest here", repo.activeQuestById("here")?.title)
+        assertEquals(null, repo.activeQuestById("missing"))
+    }
 }
