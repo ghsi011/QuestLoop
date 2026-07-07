@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.util.launchSafely
 import com.questloop.core.model.CompletionResult
+import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.Quest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -51,16 +52,30 @@ class QuickCompleteViewModel(
         }
     }
 
-    fun complete() = submit(CompletionResult.COMPLETED, "Nice — marked done ✓")
-
-    fun skip() = submit(CompletionResult.SKIPPED, "Skipped for today.")
-
-    private fun submit(result: CompletionResult, message: String) {
+    fun complete() {
         val q = quest ?: return
+        // Route measured quests through completeMeasured so a counting/timed/subjective
+        // quest is credited to its target with the right scaling + verification method,
+        // rather than force-writing a binary fraction=1.0/MANUAL record over its progress.
+        val value = when (q.completionStyle) {
+            CompletionStyle.QUANTITATIVE -> q.targetCount ?: 1
+            CompletionStyle.DURATION -> q.estimatedMinutes
+            CompletionStyle.SUBJECTIVE -> 5
+            CompletionStyle.BINARY -> 1
+        }
+        perform("Nice — marked done ✓") { repository.completeMeasured(q, epochDay, value) }
+    }
+
+    fun skip() {
+        val q = quest ?: return
+        perform("Skipped for today.") { repository.completeQuest(q, epochDay, CompletionResult.SKIPPED) }
+    }
+
+    private fun perform(message: String, action: suspend () -> Unit) {
         if (_state.value.submitting) return
         launchSafely(onError = { _state.update { it.copy(submitting = false, error = "Something went wrong — try again.") } }) {
             _state.update { it.copy(submitting = true, error = null) }
-            repository.completeQuest(q, epochDay, result)
+            action()
             _state.update { it.copy(submitting = false, doneMessage = message) }
         }
     }

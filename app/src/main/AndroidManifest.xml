@@ -76,12 +76,13 @@
             android:theme="@style/Theme.QuestLoop.Transparent" />
 
         <!-- Completion menu opened from a widget task row. Same over-the-home-screen
-             transparent dialog; carries the quest id + day as intent extras. -->
+             transparent dialog; carries the quest id as an intent extra. NOT singleTop:
+             each row carries a distinct quest, so every tap gets a fresh instance (and
+             a fresh ViewModel reading its own intent) rather than reusing a stale one. -->
         <activity
             android:name=".widget.CompleteQuestActivity"
             android:exported="false"
             android:excludeFromRecents="true"
-            android:launchMode="singleTop"
             android:taskAffinity=""
             android:theme="@style/Theme.QuestLoop.Transparent" />
 

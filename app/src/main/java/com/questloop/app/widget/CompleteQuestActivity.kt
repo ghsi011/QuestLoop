@@ -45,8 +45,9 @@ class CompleteQuestActivity : ComponentActivity() {
     private val viewModel: QuickCompleteViewModel by viewModels {
         val repo = (application as QuestLoopApplication).container.repository
         val questId = intent.getStringExtra(EXTRA_QUEST_ID).orEmpty()
-        // Default to today if the extra is missing, so a stale intent still credits a day.
-        val epochDay = intent.getLongExtra(EXTRA_EPOCH_DAY, LocalDate.now().toEpochDay())
+        // Credit the day the user actually taps, resolved now — not a day baked into a
+        // possibly-stale widget render (which could mis-date a completion across midnight).
+        val epochDay = LocalDate.now().toEpochDay()
         viewModelFactory { initializer { QuickCompleteViewModel(repo, questId, epochDay) } }
     }
 
@@ -68,7 +69,6 @@ class CompleteQuestActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_QUEST_ID = "com.questloop.app.widget.QUEST_ID"
-        const val EXTRA_EPOCH_DAY = "com.questloop.app.widget.EPOCH_DAY"
     }
 }
 

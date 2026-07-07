@@ -52,12 +52,12 @@ class QuestWidget : GlanceAppWidget() {
                 .map { WidgetTask(it.id, it.title) }
         }.getOrDefault(emptyList())
 
-        provideContent { WidgetBody(tasks, epochDay) }
+        provideContent { WidgetBody(tasks) }
     }
 }
 
 @Composable
-private fun WidgetBody(tasks: List<WidgetTask>, epochDay: Long) {
+private fun WidgetBody(tasks: List<WidgetTask>) {
     GlanceTheme {
         Column(
             modifier = GlanceModifier
@@ -78,16 +78,18 @@ private fun WidgetBody(tasks: List<WidgetTask>, epochDay: Long) {
                     .clickable(actionStartActivity<AddQuestActivity>()),
             )
             Spacer(GlanceModifier.height(8.dp))
+            // Scoped to daily/one-off quests, so this is a plain count — not a claim
+            // that the whole day is done (habits live on the Habits screen).
             Text(
-                if (tasks.isEmpty()) "All clear today ✓" else "${tasks.size} to do",
+                if (tasks.isEmpty()) "Nothing to tick off" else "${tasks.size} to do",
                 style = TextStyle(color = GlanceTheme.colors.onBackground),
             )
             Spacer(GlanceModifier.height(4.dp))
             // Every due daily/one-off task, scrollable so they all fit. Tapping a row
             // opens its completion menu (also over the home screen).
             LazyColumn(modifier = GlanceModifier.fillMaxSize()) {
-                items(tasks, itemId = { it.id.hashCode().toLong() }) { task ->
-                    TaskRow(task, epochDay)
+                items(tasks) { task ->
+                    TaskRow(task)
                 }
             }
         }
@@ -95,14 +97,14 @@ private fun WidgetBody(tasks: List<WidgetTask>, epochDay: Long) {
 }
 
 @Composable
-private fun TaskRow(task: WidgetTask, epochDay: Long) {
+private fun TaskRow(task: WidgetTask) {
     val context = LocalContext.current
     // Distinct data per row so each row's PendingIntent is unique — PendingIntent
-    // equality ignores extras, so without this all rows would share one intent.
+    // equality ignores extras, so without this all rows would share one intent. The
+    // completion day is resolved when the menu opens, so it isn't baked in here.
     val intent = Intent(context, CompleteQuestActivity::class.java)
         .setData(Uri.parse("questloop://complete/${task.id}"))
         .putExtra(CompleteQuestActivity.EXTRA_QUEST_ID, task.id)
-        .putExtra(CompleteQuestActivity.EXTRA_EPOCH_DAY, epochDay)
     Text(
         "○  ${task.title}",
         style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant),

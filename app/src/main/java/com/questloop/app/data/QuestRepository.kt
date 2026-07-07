@@ -190,7 +190,7 @@ class QuestRepository(
 
     /** Looks up a single active quest by id (used by the widget's completion menu). */
     suspend fun activeQuestById(id: String): Quest? =
-        questDao.getActive().firstOrNull { it.id == id }?.toModel()
+        questDao.getActiveById(id)?.toModel()
 
     suspend fun seedIfEmpty() {
         if (questDao.count() == 0) {
