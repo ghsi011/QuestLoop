@@ -188,6 +188,18 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
 
     fun setAvailableMinutes(value: Int) = update("Saved · ${value}m a day") { repository.setAvailableMinutes(value) }
 
+    /** Steps the daily time budget by [delta], computing from the persisted value
+     *  inside the write — rapid taps computed from UI state would each read the
+     *  same stale snapshot and collapse three "+15"s into one. */
+    fun adjustAvailableMinutes(delta: Int) {
+        launchSafely {
+            val next = (repository.profile.first().preferences.defaultAvailableMinutes + delta).coerceIn(15, 480)
+            repository.setAvailableMinutes(next)
+            reload()
+            emitMessage("Saved · ${next}m a day")
+        }
+    }
+
     /** Opt in/out of calendar-based time budgeting. The screen secures the
      *  READ_CALENDAR permission before enabling; this just persists the choice. */
     fun setCalendarBudget(enabled: Boolean) =
@@ -196,9 +208,14 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
         }
 
     fun toggleFocus(category: QuestCategory) {
-        val current = _state.value.prefs.focusCategories
-        val next = if (category in current) current - category else current + category
-        update("Focus areas updated") { repository.setFocusCategories(next) }
+        update("Focus areas updated") {
+            // Compute from the persisted set inside the write, not the UI snapshot:
+            // two chips tapped in quick succession would otherwise both derive from
+            // the same stale set and the second full-set write would erase the first.
+            val current = repository.profile.first().preferences.focusCategories
+            val next = if (category in current) current - category else current + category
+            repository.setFocusCategories(next)
+        }
     }
 
     fun consumeSavedMessage() = _state.update { it.copy(savedMessage = null) }

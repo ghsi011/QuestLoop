@@ -34,8 +34,10 @@ fun QuestBankScreen(viewModel: QuestBankViewModel, snackbarHostState: SnackbarHo
 
     LaunchedEffect(state.toastId) {
         val message = state.toast ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
+        // Consume before showing: the effect re-runs on re-entering composition, so
+        // an unconsumed toast (left by navigating away mid-snackbar) would replay.
         viewModel.consumeToast()
+        snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
     }
 
     LazyColumn(

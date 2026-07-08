@@ -71,10 +71,14 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
         savedDraft = _draft.value
     }
 
-    /** Adds the quest built from the current draft, then clears the manual form. */
+    /** Adds the quest built from the current draft, then clears the manual form.
+     *  Guards against double-tap duplicates (each call mints a fresh id, so two
+     *  taps would persist two identical quests — same gotcha as accept/acceptAll). */
     fun addQuest(onDone: () -> Unit) {
+        if (_state.value.saving) return
         val d = _draft.value
         if (d.title.isBlank()) return
+        _state.update { it.copy(saving = true) }
         val isQuantitative = d.completionStyle == com.questloop.core.model.CompletionStyle.QUANTITATIVE
         val quest = Quest(
             id = "user-${UUID.randomUUID()}",
@@ -94,11 +98,12 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
             deadlineEpochDay = d.deadlineEpochDay,
             tags = d.tags,
         )
-        launchSafely(onError = failed()) {
+        launchSafely(onError = failed { it.copy(saving = false) }) {
             repository.addQuest(quest)
             repository.completeOnboardingQuest(SampleData.ONBOARDING_CREATE, AppClock.todayEpochDay())
             // Reset the manual form (keep any AI brain-dump / goal text).
             updateDraft { QuestDraft(quickText = it.quickText, goalText = it.goalText) }
+            _state.update { it.copy(saving = false) }
             onDone()
         }
     }

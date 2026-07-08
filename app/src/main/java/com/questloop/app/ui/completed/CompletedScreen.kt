@@ -52,8 +52,10 @@ fun CompletedScreen(viewModel: CompletedViewModel, snackbarHostState: SnackbarHo
     LaunchedEffect(Unit) { viewModel.load() }
     LaunchedEffect(state.messageId) {
         val msg = state.message ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Short)
+        // Consume before showing: the effect re-runs on re-entering composition, so
+        // an unconsumed message (left by navigating away mid-snackbar) would replay.
         viewModel.consumeMessage()
+        snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Short)
     }
 
     // Stateless body so it's driveable on the JVM (Robolectric) without a VM/lifecycle.

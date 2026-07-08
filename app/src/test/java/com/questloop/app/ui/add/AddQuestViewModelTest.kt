@@ -119,6 +119,22 @@ class AddQuestViewModelTest {
     }
 
     @Test
+    fun `double-tapping add quest persists a single quest`() = runTest {
+        // A standard (queued) dispatcher so the second tap lands while the first
+        // save is still in flight — each call mints a fresh id, so without the
+        // in-flight guard both would persist.
+        Dispatchers.setMain(kotlinx.coroutines.test.StandardTestDispatcher(testScheduler))
+        val vm = AddQuestViewModel(repo)
+        vm.updateDraft { it.copy(title = "Water plants") }
+        vm.addQuest {}
+        vm.addQuest {}
+        testScheduler.advanceUntilIdle()
+        assertEquals(1, repo.activeQuestIds().size)
+        // The guard must release so the form isn't stuck disabled.
+        assertFalse(vm.state.value.saving)
+    }
+
+    @Test
     fun `a failed generate clears the spinner and reports it`() = runTest {
         val vm = AddQuestViewModel(repo)
         // Drop the quests table so the dedup read inside suggestQuests throws a real

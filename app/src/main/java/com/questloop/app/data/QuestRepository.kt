@@ -706,8 +706,11 @@ class QuestRepository(
         // calculator drops them too, but activeDays is computed here.
         val records = completionDao.between(fromEpochDay, toEpochDay).map { it.toModel() }
             .filterNot { it.isMeta }
+        // Matches the ledger's canonical definition (see CompletionDao.activeDays):
+        // a zero-progress partial ("0 of 8 glasses") is not real activity, so it
+        // must not inflate the allowance's consistency factor.
         val activeDays = records
-            .filter { it.result == CompletionResult.COMPLETED || it.result == CompletionResult.PARTIAL }
+            .filter { it.result == CompletionResult.COMPLETED || (it.result == CompletionResult.PARTIAL && it.fraction > 0) }
             .map { it.epochDay }.toSet().size
         return RewardAllowanceCalculator.calculate(
             RewardAllowanceCalculator.AllowanceInput(
@@ -849,6 +852,7 @@ class QuestRepository(
                 profileStore.setStreakGraceDays(prefs.streakGraceDays)
                 profileStore.setSensitiveOptIn(prefs.sensitiveNotificationsOptIn)
                 profileStore.setFirstDayOfWeek(prefs.firstDayOfWeek)
+                profileStore.setCalendarBudgetEnabled(prefs.calendarBudgetEnabled)
                 Triple(h, b, g)
             }
 
@@ -898,7 +902,19 @@ class QuestRepository(
     suspend fun clearCheckIn() = profileStore.setCheckIn(null)
 
     suspend fun aiConfig(): AiConfig = profileStore.getAiConfig()
-    suspend fun setAiConfig(config: AiConfig) = profileStore.setAiConfig(config)
+
+    /**
+     * Saves the user-editable AI settings. The OpenAI token slot is NOT taken from
+     * [config]: tokens rotate on refresh, so a Settings save built from a config
+     * snapshot read before an in-flight [freshOpenAiTokens] persisted would write
+     * back the already-spent refresh token and silently break the sign-in. Tokens
+     * are only written by the dedicated paths (connect/disconnect/refresh); here
+     * the stored slot is re-read and kept, under the same [aiAuthMutex].
+     */
+    suspend fun setAiConfig(config: AiConfig) = aiAuthMutex.withLock {
+        val storedTokens = profileStore.getAiConfig().openAiTokens
+        profileStore.setAiConfig(config.copy(openAiTokens = storedTokens))
+    }
 
     /**
      * Runs the "Sign in with ChatGPT" OAuth flow and, on success, links the OpenAI
@@ -1005,8 +1021,11 @@ class QuestRepository(
             goals = profile.goals.map { it.title },
             focusAreas = profile.preferences.focusCategories.toList(),
             availableMinutes = profile.preferences.defaultAvailableMinutes,
-            // Dedup AI output against quests the user already has.
-            existing = questDao.getActive().map { it.toModel() },
+            // Dedup AI output against quests the user already has — including the
+            // habit/bad-habit/goal-derived ones, which are NOT in the quests table
+            // but surface in every plan just the same.
+            existing = questDao.getActive().map { it.toModel() } +
+                HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals),
         )
         return if (config.usable) {
             // Hold a CPU wake lock so a slow response isn't dropped if the screen sleeps.
@@ -1087,7 +1106,11 @@ class QuestRepository(
     suspend fun decomposeGoal(goal: String): AiQuestService.Suggestion {
         val config = profileStore.getAiConfig()
         return if (config.usable) {
-            val existing = questDao.getActive().map { it.toModel() }
+            // Include the habit/goal-derived quests (not in the quests table) so the
+            // ladder can't duplicate something the user already does daily.
+            val profile = profileStore.profile.first()
+            val existing = questDao.getActive().map { it.toModel() } +
+                HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals)
             val result = aiCallGuard.keepAwake {
                 AiQuestService(llmClient(config)).decomposeGoal(goal, existing)
             }
@@ -1156,13 +1179,22 @@ class QuestRepository(
     /**
      * Erases all on-device data (SPEC §9: users can delete their data). Serialised
      * with [freshOpenAiTokens] so an in-flight token refresh can't re-persist the
-     * AI credentials after the wipe.
+     * AI credentials after the wipe, and with the completion/profile mutexes so an
+     * in-flight ledger or profile-list read-modify-write (e.g. a widget "Mark done",
+     * an addHabit, an import) can't land its write after the wipe and resurrect
+     * data. This is the only place these mutexes nest (aiAuth → completion →
+     * profile); every other holder takes them singly or sequentially, so the
+     * ordering can't deadlock.
      */
     suspend fun deleteAllData() = aiAuthMutex.withLock {
         credentialClearGeneration++
-        completionDao.clear()
-        questDao.clear()
-        profileStore.clear()
+        completionMutex.withLock {
+            profileMutex.withLock {
+                completionDao.clear()
+                questDao.clear()
+                profileStore.clear()
+            }
+        }
         // The exportable AI error log is on-device data too — a full wipe removes it.
         clearAiDiagnostics()
     }

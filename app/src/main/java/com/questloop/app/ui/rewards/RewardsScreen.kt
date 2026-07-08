@@ -48,8 +48,10 @@ fun RewardsScreen(viewModel: RewardsViewModel, snackbarHostState: SnackbarHostSt
     // shown twice (e.g. saving the same budget again) isn't swallowed.
     LaunchedEffect(state.messageId) {
         val msg = state.savedMessage ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Short)
+        // Consume before showing: the effect re-runs on re-entering composition, so
+        // an unconsumed message (left by navigating away mid-snackbar) would replay.
         viewModel.consumeSavedMessage()
+        snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Short)
     }
 
     val parsedBudget = budgetText.toDoubleOrNull()
@@ -90,8 +92,10 @@ fun RewardsScreen(viewModel: RewardsViewModel, snackbarHostState: SnackbarHostSt
         OutlinedTextField(
             value = budgetText,
             onValueChange = { input ->
-                // Digits and at most one decimal point.
-                val filtered = input.filter { c -> c.isDigit() || c == '.' }
+                // Digits and at most one decimal point. KeyboardType.Decimal offers a
+                // comma separator in comma-decimal locales — treat it as the point
+                // rather than dropping it (which would silently turn 12,50 into 1250).
+                val filtered = input.replace(',', '.').filter { c -> c.isDigit() || c == '.' }
                 val firstDot = filtered.indexOf('.')
                 budgetText = if (firstDot < 0) filtered
                 else filtered.substring(0, firstDot + 1) + filtered.substring(firstDot + 1).replace(".", "")

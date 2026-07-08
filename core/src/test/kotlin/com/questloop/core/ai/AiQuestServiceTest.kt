@@ -148,6 +148,31 @@ class AiQuestServiceTest {
     }
 
     @Test
+    fun `tolerates a chatty preamble that itself contains brackets`() = runTest {
+        // A naive first-[ … last-] slice would grab "[1] Here … ]" and lose the batch.
+        val svc = service("Sure! [1] Here are your quests:\n```json\n[{\"title\":\"Walk\",\"category\":\"HEALTH\",\"difficulty\":\"EASY\"}]\n```")
+        val result = svc.suggest(AiQuestService.Input(todos = listOf("walk")))
+        assertTrue(result.fromAi)
+        assertEquals("Walk", result.quests.single().title)
+    }
+
+    @Test
+    fun `tolerates trailing prose with brackets after the array`() = runTest {
+        val svc = service("[{\"title\":\"Walk\",\"category\":\"HEALTH\",\"difficulty\":\"EASY\"}]\nEnjoy! [hint: start small]")
+        val result = svc.suggest(AiQuestService.Input(todos = listOf("walk")))
+        assertTrue(result.fromAi)
+        assertEquals("Walk", result.quests.single().title)
+    }
+
+    @Test
+    fun `bracket matching skips brackets inside string values`() = runTest {
+        val svc = service("[{\"title\":\"Sort files [inbox]\",\"category\":\"LIFE_ADMIN\",\"difficulty\":\"EASY\"}]")
+        val result = svc.suggest(AiQuestService.Input(todos = listOf("sort")))
+        assertTrue(result.fromAi)
+        assertEquals("Sort files [inbox]", result.quests.single().title)
+    }
+
+    @Test
     fun `falls back to deterministic suggestions on garbage output`() = runTest {
         val svc = service("I cannot help with that.")
         val result = svc.suggest(AiQuestService.Input(todos = listOf("Email landlord")))

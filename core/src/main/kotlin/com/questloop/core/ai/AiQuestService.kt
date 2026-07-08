@@ -230,15 +230,55 @@ class AiQuestService(
         rationale = q.rationale,
     )
 
-    /** Extracts the JSON array from a possibly-chatty/markdown-fenced response. */
+    /**
+     * Extracts the JSON array from a possibly-chatty/markdown-fenced response.
+     * Chatty preambles can themselves contain brackets ("Sure! [1] Here…"), so a
+     * naive first-`[`…last-`]` slice would poison the whole batch — instead each
+     * `[` is tried as a candidate start (with the matching `]` found by walking
+     * the balance, string-aware) until one decodes.
+     */
     internal fun parse(raw: String): List<AiQuestDto> {
-        val start = raw.indexOf('[')
-        val end = raw.lastIndexOf(']')
-        if (start < 0 || end <= start) return emptyList()
-        val slice = raw.substring(start, end + 1)
-        return runCatching {
-            json.decodeFromString(ListSerializer(AiQuestDto.serializer()), slice)
-        }.getOrDefault(emptyList())
+        var start = raw.indexOf('[')
+        while (start >= 0) {
+            val end = matchingBracket(raw, start)
+            if (end > start) {
+                val decoded = runCatching {
+                    json.decodeFromString(ListSerializer(AiQuestDto.serializer()), raw.substring(start, end + 1))
+                }.getOrNull()
+                // Non-empty means we found the payload. An empty array only counts
+                // when nothing later decodes (e.g. "[1] intro… []" must find the []).
+                if (!decoded.isNullOrEmpty()) return decoded
+            }
+            start = raw.indexOf('[', start + 1)
+        }
+        return emptyList()
+    }
+
+    /**
+     * Index of the `]` that closes the `[` at [start], skipping brackets inside
+     * JSON string literals (and their escapes); -1 when unbalanced.
+     */
+    private fun matchingBracket(raw: String, start: Int): Int {
+        var depth = 0
+        var inString = false
+        var i = start
+        while (i < raw.length) {
+            val c = raw[i]
+            when {
+                inString -> when (c) {
+                    '\\' -> i++ // skip the escaped char
+                    '"' -> inString = false
+                }
+                c == '"' -> inString = true
+                c == '[' -> depth++
+                c == ']' -> {
+                    depth--
+                    if (depth == 0) return i
+                }
+            }
+            i++
+        }
+        return -1
     }
 
     private fun toQuest(index: Int, dto: AiQuestDto): Quest? {

@@ -3,12 +3,11 @@ package com.questloop.core.ai.openai
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
@@ -74,9 +73,9 @@ object OpenAiResponsesCodec {
             val payload = trimmed.removePrefix("data:").trim()
             if (payload.isEmpty() || payload == "[DONE]") continue
             val event = runCatching { json.parseToJsonElement(payload).jsonObject }.getOrNull() ?: continue
-            when (event["type"]?.jsonPrimitive?.contentOrNull) {
+            when (event["type"].stringOrNull()) {
                 "response.output_text.delta" ->
-                    event["delta"]?.jsonPrimitive?.contentOrNull?.let { deltas.append(it) }
+                    event["delta"].stringOrNull()?.let { deltas.append(it) }
                 "response.completed", "response.done" -> {
                     sawCompleted = true
                     finalFromEvent = textOf(event["response"]?.asObject())
@@ -110,8 +109,8 @@ object OpenAiResponsesCodec {
     fun parseError(body: String): String {
         if (body.isBlank()) return ""
         val obj = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull()
-        val message = obj?.get("error")?.asObject()?.get("message")?.jsonPrimitive?.contentOrNull
-            ?: obj?.get("detail")?.jsonPrimitive?.contentOrNull
+        val message = obj?.get("error")?.asObject()?.get("message").stringOrNull()
+            ?: obj?.get("detail").stringOrNull()
         return (message ?: body).trim().take(300)
     }
 
@@ -122,12 +121,12 @@ object OpenAiResponsesCodec {
         val sb = StringBuilder()
         for (item in output) {
             val itemObj = item.asObject() ?: continue
-            if (itemObj["type"]?.jsonPrimitive?.contentOrNull != "message") continue
+            if (itemObj["type"].stringOrNull() != "message") continue
             val content = itemObj["content"]?.asArray() ?: continue
             for (part in content) {
                 val partObj = part.asObject() ?: continue
-                if (partObj["type"]?.jsonPrimitive?.contentOrNull == "output_text") {
-                    partObj["text"]?.jsonPrimitive?.contentOrNull?.let { sb.append(it) }
+                if (partObj["type"].stringOrNull() == "output_text") {
+                    partObj["text"].stringOrNull()?.let { sb.append(it) }
                 }
             }
         }
@@ -136,11 +135,18 @@ object OpenAiResponsesCodec {
 
     /** Some responses expose a convenience `output_text` string at the top level. */
     private fun topLevelText(response: JsonObject): String =
-        response["output_text"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        response["output_text"].stringOrNull().orEmpty()
+
+    // The reverse-engineered backend can drift: any field we expect to be a string
+    // may show up as an object/array, and `.jsonPrimitive` THROWS on those. These
+    // shape-tolerant accessors keep the documented "return empty on garbage"
+    // contract (the app layer only catches IOException around this codec).
+    private fun kotlinx.serialization.json.JsonElement?.stringOrNull(): String? =
+        (this as? JsonPrimitive)?.contentOrNull
 
     private fun kotlinx.serialization.json.JsonElement.asObject(): JsonObject? =
-        runCatching { jsonObject }.getOrNull()
+        this as? JsonObject
 
     private fun kotlinx.serialization.json.JsonElement.asArray(): JsonArray? =
-        runCatching { jsonArray }.getOrNull()
+        this as? JsonArray
 }

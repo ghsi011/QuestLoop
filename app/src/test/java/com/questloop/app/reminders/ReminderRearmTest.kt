@@ -52,10 +52,10 @@ class ReminderRearmTest {
      * implicit system broadcast to a manifest-declared receiver, so register it for
      * the delivery (the manifest intent-filter is what wires it in production).
      */
-    private fun deliver(receiver: BroadcastReceiver, action: String) {
+    private fun deliver(receiver: BroadcastReceiver, action: String, configure: Intent.() -> Unit = {}) {
         ContextCompat.registerReceiver(ctx, receiver, IntentFilter(action), ContextCompat.RECEIVER_NOT_EXPORTED)
         try {
-            ctx.sendBroadcast(Intent(action))
+            ctx.sendBroadcast(Intent(action).apply(configure))
             shadowOf(Looper.getMainLooper()).idle()
         } finally {
             ctx.unregisterReceiver(receiver)
@@ -75,16 +75,62 @@ class ReminderRearmTest {
     @Test
     fun `a fired reminder re-arms the next occurrence`() {
         val shadow = shadowOf(alarmManager)
+        runBlocking { ProfileStore(ctx).setReminderConfig(ReminderConfig(enabled = true, morningHour = 8)) }
         ReminderScheduler(ctx).cancelAll()
         assertTrue(shadow.scheduledAlarms.isEmpty())
 
-        val intent = Intent(ctx, ReminderReceiver::class.java)
-            .putExtra(ReminderScheduler.EXTRA_SLOT, ReminderSlot.MORNING.name)
-            .putExtra(ReminderScheduler.EXTRA_HOUR, 8)
-            .putExtra(ReminderScheduler.EXTRA_MINUTE, 0)
-        ReminderReceiver().onReceive(ctx, intent)
+        deliver(ReminderReceiver(), ReminderScheduler.ACTION_REMINDER) {
+            putExtra(ReminderScheduler.EXTRA_SLOT, ReminderSlot.MORNING.name)
+            putExtra(ReminderScheduler.EXTRA_HOUR, 8)
+            putExtra(ReminderScheduler.EXTRA_MINUTE, 0)
+        }
+        awaitRearm { shadow.scheduledAlarms.size == 1 }
 
         assertEquals(1, shadow.scheduledAlarms.size)
+    }
+
+    @Test
+    fun `a fired reminder does not re-arm after reminders were turned off`() {
+        // The race this guards: the alarm broadcast was already dispatched when the
+        // user toggled reminders off, so ReminderScheduler's cancel couldn't recall
+        // it — the receiver must re-check the config or the "disabled" series would
+        // re-arm itself daily forever.
+        val shadow = shadowOf(alarmManager)
+        runBlocking { ProfileStore(ctx).setReminderConfig(ReminderConfig(enabled = false)) }
+        ReminderScheduler(ctx).cancelAll()
+        assertTrue(shadow.scheduledAlarms.isEmpty())
+
+        deliver(ReminderReceiver(), ReminderScheduler.ACTION_REMINDER) {
+            putExtra(ReminderScheduler.EXTRA_SLOT, ReminderSlot.MORNING.name)
+            putExtra(ReminderScheduler.EXTRA_HOUR, 8)
+            putExtra(ReminderScheduler.EXTRA_MINUTE, 0)
+        }
+        // Give the receiver's background config read time to complete either way.
+        Thread.sleep(500)
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertTrue(shadow.scheduledAlarms.isEmpty())
+    }
+
+    @Test
+    fun `a fired reminder re-arms at the configured time, not the armed intent's stale extras`() {
+        // Same dispatched-alarm race, other direction: the user moved the time while
+        // the old alarm was in flight; re-arming from the stale extras would keep
+        // overwriting the new series with the old time.
+        val shadow = shadowOf(alarmManager)
+        runBlocking { ProfileStore(ctx).setReminderConfig(ReminderConfig(enabled = true, morningHour = 9)) }
+        ReminderScheduler(ctx).cancelAll()
+
+        deliver(ReminderReceiver(), ReminderScheduler.ACTION_REMINDER) {
+            putExtra(ReminderScheduler.EXTRA_SLOT, ReminderSlot.MORNING.name)
+            putExtra(ReminderScheduler.EXTRA_HOUR, 8) // stale: armed before the change
+            putExtra(ReminderScheduler.EXTRA_MINUTE, 0)
+        }
+        awaitRearm { shadow.scheduledAlarms.size == 1 }
+
+        val armed = Instant.ofEpochMilli(shadow.scheduledAlarms.single().triggerAtTime)
+            .atZone(ZoneId.systemDefault()).toLocalTime()
+        assertEquals(LocalTime.of(9, 0), armed)
     }
 
     @Test

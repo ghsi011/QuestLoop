@@ -105,8 +105,10 @@ fun SettingsScreen(
     // re-tapping a focus chip) isn't swallowed.
     LaunchedEffect(state.messageId) {
         val message = state.savedMessage ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
+        // Consume before showing: the effect re-runs on re-entering composition, so
+        // an unconsumed message (left by navigating away mid-snackbar) would replay.
         viewModel.consumeSavedMessage()
+        snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
     }
 
     val scope = rememberCoroutineScope()
@@ -249,13 +251,11 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text("Time/day", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                OutlinedButton(onClick = {
-                    viewModel.setAvailableMinutes((prefs.defaultAvailableMinutes - 15).coerceAtLeast(15))
-                }) { Text("−15") }
+                // Delta-based so rapid taps don't all compute from the same stale
+                // snapshot of prefs (three quick "+15"s must add 45, not 15).
+                OutlinedButton(onClick = { viewModel.adjustAvailableMinutes(-15) }) { Text("−15") }
                 Text("${prefs.defaultAvailableMinutes}m", style = MaterialTheme.typography.bodyMedium)
-                OutlinedButton(onClick = {
-                    viewModel.setAvailableMinutes((prefs.defaultAvailableMinutes + 15).coerceAtMost(480))
-                }) { Text("+15") }
+                OutlinedButton(onClick = { viewModel.adjustAvailableMinutes(+15) }) { Text("+15") }
             }
         }
 

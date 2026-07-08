@@ -182,7 +182,13 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
     }
 
     fun undoLast() {
-        val undo = _state.value.pendingUndo ?: return
+        val pending = _state.value.pendingUndo ?: return
+        undo(pending)
+    }
+
+    /** Reverses a completion from the snackbar "Undo". Takes the captured [undo] so
+     *  it still works after [consumeToast] cleared the one-shot state. */
+    fun undo(undo: PendingUndo) {
         launchSafely {
             repository.undoCompletion(undo.instanceId, undo.previous)
             _state.update { it.copy(toast = null, pendingUndo = null) }

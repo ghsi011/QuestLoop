@@ -147,4 +147,33 @@ class OpenAiOAuthTest {
         val payload = enc.encodeToString(payloadJson.toByteArray())
         return "$header.$payload.sig"
     }
+
+    @Test
+    fun `accountId tolerates non-canonical claim shapes instead of throwing`() {
+        // The auth claim as a plain string (not the expected object).
+        assertNull(OpenAiOAuth.accountId(jwt("""{"https://api.openai.com/auth":"oops"}""")))
+        // The top-level account id as an object; organizations entries malformed.
+        assertNull(OpenAiOAuth.accountId(jwt("""{"chatgpt_account_id":{"v":1}}""")))
+        assertNull(OpenAiOAuth.accountId(jwt("""{"organizations":[{"id":{"v":1}}]}""")))
+        assertNull(OpenAiOAuth.accountId(jwt("""{"organizations":"none"}""")))
+    }
+
+    @Test
+    fun `parseTokenResponse returns null on a non-string access token instead of throwing`() {
+        assertNull(OpenAiOAuth.parseTokenResponse("""{"access_token":{"v":1}}""", nowEpochSec = 0))
+    }
+
+    @Test
+    fun `parseTokenResponse tolerates malformed sibling fields`() {
+        // access_token is good; refresh/expiry/id_token have drifted shapes → keep
+        // the token, fall back to prior refresh + default expiry.
+        val tokens = OpenAiOAuth.parseTokenResponse(
+            """{"access_token":"at","refresh_token":{"v":1},"expires_in":"soon","id_token":[1]}""",
+            nowEpochSec = 100,
+            priorRefresh = "prior",
+        )
+        assertEquals("at", tokens?.accessToken)
+        assertEquals("prior", tokens?.refreshToken)
+        assertEquals(100 + 3600L, tokens?.expiresAtEpochSec)
+    }
 }

@@ -55,14 +55,21 @@ fun QuestsScreen(
 
     LaunchedEffect(state.toastId) {
         val message = state.toast ?: return@LaunchedEffect
+        val undo = state.pendingUndo
+        // Consume BEFORE showing: this effect re-runs whenever the screen re-enters
+        // composition (same toastId), so a toast left unconsumed by navigating away
+        // mid-snackbar would otherwise replay on return — with a live "Undo" for a
+        // completion the user considers settled. The captured [undo] keeps the
+        // action working for the snackbar actually on screen.
+        viewModel.consumeToast()
         val result = snackbarHostState.showSnackbar(
             message = message,
-            actionLabel = if (state.pendingUndo != null) "Undo" else null,
+            actionLabel = if (undo != null) "Undo" else null,
             // Keep undoable messages up longer — ~4s is too short to read the
             // outcome and still reverse a mis-tap.
-            duration = if (state.pendingUndo != null) SnackbarDuration.Long else SnackbarDuration.Short,
+            duration = if (undo != null) SnackbarDuration.Long else SnackbarDuration.Short,
         )
-        if (result == SnackbarResult.ActionPerformed) viewModel.undoLast() else viewModel.consumeToast()
+        if (result == SnackbarResult.ActionPerformed && undo != null) viewModel.undo(undo)
     }
 
     if (state.loading && state.groups.isEmpty()) {

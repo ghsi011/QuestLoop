@@ -96,7 +96,10 @@ private fun QuickAddDialog(
         keyboard?.show()
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    // Tap-outside/back must respect the same gate as the (disabled) Cancel button:
+    // dismissing finishes the activity and cancels viewModelScope, which can abort
+    // the in-flight save after it half-landed (quest persisted, confirmation lost).
+    Dialog(onDismissRequest = { if (!state.submitting) onDismiss() }) {
         Surface(
             shape = MaterialTheme.shapes.large,
             tonalElevation = 6.dp,

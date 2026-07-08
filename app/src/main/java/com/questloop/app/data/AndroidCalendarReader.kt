@@ -35,13 +35,23 @@ class AndroidCalendarReader(
         if (!prefs.profile.first().preferences.calendarBudgetEnabled) return@withContext null
         if (!hasPermission()) return@withContext null
 
-        val dayStartMillis = LocalDate.now(zone).atStartOfDay(zone).toInstant().toEpochMilli()
-        val dayEndMillis = dayStartMillis + DAY_MILLIS
+        // Real local-midnight boundaries (not start + 24h): a DST transition day is
+        // 23 or 25 hours long, so a fixed 24h window would miss (or over-include)
+        // late-evening events and skew every elapsed-minute below by up to an hour.
+        val today = LocalDate.now(zone)
+        val dayStartMillis = today.atStartOfDay(zone).toInstant().toEpochMilli()
+        val dayEndMillis = today.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
         val busy = queryBusy(dayStartMillis, dayEndMillis)
 
-        val nowMinute = ((now() - dayStartMillis) / MINUTE_MILLIS).toInt()
+        // Wall-clock minute of day, to match DayWindow's 08:00–22:00 semantics —
+        // elapsed-since-midnight drifts from the wall clock after a DST shift.
+        val nowMinute = minuteOfDay(now())
         FreeBusyCalculator.freeMinutes(busy, DayWindow.remainingFrom(nowMinute))
     }
+
+    /** Wall-clock minutes since local midnight for [millis]. */
+    private fun minuteOfDay(millis: Long): Int =
+        Instant.ofEpochMilli(millis).atZone(zone).toLocalTime().toSecondOfDay() / 60
 
     /**
      * Upcoming events for the deadline picker. Independent of [ProfilePreferences]'
@@ -77,8 +87,10 @@ class AndroidCalendarReader(
                 if (c.getInt(2) == 1) continue
                 val begin = c.getLong(0).coerceAtLeast(dayStartMillis)
                 val end = c.getLong(1).coerceAtMost(dayEndMillis)
-                val startMin = ((begin - dayStartMillis) / MINUTE_MILLIS).toInt()
-                val endMin = ((end - dayStartMillis) / MINUTE_MILLIS).toInt()
+                // Wall-clock minutes (see freeMinutesToday); an event clipped to the
+                // day's end maps to 24:00, which local-time conversion would fold to 0.
+                val startMin = minuteOfDay(begin)
+                val endMin = if (end == dayEndMillis) 24 * 60 else minuteOfDay(end)
                 if (endMin > startMin) intervals += Interval(startMin, endMin)
             }
         }

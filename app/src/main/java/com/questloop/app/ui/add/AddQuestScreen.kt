@@ -159,7 +159,7 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
 
         Button(
             onClick = { viewModel.addQuest(onDone) },
-            enabled = draft.title.isNotBlank(),
+            enabled = draft.title.isNotBlank() && !state.saving,
             modifier = Modifier.fillMaxWidth(),
         ) { Text("Add quest") }
 
