@@ -32,6 +32,8 @@ data class ReviewUiState(
     val aiAvailable: Boolean = false,
     /** True while the user-triggered AI summary is in flight. */
     val summarizing: Boolean = false,
+    /** Set when "Summarize with AI" fell back to the deterministic summary. */
+    val summaryNote: String? = null,
     /** Set when loading the tab failed; cleared by the next load attempt. */
     val error: String? = null,
 )
@@ -91,11 +93,28 @@ class ReviewViewModel(
         val monthly = _state.value.monthly ?: return
         if (_state.value.summarizing) return
         launchSafely {
-            _state.update { it.copy(summarizing = true) }
+            _state.update { it.copy(summarizing = true, summaryNote = null) }
             try {
-                val weeklySummary = repository.narrateReview(weekly).text
-                val monthlySummary = repository.narrateReview(monthly).text
-                _state.update { it.copy(weeklySummary = weeklySummary, monthlySummary = monthlySummary) }
+                val weeklyNarration = repository.narrateReview(weekly)
+                val monthlyNarration = repository.narrateReview(monthly)
+                _state.update {
+                    it.copy(
+                        weeklySummary = weeklyNarration.text,
+                        monthlySummary = monthlyNarration.text,
+                        // When the AI couldn't produce something, the .text above IS the
+                        // deterministic fallback — say so instead of silently passing it
+                        // off as the AI summary the user asked for. The two narrations
+                        // fail independently, so a mixed outcome needs the note too.
+                        // (The raw reason is in the exportable AI error log via narrateReview.)
+                        summaryNote = when {
+                            !weeklyNarration.fromAi && !monthlyNarration.fromAi ->
+                                "Couldn't get an AI summary — showing the standard ones instead."
+                            !weeklyNarration.fromAi || !monthlyNarration.fromAi ->
+                                "Couldn't get part of the AI summary — the rest is the standard write-up."
+                            else -> null
+                        },
+                    )
+                }
             } finally {
                 // Reset in finally so a failure can't strand the button on a spinner.
                 _state.update { it.copy(summarizing = false) }

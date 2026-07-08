@@ -108,6 +108,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.reviewContent(
                 }
             }
         }
+        state.summaryNote?.let { note ->
+            item {
+                Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
+        }
     }
     state.weekly?.let { item { ReviewCard(it, state.weeklySummary) } }
     state.monthly?.let { item { ReviewCard(it, state.monthlySummary) } }

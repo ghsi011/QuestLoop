@@ -379,4 +379,19 @@ class QuestRepositoryOpenAiTest {
         assertFalse("the rotated token must not reach the exportable log", logged.contains(rotated))
         assertTrue("the provider's reason itself is kept", logged.contains("OpenAI request failed (403)"))
     }
+
+    @Test
+    fun `settings save preserves the stored token slot instead of its stale snapshot`() = runTest {
+        // Tokens rotate on refresh: a Settings save built from a config read BEFORE
+        // an in-flight refresh persisted must not write the spent bundle back.
+        val rotated = OpenAiOAuth.OpenAiTokens("new-at", "new-rt", expiresAtEpochSec = 9_999)
+        prefs.ai = AiConfig(enabled = true, provider = AiProvider.OPENAI, openAiTokens = rotated)
+        val staleSnapshot = prefs.ai.copy(
+            openAiModel = "gpt-x",
+            openAiTokens = OpenAiOAuth.OpenAiTokens("old-at", "spent-rt"),
+        )
+        repo.setAiConfig(staleSnapshot)
+        assertEquals("gpt-x", prefs.ai.openAiModel) // the actual edit lands
+        assertEquals(rotated, prefs.ai.openAiTokens) // the token slot does not regress
+    }
 }

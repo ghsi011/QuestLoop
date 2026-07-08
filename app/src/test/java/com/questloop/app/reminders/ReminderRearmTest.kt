@@ -52,10 +52,10 @@ class ReminderRearmTest {
      * implicit system broadcast to a manifest-declared receiver, so register it for
      * the delivery (the manifest intent-filter is what wires it in production).
      */
-    private fun deliver(receiver: BroadcastReceiver, action: String) {
+    private fun deliver(receiver: BroadcastReceiver, action: String, configure: Intent.() -> Unit = {}) {
         ContextCompat.registerReceiver(ctx, receiver, IntentFilter(action), ContextCompat.RECEIVER_NOT_EXPORTED)
         try {
-            ctx.sendBroadcast(Intent(action))
+            ctx.sendBroadcast(Intent(action).apply(configure))
             shadowOf(Looper.getMainLooper()).idle()
         } finally {
             ctx.unregisterReceiver(receiver)
@@ -72,19 +72,73 @@ class ReminderRearmTest {
         assertTrue(shadow.scheduledAlarms.isEmpty())
     }
 
+    private fun armedTimes(shadow: org.robolectric.shadows.ShadowAlarmManager): Set<LocalTime> =
+        shadow.scheduledAlarms
+            .map { Instant.ofEpochMilli(it.triggerAtTime).atZone(ZoneId.systemDefault()).toLocalTime() }
+            .toSet()
+
     @Test
-    fun `a fired reminder re-arms the next occurrence`() {
+    fun `a fired reminder re-arms the next occurrence (and heals the sibling slot)`() {
         val shadow = shadowOf(alarmManager)
+        runBlocking { ProfileStore(ctx).setReminderConfig(ReminderConfig(enabled = true, morningHour = 8)) }
         ReminderScheduler(ctx).cancelAll()
         assertTrue(shadow.scheduledAlarms.isEmpty())
 
-        val intent = Intent(ctx, ReminderReceiver::class.java)
-            .putExtra(ReminderScheduler.EXTRA_SLOT, ReminderSlot.MORNING.name)
-            .putExtra(ReminderScheduler.EXTRA_HOUR, 8)
-            .putExtra(ReminderScheduler.EXTRA_MINUTE, 0)
-        ReminderReceiver().onReceive(ctx, intent)
+        deliver(ReminderReceiver(), ReminderScheduler.ACTION_REMINDER) {
+            putExtra(ReminderScheduler.EXTRA_SLOT, ReminderSlot.MORNING.name)
+            putExtra(ReminderScheduler.EXTRA_HOUR, 8)
+            putExtra(ReminderScheduler.EXTRA_MINUTE, 0)
+        }
+        // The extras-based self-heal re-arms the fired slot synchronously; the
+        // config reconcile then applies the whole config, arming BOTH slots.
+        awaitRearm { shadow.scheduledAlarms.size == 2 }
 
-        assertEquals(1, shadow.scheduledAlarms.size)
+        assertEquals(2, shadow.scheduledAlarms.size)
+    }
+
+    @Test
+    fun `a fired reminder does not stay armed after reminders were turned off`() {
+        // The race this guards: the alarm broadcast was already dispatched when the
+        // user toggled reminders off, so ReminderScheduler's cancel couldn't recall
+        // it — the receiver must re-check the config or the "disabled" series would
+        // re-arm itself daily forever. (The synchronous self-heal arms one alarm
+        // first; the config reconcile must then cancel it, so waiting for the empty
+        // state is a positive wait — a regression makes the poll time out.)
+        val shadow = shadowOf(alarmManager)
+        runBlocking { ProfileStore(ctx).setReminderConfig(ReminderConfig(enabled = false)) }
+        ReminderScheduler(ctx).cancelAll()
+        assertTrue(shadow.scheduledAlarms.isEmpty())
+
+        deliver(ReminderReceiver(), ReminderScheduler.ACTION_REMINDER) {
+            putExtra(ReminderScheduler.EXTRA_SLOT, ReminderSlot.MORNING.name)
+            putExtra(ReminderScheduler.EXTRA_HOUR, 8)
+            putExtra(ReminderScheduler.EXTRA_MINUTE, 0)
+        }
+        awaitRearm { shadow.scheduledAlarms.isEmpty() }
+
+        assertTrue(shadow.scheduledAlarms.isEmpty())
+    }
+
+    @Test
+    fun `a fired reminder re-arms at the configured time, not the armed intent's stale extras`() {
+        // Same dispatched-alarm race, other direction: the user moved the time while
+        // the old alarm was in flight; re-arming from the stale extras would keep
+        // overwriting the new series with the old time.
+        val shadow = shadowOf(alarmManager)
+        runBlocking { ProfileStore(ctx).setReminderConfig(ReminderConfig(enabled = true, morningHour = 9)) }
+        ReminderScheduler(ctx).cancelAll()
+
+        deliver(ReminderReceiver(), ReminderScheduler.ACTION_REMINDER) {
+            putExtra(ReminderScheduler.EXTRA_SLOT, ReminderSlot.MORNING.name)
+            putExtra(ReminderScheduler.EXTRA_HOUR, 8) // stale: armed before the change
+            putExtra(ReminderScheduler.EXTRA_MINUTE, 0)
+        }
+        awaitRearm {
+            LocalTime.of(9, 0) in armedTimes(shadow) && LocalTime.of(8, 0) !in armedTimes(shadow)
+        }
+
+        assertTrue(LocalTime.of(9, 0) in armedTimes(shadow))
+        assertTrue(LocalTime.of(8, 0) !in armedTimes(shadow))
     }
 
     @Test

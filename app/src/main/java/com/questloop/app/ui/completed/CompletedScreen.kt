@@ -14,7 +14,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -31,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.ui.components.CategoryDot
+import com.questloop.app.ui.components.OneShotSnackbarEffect
 import com.questloop.app.ui.components.SectionHeader
 import com.questloop.app.ui.components.pickableCategories
 import com.questloop.app.ui.components.pickableFrequencies
@@ -50,11 +50,12 @@ fun CompletedScreen(viewModel: CompletedViewModel, snackbarHostState: SnackbarHo
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { viewModel.load() }
-    LaunchedEffect(state.messageId) {
-        val msg = state.message ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Short)
-        viewModel.consumeMessage()
-    }
+    OneShotSnackbarEffect(
+        hostState = snackbarHostState,
+        messageId = state.messageId,
+        message = state.message,
+        consume = viewModel::consumeMessage,
+    )
 
     // Stateless body so it's driveable on the JVM (Robolectric) without a VM/lifecycle.
     CompletedContent(

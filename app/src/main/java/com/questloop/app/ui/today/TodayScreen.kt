@@ -22,9 +22,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -48,6 +46,7 @@ import com.questloop.app.ui.components.CategoryDot
 import com.questloop.app.ui.components.DifficultyPips
 import com.questloop.app.ui.components.InfoCard
 import com.questloop.app.ui.components.LevelRing
+import com.questloop.app.ui.components.UndoableSnackbarEffect
 import com.questloop.core.model.CompletionResult
 import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestInstance
@@ -83,17 +82,14 @@ fun TodayScreen(
     // tabs (e.g. completing a quest from the Quests backlog).
     LaunchedEffect(Unit) { viewModel.refresh() }
 
-    LaunchedEffect(state.toastId) {
-        val message = state.toast ?: return@LaunchedEffect
-        val result = snackbarHostState.showSnackbar(
-            message = message,
-            actionLabel = if (state.pendingUndo != null) "Undo" else null,
-            // Keep undoable messages up longer — ~4s is too short to read the
-            // outcome and still reverse a mis-tap.
-            duration = if (state.pendingUndo != null) SnackbarDuration.Long else SnackbarDuration.Short,
-        )
-        if (result == SnackbarResult.ActionPerformed) viewModel.undoLast() else viewModel.consumeToast()
-    }
+    UndoableSnackbarEffect(
+        hostState = snackbarHostState,
+        messageId = state.toastId,
+        message = state.toast,
+        undo = state.pendingUndo,
+        consume = viewModel::consumeToast,
+        onUndo = viewModel::undo,
+    )
 
     fun buzz() = haptics.performHapticFeedback(HapticFeedbackType.LongPress)
 

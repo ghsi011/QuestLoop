@@ -14,7 +14,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -32,9 +31,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.questloop.app.ui.Money
 import com.questloop.app.ui.components.InfoCard
+import com.questloop.app.ui.components.OneShotSnackbarEffect
 import com.questloop.app.ui.components.SectionHeader
 import com.questloop.core.model.Quest
 import com.questloop.core.reward.RewardAllowanceCalculator
+import java.text.DecimalFormatSymbols
 
 @Composable
 fun RewardsScreen(viewModel: RewardsViewModel, snackbarHostState: SnackbarHostState) {
@@ -44,13 +45,12 @@ fun RewardsScreen(viewModel: RewardsViewModel, snackbarHostState: SnackbarHostSt
 
     // Refresh on re-entry so the allowance reflects quests completed elsewhere.
     LaunchedEffect(Unit) { viewModel.load() }
-    // Key on the monotonic messageId, not the string, so an identical confirmation
-    // shown twice (e.g. saving the same budget again) isn't swallowed.
-    LaunchedEffect(state.messageId) {
-        val msg = state.savedMessage ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Short)
-        viewModel.consumeSavedMessage()
-    }
+    OneShotSnackbarEffect(
+        hostState = snackbarHostState,
+        messageId = state.messageId,
+        message = state.savedMessage,
+        consume = viewModel::consumeSavedMessage,
+    )
 
     val parsedBudget = budgetText.toDoubleOrNull()
     val budgetValid = budgetText.isBlank() || parsedBudget != null
@@ -90,8 +90,17 @@ fun RewardsScreen(viewModel: RewardsViewModel, snackbarHostState: SnackbarHostSt
         OutlinedTextField(
             value = budgetText,
             onValueChange = { input ->
-                // Digits and at most one decimal point.
-                val filtered = input.filter { c -> c.isDigit() || c == '.' }
+                // Digits and at most one decimal point. The device locale decides what
+                // a comma means: in comma-decimal locales (where KeyboardType.Decimal
+                // offers a comma key) it's the decimal point — dropping it would turn
+                // 12,50 into 1250 — while in dot-decimal locales it's a grouping
+                // separator — treating it as a point would turn 1,500 into 1.5.
+                val commaIsDecimal = DecimalFormatSymbols.getInstance().decimalSeparator == ','
+                val filtered = if (commaIsDecimal) {
+                    input.filter { c -> c.isDigit() || c == ',' }.replace(',', '.')
+                } else {
+                    input.filter { c -> c.isDigit() || c == '.' }
+                }
                 val firstDot = filtered.indexOf('.')
                 budgetText = if (firstDot < 0) filtered
                 else filtered.substring(0, firstDot + 1) + filtered.substring(firstDot + 1).replace(".", "")

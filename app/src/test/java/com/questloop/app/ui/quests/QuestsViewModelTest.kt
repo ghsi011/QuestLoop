@@ -124,7 +124,7 @@ class QuestsViewModelTest {
         val vm = QuestsViewModel(repo)
         vm.complete(quest())
         assertTrue(repo.totalXp() > 0)
-        vm.undoLast()
+        vm.undo(vm.state.value.pendingUndo!!)
         assertEquals(0L, repo.totalXp())
         assertNull(vm.state.value.toast)
         assertNull(vm.state.value.pendingUndo)

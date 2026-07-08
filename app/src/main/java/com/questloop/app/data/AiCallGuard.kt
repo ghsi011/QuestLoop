@@ -23,10 +23,11 @@ object NoopAiCallGuard : AiCallGuard {
 class WakeLockAiCallGuard(
     context: Context,
     // Safety bound only (release happens in `finally`). Must comfortably outlast
-    // the slowest provider call — OpenAI allows 20s connect + 120s read, possibly
-    // preceded by a token refresh and one 401 retry — so the lock can't lapse
+    // the slowest provider pipeline — OpenAI's worst case is a token refresh
+    // (20s connect + 30s read), the call (20s + 120s), a 401-forced second
+    // refresh (50s) and the retried call (140s) ≈ 380s — so the lock can't lapse
     // mid-response, while still capping the battery cost of a leak.
-    private val timeoutMs: Long = 300_000L,
+    private val timeoutMs: Long = 480_000L,
 ) : AiCallGuard {
 
     private val powerManager = context.applicationContext.getSystemService(Context.POWER_SERVICE) as? PowerManager

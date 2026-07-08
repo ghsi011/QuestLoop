@@ -6,10 +6,12 @@ import com.questloop.app.util.launchSafely
 import com.questloop.core.model.CompletionResult
 import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.Quest
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withContext
 
 data class QuickCompleteUiState(
     /** True until the quest has been looked up. */
@@ -75,7 +77,10 @@ class QuickCompleteViewModel(
         if (_state.value.submitting) return
         launchSafely(onError = { _state.update { it.copy(submitting = false, error = "Something went wrong — try again.") } }) {
             _state.update { it.copy(submitting = true, error = null) }
-            action()
+            // Non-cancellable: the dialog stays dismissable while submitting, and
+            // finishing the activity cancels viewModelScope — a started complete/skip
+            // must still land rather than be silently dropped mid-write.
+            withContext(NonCancellable) { action() }
             _state.update { it.copy(submitting = false, doneMessage = message) }
         }
     }

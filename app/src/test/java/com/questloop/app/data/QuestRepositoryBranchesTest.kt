@@ -86,6 +86,11 @@ class QuestRepositoryBranchesTest {
                 preferences = state.value.preferences.copy(sensitiveNotificationsOptIn = value),
             )
         }
+        override suspend fun setCalendarBudgetEnabled(value: Boolean) {
+            state.value = state.value.copy(
+                preferences = state.value.preferences.copy(calendarBudgetEnabled = value),
+            )
+        }
         override suspend fun setHabits(habits: List<Habit>) {
             state.value = state.value.copy(habits = habits)
         }
@@ -283,6 +288,7 @@ class QuestRepositoryBranchesTest {
         repo.setBudgetCap(75.0)
         prefs.setStreakGraceDays(2)
         repo.setFirstDayOfWeek(java.time.DayOfWeek.MONDAY) // non-default, must survive the round-trip
+        repo.setCalendarBudgetEnabled(true) // non-default, must survive the round-trip
 
         val json = repo.exportJson()
         repo.deleteAllData()
@@ -298,6 +304,7 @@ class QuestRepositoryBranchesTest {
         assertEquals(75.0, restored.preferences.monthlyRewardBudgetCap, 0.0001)
         assertEquals(2, restored.preferences.streakGraceDays)
         assertEquals(java.time.DayOfWeek.MONDAY, restored.preferences.firstDayOfWeek)
+        assertTrue("calendar budgeting must survive an export/import round-trip", restored.preferences.calendarBudgetEnabled)
     }
 
     // --- completion result branches ----------------------------------------

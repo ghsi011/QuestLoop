@@ -217,6 +217,29 @@ class QuestRepositoryCompletionStylesTest {
     }
 
     @Test
+    fun `zero-progress partials do not count as active days for the allowance`() = runTest {
+        repo.setBudgetCap(30.0)
+        val water = quest("water", style = CompletionStyle.QUANTITATIVE, target = 8, category = QuestCategory.HEALTH)
+        repo.addQuest(water)
+        repo.completeMeasured(water, epochDay = 1, value = 8)
+        // "Logged 0 of 8" on two more days: honest and penalty-free, but per the
+        // ledger's invariant (CompletionDao.activeDays) NOT real activity — it must
+        // not farm the allowance's consistency factor.
+        repo.completeMeasured(water, epochDay = 2, value = 0)
+        repo.completeMeasured(water, epochDay = 3, value = 0)
+        val result = repo.allowance(fromEpochDay = 1, toEpochDay = 30)
+        val expected = com.questloop.core.reward.RewardAllowanceCalculator.calculate(
+            com.questloop.core.reward.RewardAllowanceCalculator.AllowanceInput(
+                monthlyBudgetCap = 30.0,
+                records = repo.completions.first().filterNot { it.isMeta },
+                activeDays = 1, // only day 1 had real progress
+                daysInMonth = 30,
+            ),
+        )
+        assertEquals(expected.suggestedAllowance, result.suggestedAllowance, 0.0001)
+    }
+
+    @Test
     fun `safety signals query returns no signals on an empty ledger`() = runTest {
         // Nothing logged -> no overtraining/burnout signals to raise.
         assertTrue(repo.safetySignals(today = 30).isEmpty())

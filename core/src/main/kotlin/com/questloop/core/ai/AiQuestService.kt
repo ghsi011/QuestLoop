@@ -230,15 +230,68 @@ class AiQuestService(
         rationale = q.rationale,
     )
 
-    /** Extracts the JSON array from a possibly-chatty/markdown-fenced response. */
+    /**
+     * Extracts the JSON array from a possibly-chatty/markdown-fenced response.
+     * Chatty preambles can themselves contain brackets ("Sure! [1] Here…"), so a
+     * naive first-`[`…last-`]` slice would poison the whole batch — instead each
+     * `[` is tried as a candidate start (with the matching `]` found by walking
+     * the balance, string-aware) until one yields a USABLE quest. "Usable" (some
+     * non-blank title) matters: every [AiQuestDto] field has a default, so any
+     * array of objects — e.g. an echoed example or a "[{"step":1}]" plan — would
+     * otherwise decode non-empty and hijack the result from the real array.
+     * Candidates are pruned to arrays that can hold objects and capped so a
+     * degenerate bracket-storm response can't pin the CPU inside the AI wake lock.
+     */
     internal fun parse(raw: String): List<AiQuestDto> {
-        val start = raw.indexOf('[')
-        val end = raw.lastIndexOf(']')
-        if (start < 0 || end <= start) return emptyList()
-        val slice = raw.substring(start, end + 1)
-        return runCatching {
-            json.decodeFromString(ListSerializer(AiQuestDto.serializer()), slice)
-        }.getOrDefault(emptyList())
+        var start = raw.indexOf('[')
+        var attempts = 0
+        while (start >= 0 && attempts < MAX_PARSE_CANDIDATES) {
+            // The payload is an array of objects: skip candidates like "[1]" or
+            // "[see below]" cheaply, without a balance walk or a decode attempt.
+            var j = start + 1
+            while (j < raw.length && raw[j].isWhitespace()) j++
+            if (j >= raw.length || (raw[j] != '{' && raw[j] != ']')) {
+                start = raw.indexOf('[', start + 1)
+                continue
+            }
+            attempts++
+            val end = matchingBracket(raw, start)
+            if (end > start) {
+                val decoded = runCatching {
+                    json.decodeFromString(ListSerializer(AiQuestDto.serializer()), raw.substring(start, end + 1))
+                }.getOrNull()
+                if (decoded != null && decoded.any { it.title.isNotBlank() }) return decoded
+            }
+            start = raw.indexOf('[', start + 1)
+        }
+        return emptyList()
+    }
+
+    /**
+     * Index of the `]` that closes the `[` at [start], skipping brackets inside
+     * JSON string literals (and their escapes); -1 when unbalanced.
+     */
+    private fun matchingBracket(raw: String, start: Int): Int {
+        var depth = 0
+        var inString = false
+        var i = start
+        while (i < raw.length) {
+            val c = raw[i]
+            when {
+                inString -> when (c) {
+                    '\\' -> i++ // skip the escaped char
+                    '"' -> inString = false
+                }
+                c == '"' -> inString = true
+                c == '[' -> depth++
+                c == ']' -> {
+                    depth--
+                    if (depth == 0) return i
+                }
+            }
+            i++
+        }
+        return -1
     }
 
     private fun toQuest(index: Int, dto: AiQuestDto): Quest? {
@@ -272,6 +325,10 @@ class AiQuestService(
     companion object {
         /** Plain copy for connectivity failures; the raw exception rides along in [Suggestion.errorDetail]. */
         private const val CANT_REACH_AI = "Couldn't reach the AI. Check your connection and try again."
+
+        /** Decode-attempt cap for [parse] — a real response has one payload array
+         *  plus at most a few bracketed asides; beyond this it's garbage. */
+        private const val MAX_PARSE_CANDIDATES = 20
 
         /** The object-shape spec shared by the multi- and single-quest instructions. */
         private val SCHEMA_BODY: String = buildString {
