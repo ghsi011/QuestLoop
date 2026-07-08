@@ -1,12 +1,9 @@
 package com.questloop.core.ai.openai
 
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
@@ -136,17 +133,4 @@ object OpenAiResponsesCodec {
     /** Some responses expose a convenience `output_text` string at the top level. */
     private fun topLevelText(response: JsonObject): String =
         response["output_text"].stringOrNull().orEmpty()
-
-    // The reverse-engineered backend can drift: any field we expect to be a string
-    // may show up as an object/array, and `.jsonPrimitive` THROWS on those. These
-    // shape-tolerant accessors keep the documented "return empty on garbage"
-    // contract (the app layer only catches IOException around this codec).
-    private fun kotlinx.serialization.json.JsonElement?.stringOrNull(): String? =
-        (this as? JsonPrimitive)?.contentOrNull
-
-    private fun kotlinx.serialization.json.JsonElement.asObject(): JsonObject? =
-        this as? JsonObject
-
-    private fun kotlinx.serialization.json.JsonElement.asArray(): JsonArray? =
-        this as? JsonArray
 }

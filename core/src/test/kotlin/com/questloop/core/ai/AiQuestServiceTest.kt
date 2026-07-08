@@ -165,6 +165,24 @@ class AiQuestServiceTest {
     }
 
     @Test
+    fun `a preamble array of non-quest objects cannot hijack the real array`() = runTest {
+        // Every AiQuestDto field has a default, so [{"step":1}] decodes non-empty —
+        // extraction must require a usable (titled) quest, not just a decodable array.
+        val svc = service("Plan: [{\"step\":1},{\"step\":2}]\n[{\"title\":\"Walk\",\"category\":\"HEALTH\",\"difficulty\":\"EASY\"}]")
+        val result = svc.suggest(AiQuestService.Input(todos = listOf("walk")))
+        assertTrue(result.fromAi)
+        assertEquals("Walk", result.quests.single().title)
+    }
+
+    @Test
+    fun `a response with only non-quest arrays falls back`() = runTest {
+        val svc = service("Plan: [{\"step\":1}] and that's all!")
+        val result = svc.suggest(AiQuestService.Input(todos = listOf("Email landlord")))
+        assertFalse(result.fromAi)
+        assertEquals("Email landlord", result.quests.first().title) // FallbackSuggester
+    }
+
+    @Test
     fun `bracket matching skips brackets inside string values`() = runTest {
         val svc = service("[{\"title\":\"Sort files [inbox]\",\"category\":\"LIFE_ADMIN\",\"difficulty\":\"EASY\"}]")
         val result = svc.suggest(AiQuestService.Input(todos = listOf("sort")))

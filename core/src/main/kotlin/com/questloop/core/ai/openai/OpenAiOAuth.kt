@@ -2,12 +2,7 @@ package com.questloop.core.ai.openai
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import java.net.URLEncoder
 import java.security.MessageDigest
@@ -166,7 +161,7 @@ object OpenAiOAuth {
         val access = obj["access_token"].stringOrNull()?.takeIf { it.isNotBlank() } ?: return null
         val refresh = obj["refresh_token"].stringOrNull()?.takeIf { it.isNotBlank() }
             ?: priorRefresh
-        val expiresIn = (obj["expires_in"] as? JsonPrimitive)?.intOrNull?.toLong()?.takeIf { it > 0 }
+        val expiresIn = obj["expires_in"].intValueOrNull()?.toLong()?.takeIf { it > 0 }
             ?: DEFAULT_EXPIRES_IN_SEC
         val idToken = obj["id_token"].stringOrNull().orEmpty()
         // The account id can live in the id_token or, failing that, the access token.
@@ -188,18 +183,12 @@ object OpenAiOAuth {
     fun accountId(token: String): String? {
         val claims = decodeJwtPayload(token) ?: return null
         claims[ACCOUNT_ID_CLAIM].stringOrNull()?.takeIf { it.isNotBlank() }?.let { return it }
-        (claims[AUTH_CLAIM] as? JsonObject)?.get(ACCOUNT_ID_CLAIM).stringOrNull()
+        claims[AUTH_CLAIM].asObject()?.get(ACCOUNT_ID_CLAIM).stringOrNull()
             ?.takeIf { it.isNotBlank() }?.let { return it }
-        return (claims["organizations"] as? JsonArray)
-            ?.firstOrNull()?.let { it as? JsonObject }
+        return claims["organizations"].asArray()
+            ?.firstOrNull().asObject()
             ?.get("id").stringOrNull()?.takeIf { it.isNotBlank() }
     }
-
-    // Token/JWT shapes come from an external backend and can drift: any field we
-    // expect to be a string may arrive as an object/array, and `.jsonPrimitive` /
-    // `.jsonObject` THROW on a mismatch. These keep the documented "return null
-    // on garbage" contract for [parseTokenResponse] and [accountId].
-    private fun JsonElement?.stringOrNull(): String? = (this as? JsonPrimitive)?.contentOrNull
 
     /** Base64url-decodes the middle segment of a JWT into its claims object. */
     fun decodeJwtPayload(jwt: String): JsonObject? {

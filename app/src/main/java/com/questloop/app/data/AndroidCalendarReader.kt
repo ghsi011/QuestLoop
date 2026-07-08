@@ -89,8 +89,14 @@ class AndroidCalendarReader(
                 val end = c.getLong(1).coerceAtMost(dayEndMillis)
                 // Wall-clock minutes (see freeMinutesToday); an event clipped to the
                 // day's end maps to 24:00, which local-time conversion would fold to 0.
+                // Wall-clock time is non-monotonic across a DST fall-back fold: an
+                // event spanning the repeated hour can map to endMin < startMin, which
+                // would silently drop the busy block — keep at least its real duration
+                // from its wall-clock start instead.
                 val startMin = minuteOfDay(begin)
-                val endMin = if (end == dayEndMillis) 24 * 60 else minuteOfDay(end)
+                val realMinutes = ((end - begin) / MINUTE_MILLIS).toInt()
+                val endMin = if (end == dayEndMillis) 24 * 60
+                else maxOf(minuteOfDay(end), startMin + realMinutes)
                 if (endMin > startMin) intervals += Interval(startMin, endMin)
             }
         }

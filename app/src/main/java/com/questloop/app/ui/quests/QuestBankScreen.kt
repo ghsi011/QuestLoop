@@ -13,11 +13,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,19 +24,19 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.questloop.app.ui.components.CategoryDot
 import com.questloop.app.ui.components.DifficultyPips
+import com.questloop.app.ui.components.OneShotSnackbarEffect
 import com.questloop.core.model.Quest
 
 @Composable
 fun QuestBankScreen(viewModel: QuestBankViewModel, snackbarHostState: SnackbarHostState) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    LaunchedEffect(state.toastId) {
-        val message = state.toast ?: return@LaunchedEffect
-        // Consume before showing: the effect re-runs on re-entering composition, so
-        // an unconsumed toast (left by navigating away mid-snackbar) would replay.
-        viewModel.consumeToast()
-        snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
-    }
+    OneShotSnackbarEffect(
+        hostState = snackbarHostState,
+        messageId = state.toastId,
+        message = state.toast,
+        consume = viewModel::consumeToast,
+    )
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),

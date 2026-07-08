@@ -72,8 +72,13 @@ class ReminderRearmTest {
         assertTrue(shadow.scheduledAlarms.isEmpty())
     }
 
+    private fun armedTimes(shadow: org.robolectric.shadows.ShadowAlarmManager): Set<LocalTime> =
+        shadow.scheduledAlarms
+            .map { Instant.ofEpochMilli(it.triggerAtTime).atZone(ZoneId.systemDefault()).toLocalTime() }
+            .toSet()
+
     @Test
-    fun `a fired reminder re-arms the next occurrence`() {
+    fun `a fired reminder re-arms the next occurrence (and heals the sibling slot)`() {
         val shadow = shadowOf(alarmManager)
         runBlocking { ProfileStore(ctx).setReminderConfig(ReminderConfig(enabled = true, morningHour = 8)) }
         ReminderScheduler(ctx).cancelAll()
@@ -84,17 +89,21 @@ class ReminderRearmTest {
             putExtra(ReminderScheduler.EXTRA_HOUR, 8)
             putExtra(ReminderScheduler.EXTRA_MINUTE, 0)
         }
-        awaitRearm { shadow.scheduledAlarms.size == 1 }
+        // The extras-based self-heal re-arms the fired slot synchronously; the
+        // config reconcile then applies the whole config, arming BOTH slots.
+        awaitRearm { shadow.scheduledAlarms.size == 2 }
 
-        assertEquals(1, shadow.scheduledAlarms.size)
+        assertEquals(2, shadow.scheduledAlarms.size)
     }
 
     @Test
-    fun `a fired reminder does not re-arm after reminders were turned off`() {
+    fun `a fired reminder does not stay armed after reminders were turned off`() {
         // The race this guards: the alarm broadcast was already dispatched when the
         // user toggled reminders off, so ReminderScheduler's cancel couldn't recall
         // it — the receiver must re-check the config or the "disabled" series would
-        // re-arm itself daily forever.
+        // re-arm itself daily forever. (The synchronous self-heal arms one alarm
+        // first; the config reconcile must then cancel it, so waiting for the empty
+        // state is a positive wait — a regression makes the poll time out.)
         val shadow = shadowOf(alarmManager)
         runBlocking { ProfileStore(ctx).setReminderConfig(ReminderConfig(enabled = false)) }
         ReminderScheduler(ctx).cancelAll()
@@ -105,9 +114,7 @@ class ReminderRearmTest {
             putExtra(ReminderScheduler.EXTRA_HOUR, 8)
             putExtra(ReminderScheduler.EXTRA_MINUTE, 0)
         }
-        // Give the receiver's background config read time to complete either way.
-        Thread.sleep(500)
-        shadowOf(Looper.getMainLooper()).idle()
+        awaitRearm { shadow.scheduledAlarms.isEmpty() }
 
         assertTrue(shadow.scheduledAlarms.isEmpty())
     }
@@ -126,11 +133,12 @@ class ReminderRearmTest {
             putExtra(ReminderScheduler.EXTRA_HOUR, 8) // stale: armed before the change
             putExtra(ReminderScheduler.EXTRA_MINUTE, 0)
         }
-        awaitRearm { shadow.scheduledAlarms.size == 1 }
+        awaitRearm {
+            LocalTime.of(9, 0) in armedTimes(shadow) && LocalTime.of(8, 0) !in armedTimes(shadow)
+        }
 
-        val armed = Instant.ofEpochMilli(shadow.scheduledAlarms.single().triggerAtTime)
-            .atZone(ZoneId.systemDefault()).toLocalTime()
-        assertEquals(LocalTime.of(9, 0), armed)
+        assertTrue(LocalTime.of(9, 0) in armedTimes(shadow))
+        assertTrue(LocalTime.of(8, 0) !in armedTimes(shadow))
     }
 
     @Test

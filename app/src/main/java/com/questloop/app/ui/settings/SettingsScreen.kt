@@ -59,6 +59,7 @@ import com.questloop.app.data.AiConfig
 import com.questloop.app.data.AiProvider
 import com.questloop.app.reminders.ReminderScheduler
 import com.questloop.app.ui.components.InfoCard
+import com.questloop.app.ui.components.OneShotSnackbarEffect
 import com.questloop.app.ui.components.SectionHeader
 import com.questloop.app.ui.components.pretty
 import androidx.compose.ui.platform.LocalConfiguration
@@ -100,16 +101,13 @@ fun SettingsScreen(
         runCatching { ReminderScheduler(context).apply(state.reminders) }
     }
 
-    // Confirm saves so the user knows a setting took effect. Key on the monotonic
-    // messageId, not the string, so an identical confirmation shown twice (e.g.
-    // re-tapping a focus chip) isn't swallowed.
-    LaunchedEffect(state.messageId) {
-        val message = state.savedMessage ?: return@LaunchedEffect
-        // Consume before showing: the effect re-runs on re-entering composition, so
-        // an unconsumed message (left by navigating away mid-snackbar) would replay.
-        viewModel.consumeSavedMessage()
-        snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
-    }
+    // Confirm saves so the user knows a setting took effect.
+    OneShotSnackbarEffect(
+        hostState = snackbarHostState,
+        messageId = state.messageId,
+        message = state.savedMessage,
+        consume = viewModel::consumeSavedMessage,
+    )
 
     val scope = rememberCoroutineScope()
     val notifPermissionLauncher = rememberLauncherForActivityResult(
@@ -300,6 +298,7 @@ fun SettingsScreen(
                 }
                 viewModel.setReminders(updated)
             },
+            onAdjustHour = viewModel::adjustReminderHour,
         )
 
         SectionHeader("Focus areas")
@@ -364,6 +363,7 @@ fun SettingsScreen(
 private fun RemindersSection(
     config: com.questloop.app.data.ReminderConfig,
     onChange: (com.questloop.app.data.ReminderConfig) -> Unit,
+    onAdjustHour: (morning: Boolean, delta: Int) -> Unit,
 ) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -376,15 +376,17 @@ private fun RemindersSection(
                 Switch(checked = config.enabled, onCheckedChange = { onChange(config.copy(enabled = it)) })
             }
             if (config.enabled) {
+                // Delta-based (like the time/day stepper): computing the next hour from
+                // this composable's config snapshot would let rapid taps collapse.
                 HourRow(
                     label = "Morning",
                     hour = config.morningHour,
-                    onHour = { onChange(config.copy(morningHour = it)) },
+                    onAdjust = { delta -> onAdjustHour(true, delta) },
                 )
                 HourRow(
                     label = "Evening",
                     hour = config.eveningHour,
-                    onHour = { onChange(config.copy(eveningHour = it)) },
+                    onAdjust = { delta -> onAdjustHour(false, delta) },
                 )
             }
             Text(
@@ -396,7 +398,7 @@ private fun RemindersSection(
 }
 
 @Composable
-private fun HourRow(label: String, hour: Int, onHour: (Int) -> Unit) {
+private fun HourRow(label: String, hour: Int, onAdjust: (Int) -> Unit) {
     Row(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -405,12 +407,12 @@ private fun HourRow(label: String, hour: Int, onHour: (Int) -> Unit) {
         Text(label, modifier = Modifier.weight(1f))
         // Glyph-only steppers: name the action for TalkBack ("Earlier morning hour").
         OutlinedButton(
-            onClick = { onHour((hour - 1).coerceAtLeast(0)) },
+            onClick = { onAdjust(-1) },
             modifier = Modifier.semantics { contentDescription = "Earlier ${label.lowercase()} hour" },
         ) { Text("−") }
         Text("%02d:00".format(hour), style = MaterialTheme.typography.bodyMedium)
         OutlinedButton(
-            onClick = { onHour((hour + 1).coerceAtMost(23)) },
+            onClick = { onAdjust(+1) },
             modifier = Modifier.semantics { contentDescription = "Later ${label.lowercase()} hour" },
         ) { Text("+") }
     }

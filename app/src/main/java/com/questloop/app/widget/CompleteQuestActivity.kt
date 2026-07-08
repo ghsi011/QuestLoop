@@ -96,10 +96,11 @@ private fun QuickCompleteDialog(
         }
     }
 
-    // Tap-outside/back must respect the same gate as the (disabled) Cancel button:
-    // dismissing finishes the activity and cancels viewModelScope, which could drop
-    // a "Mark done" the user believes was recorded.
-    Dialog(onDismissRequest = { if (!state.submitting) onDismiss() }) {
+    // Dismissal stays available even mid-submit — a started complete/skip runs
+    // non-cancellably in the ViewModel, so leaving can't drop a "Mark done" the
+    // user believes they recorded, and blocking would trap them in a modal if the
+    // write ever stalled (e.g. behind an import holding the completion mutex).
+    Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = MaterialTheme.shapes.large,
             tonalElevation = 6.dp,
@@ -137,7 +138,8 @@ private fun QuickCompleteDialog(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TextButton(onClick = onDismiss, enabled = !state.submitting) { Text("Cancel") }
+                    // Always enabled — leaving mid-submit is safe (see the Dialog comment).
+                    TextButton(onClick = onDismiss) { Text("Cancel") }
                     Spacer(Modifier.width(8.dp))
                     TextButton(onClick = viewModel::skip, enabled = !state.submitting) { Text("Skip today") }
                 }

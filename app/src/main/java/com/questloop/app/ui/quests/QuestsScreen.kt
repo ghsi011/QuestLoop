@@ -19,13 +19,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,6 +38,7 @@ import com.questloop.app.ui.components.CategoryDot
 import com.questloop.app.ui.components.DifficultyPips
 import com.questloop.app.ui.components.InfoCard
 import com.questloop.app.ui.components.QuestCompletionControls
+import com.questloop.app.ui.components.UndoableSnackbarEffect
 import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestFrequency
 
@@ -53,24 +51,14 @@ fun QuestsScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var pendingDelete by remember { mutableStateOf<Quest?>(null) }
 
-    LaunchedEffect(state.toastId) {
-        val message = state.toast ?: return@LaunchedEffect
-        val undo = state.pendingUndo
-        // Consume BEFORE showing: this effect re-runs whenever the screen re-enters
-        // composition (same toastId), so a toast left unconsumed by navigating away
-        // mid-snackbar would otherwise replay on return — with a live "Undo" for a
-        // completion the user considers settled. The captured [undo] keeps the
-        // action working for the snackbar actually on screen.
-        viewModel.consumeToast()
-        val result = snackbarHostState.showSnackbar(
-            message = message,
-            actionLabel = if (undo != null) "Undo" else null,
-            // Keep undoable messages up longer — ~4s is too short to read the
-            // outcome and still reverse a mis-tap.
-            duration = if (undo != null) SnackbarDuration.Long else SnackbarDuration.Short,
-        )
-        if (result == SnackbarResult.ActionPerformed && undo != null) viewModel.undo(undo)
-    }
+    UndoableSnackbarEffect(
+        hostState = snackbarHostState,
+        messageId = state.toastId,
+        message = state.toast,
+        undo = state.pendingUndo,
+        consume = viewModel::consumeToast,
+        onUndo = viewModel::undo,
+    )
 
     if (state.loading && state.groups.isEmpty()) {
         Column(

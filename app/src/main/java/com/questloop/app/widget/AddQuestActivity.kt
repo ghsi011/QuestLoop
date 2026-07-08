@@ -96,10 +96,12 @@ private fun QuickAddDialog(
         keyboard?.show()
     }
 
-    // Tap-outside/back must respect the same gate as the (disabled) Cancel button:
-    // dismissing finishes the activity and cancels viewModelScope, which can abort
-    // the in-flight save after it half-landed (quest persisted, confirmation lost).
-    Dialog(onDismissRequest = { if (!state.submitting) onDismiss() }) {
+    // Dismissal stays available even mid-submit — the AI round trip can run for
+    // minutes on a bad connection, and trapping the user in a modal over their home
+    // screen is worse than an aborted attempt. Leaving is safe: the repository
+    // persists the quest non-cancellably, so a dismissal can either abort cleanly
+    // before the save or let the already-started save finish in the background.
+    Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = MaterialTheme.shapes.large,
             tonalElevation = 6.dp,
@@ -134,7 +136,9 @@ private fun QuickAddDialog(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TextButton(onClick = onDismiss, enabled = !state.submitting) { Text("Cancel") }
+                    // Always enabled — the user's way out of a slow AI call (see the
+                    // Dialog comment above for why leaving mid-submit is safe).
+                    TextButton(onClick = onDismiss) { Text("Cancel") }
                     Spacer(Modifier.width(8.dp))
                     Button(
                         onClick = viewModel::submit,

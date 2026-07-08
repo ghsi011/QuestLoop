@@ -97,6 +97,15 @@ class QuestRepository(
     /** Days of history considered for safety signals. */
     private val safetyWindowDays = 30L
 
+    /**
+     * The habit/bad-habit/goal-derived quests. These are NOT in the quests table
+     * (the recurring AGENTS.md gotcha), so every "the user's existing quests" read
+     * must union them in — route new call sites through here so the next derived
+     * source only has to be added once.
+     */
+    private fun derivedQuests(profile: UserProfile): List<Quest> =
+        HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals)
+
     val quests: Flow<List<Quest>> =
         questDao.observeActive().map { list -> list.map { it.toModel() } }.distinctUntilChanged()
 
@@ -337,7 +346,7 @@ class QuestRepository(
     private suspend fun buildDayContext(epochDay: Long): DayContext {
         val profile = profileStore.profile.first()
         val stored = questDao.getActive().map { it.toModel() }
-        val derivedHabits = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals)
+        val derivedHabits = derivedQuests(profile)
         val system = RoutineQuestFactory.all() + AdminFundFactory.all()
         val candidates = (stored + derivedHabits + system).associateBy { it.id }
         val lastCompleted = completionDao.lastCompletedDays().associate { it.questId to it.lastDay }
@@ -455,7 +464,7 @@ class QuestRepository(
             val profile = profileStore.profile.first()
             val stored = questDao.getAll().map { it.toModel() }
             val storedIds = stored.map { it.id }.toSet()
-            val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals)
+            val derived = derivedQuests(profile)
             val routines = RoutineQuestFactory.all()
             val admin = listOf(
                 AdminFundFactory.openPotQuest(), AdminFundFactory.fundMonthQuest(), AdminFundFactory.claimQuest(),
@@ -690,7 +699,7 @@ class QuestRepository(
     ): PeriodPlanner.PeriodPlan {
         val profile = profileStore.profile.first()
         val lastCompleted = completionDao.lastCompletedDays().associate { it.questId to it.lastDay }
-        val derived = HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals) +
+        val derived = derivedQuests(profile) +
             adminFundQuests(fromEpochDay, profile, lastCompleted)
         val candidates = questDao.getActive().map { it.toModel() } + derived
         return periodPlanner.plan(
@@ -1024,8 +1033,7 @@ class QuestRepository(
             // Dedup AI output against quests the user already has — including the
             // habit/bad-habit/goal-derived ones, which are NOT in the quests table
             // but surface in every plan just the same.
-            existing = questDao.getActive().map { it.toModel() } +
-                HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals),
+            existing = questDao.getActive().map { it.toModel() } + derivedQuests(profile),
         )
         return if (config.usable) {
             // Hold a CPU wake lock so a slow response isn't dropped if the screen sleeps.
@@ -1068,7 +1076,11 @@ class QuestRepository(
             id = "user-${java.util.UUID.randomUUID()}",
             title = first.title.trim(),
         )
-        addQuest(quest)
+        // Non-cancellable: the widget dialog stays dismissable during the (slow) AI
+        // round trip above, and dismissing cancels the caller — cancelling cleanly
+        // before this point loses nothing, but a started save must fully land so a
+        // dismissal can't leave a half-written quest.
+        withContext(kotlinx.coroutines.NonCancellable) { addQuest(quest) }
         return QuickAddResult.Added(quest, fromAi = suggestion.fromAi, error = suggestion.error)
     }
 
@@ -1109,8 +1121,7 @@ class QuestRepository(
             // Include the habit/goal-derived quests (not in the quests table) so the
             // ladder can't duplicate something the user already does daily.
             val profile = profileStore.profile.first()
-            val existing = questDao.getActive().map { it.toModel() } +
-                HabitQuestFactory.deriveAll(profile.habits, profile.badHabits, profile.goals)
+            val existing = questDao.getActive().map { it.toModel() } + derivedQuests(profile)
             val result = aiCallGuard.keepAwake {
                 AiQuestService(llmClient(config)).decomposeGoal(goal, existing)
             }

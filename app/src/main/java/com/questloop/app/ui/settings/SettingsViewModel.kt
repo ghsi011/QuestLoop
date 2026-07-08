@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class SettingsUiState(
     val loading: Boolean = true,
@@ -47,6 +49,13 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
 
     private val _state = MutableStateFlow(SettingsUiState())
     val state: StateFlow<SettingsUiState> = _state.asStateFlow()
+
+    // Serialises the read-modify-writes below (steppers, chip toggles). Reading the
+    // persisted value is not enough on its own: two rapid taps can both complete
+    // their reads before either write commits, collapsing "+15,+15" into one +15
+    // (or one chip toggle erasing another). The mutex makes each tap read the
+    // previous tap's committed value.
+    private val prefsMutex = Mutex()
 
     init { load() }
 
@@ -189,14 +198,36 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
     fun setAvailableMinutes(value: Int) = update("Saved · ${value}m a day") { repository.setAvailableMinutes(value) }
 
     /** Steps the daily time budget by [delta], computing from the persisted value
-     *  inside the write — rapid taps computed from UI state would each read the
-     *  same stale snapshot and collapse three "+15"s into one. */
+     *  under [prefsMutex] — rapid taps computed from UI state (or unserialized
+     *  reads) would each see the same stale value and collapse three "+15"s into one. */
     fun adjustAvailableMinutes(delta: Int) {
         launchSafely {
-            val next = (repository.profile.first().preferences.defaultAvailableMinutes + delta).coerceIn(15, 480)
-            repository.setAvailableMinutes(next)
+            val next = prefsMutex.withLock {
+                val next = (repository.profile.first().preferences.defaultAvailableMinutes + delta).coerceIn(15, 480)
+                repository.setAvailableMinutes(next)
+                next
+            }
             reload()
             emitMessage("Saved · ${next}m a day")
+        }
+    }
+
+    /** Steps a reminder hour by [delta] (same serialized read-modify-write as
+     *  [adjustAvailableMinutes]); the screen re-applies the alarm schedule when the
+     *  reloaded config lands. */
+    fun adjustReminderHour(morning: Boolean, delta: Int) {
+        launchSafely {
+            prefsMutex.withLock {
+                val current = repository.reminderConfig()
+                val updated = if (morning) {
+                    current.copy(morningHour = (current.morningHour + delta).coerceIn(0, 23))
+                } else {
+                    current.copy(eveningHour = (current.eveningHour + delta).coerceIn(0, 23))
+                }
+                repository.setReminderConfig(updated)
+            }
+            reload()
+            emitMessage("Reminder time updated")
         }
     }
 
@@ -209,12 +240,14 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
 
     fun toggleFocus(category: QuestCategory) {
         update("Focus areas updated") {
-            // Compute from the persisted set inside the write, not the UI snapshot:
+            // Compute from the persisted set under prefsMutex, not the UI snapshot:
             // two chips tapped in quick succession would otherwise both derive from
             // the same stale set and the second full-set write would erase the first.
-            val current = repository.profile.first().preferences.focusCategories
-            val next = if (category in current) current - category else current + category
-            repository.setFocusCategories(next)
+            prefsMutex.withLock {
+                val current = repository.profile.first().preferences.focusCategories
+                val next = if (category in current) current - category else current + category
+                repository.setFocusCategories(next)
+            }
         }
     }
 

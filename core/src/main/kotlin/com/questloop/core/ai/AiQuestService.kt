@@ -235,19 +235,32 @@ class AiQuestService(
      * Chatty preambles can themselves contain brackets ("Sure! [1] Here…"), so a
      * naive first-`[`…last-`]` slice would poison the whole batch — instead each
      * `[` is tried as a candidate start (with the matching `]` found by walking
-     * the balance, string-aware) until one decodes.
+     * the balance, string-aware) until one yields a USABLE quest. "Usable" (some
+     * non-blank title) matters: every [AiQuestDto] field has a default, so any
+     * array of objects — e.g. an echoed example or a "[{"step":1}]" plan — would
+     * otherwise decode non-empty and hijack the result from the real array.
+     * Candidates are pruned to arrays that can hold objects and capped so a
+     * degenerate bracket-storm response can't pin the CPU inside the AI wake lock.
      */
     internal fun parse(raw: String): List<AiQuestDto> {
         var start = raw.indexOf('[')
-        while (start >= 0) {
+        var attempts = 0
+        while (start >= 0 && attempts < MAX_PARSE_CANDIDATES) {
+            // The payload is an array of objects: skip candidates like "[1]" or
+            // "[see below]" cheaply, without a balance walk or a decode attempt.
+            var j = start + 1
+            while (j < raw.length && raw[j].isWhitespace()) j++
+            if (j >= raw.length || (raw[j] != '{' && raw[j] != ']')) {
+                start = raw.indexOf('[', start + 1)
+                continue
+            }
+            attempts++
             val end = matchingBracket(raw, start)
             if (end > start) {
                 val decoded = runCatching {
                     json.decodeFromString(ListSerializer(AiQuestDto.serializer()), raw.substring(start, end + 1))
                 }.getOrNull()
-                // Non-empty means we found the payload. An empty array only counts
-                // when nothing later decodes (e.g. "[1] intro… []" must find the []).
-                if (!decoded.isNullOrEmpty()) return decoded
+                if (decoded != null && decoded.any { it.title.isNotBlank() }) return decoded
             }
             start = raw.indexOf('[', start + 1)
         }
@@ -312,6 +325,10 @@ class AiQuestService(
     companion object {
         /** Plain copy for connectivity failures; the raw exception rides along in [Suggestion.errorDetail]. */
         private const val CANT_REACH_AI = "Couldn't reach the AI. Check your connection and try again."
+
+        /** Decode-attempt cap for [parse] — a real response has one payload array
+         *  plus at most a few bracketed asides; beyond this it's garbage. */
+        private const val MAX_PARSE_CANDIDATES = 20
 
         /** The object-shape spec shared by the multi- and single-quest instructions. */
         private val SCHEMA_BODY: String = buildString {

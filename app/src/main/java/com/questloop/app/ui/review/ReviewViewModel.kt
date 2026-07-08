@@ -101,14 +101,17 @@ class ReviewViewModel(
                     it.copy(
                         weeklySummary = weeklyNarration.text,
                         monthlySummary = monthlyNarration.text,
-                        // When the AI couldn't produce anything, the .text above IS the
+                        // When the AI couldn't produce something, the .text above IS the
                         // deterministic fallback — say so instead of silently passing it
-                        // off as the AI summary the user asked for. (The raw reason is
-                        // in the exportable AI error log via narrateReview.)
-                        summaryNote = if (!weeklyNarration.fromAi && !monthlyNarration.fromAi) {
-                            "Couldn't get an AI summary — showing the standard one instead."
-                        } else {
-                            null
+                        // off as the AI summary the user asked for. The two narrations
+                        // fail independently, so a mixed outcome needs the note too.
+                        // (The raw reason is in the exportable AI error log via narrateReview.)
+                        summaryNote = when {
+                            !weeklyNarration.fromAi && !monthlyNarration.fromAi ->
+                                "Couldn't get an AI summary — showing the standard ones instead."
+                            !weeklyNarration.fromAi || !monthlyNarration.fromAi ->
+                                "Couldn't get part of the AI summary — the rest is the standard write-up."
+                            else -> null
                         },
                     )
                 }

@@ -12,10 +12,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * Re-arms reminder alarms when the armed instants go stale: after device reboot
- * (alarms don't survive it) and after timezone or clock changes (alarms are fixed
- * epoch instants, so a pending one would otherwise fire at the old zone's — or
- * old clock's — wall time).
+ * Re-arms the app's fixed-instant alarms when the armed instants go stale: after
+ * device reboot (alarms don't survive it) and after timezone or clock changes
+ * (alarms are fixed epoch instants, so a pending one would otherwise fire at the
+ * old zone's — or old clock's — wall time). Covers both alarm series: the daily
+ * reminders and the widget's day-boundary refresh (plus a widget re-render, since
+ * the rendered "today" is stale the moment the zone/clock moves).
  */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
