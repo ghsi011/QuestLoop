@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -31,7 +30,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.questloop.app.QuestLoopApplication
+import com.questloop.app.ui.components.QuestCompletionControls
 import com.questloop.app.ui.theme.QuestLoopTheme
+import com.questloop.core.model.CompletionStyle
 import java.time.LocalDate
 
 /**
@@ -120,17 +121,19 @@ private fun QuickCompleteDialog(
                     Spacer(Modifier.height(8.dp))
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
-                Spacer(Modifier.height(16.dp))
-                Button(
-                    onClick = viewModel::complete,
-                    enabled = !state.submitting,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    if (state.submitting) {
-                        CircularProgressIndicator(modifier = Modifier.height(18.dp), strokeWidth = 2.dp)
-                    } else {
-                        Text("Mark done")
-                    }
+                // Style-aware controls — the same stepper/rating/binary control the app
+                // uses, so a counting/timed/subjective quest can log partial progress from
+                // the widget instead of only jumping straight to full credit.
+                val quest = state.quest
+                if (quest != null) {
+                    QuestCompletionControls(
+                        quest = quest,
+                        progress = state.progress,
+                        onComplete = viewModel::complete,
+                        onSkip = viewModel::skip,
+                        onMeasured = viewModel::logMeasured,
+                        enabled = !state.submitting,
+                    )
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(
@@ -138,10 +141,18 @@ private fun QuickCompleteDialog(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    if (state.submitting) {
+                        CircularProgressIndicator(modifier = Modifier.height(18.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                    }
                     // Always enabled — leaving mid-submit is safe (see the Dialog comment).
                     TextButton(onClick = onDismiss) { Text("Cancel") }
-                    Spacer(Modifier.width(8.dp))
-                    TextButton(onClick = viewModel::skip, enabled = !state.submitting) { Text("Skip today") }
+                    // BINARY already shows its own Complete/Skip; measured styles get their
+                    // skip here so every style can be skipped for the day.
+                    if (quest != null && quest.completionStyle != CompletionStyle.BINARY) {
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(onClick = viewModel::skip, enabled = !state.submitting) { Text("Skip today") }
+                    }
                 }
             }
         }
