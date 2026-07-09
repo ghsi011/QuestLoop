@@ -25,3 +25,6 @@ keystore.properties
 
 # graphify generated knowledge graph (build locally with `graphify update .`)
 graphify-out/
+
+# Python bytecode from .claude/hooks
+__pycache__/

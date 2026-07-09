@@ -54,6 +54,10 @@ QuestLoop: a gamified quest/habit Android app. Gradle multi-module:
   the environment's egress allowlist to enable agent-side visual review.
 - Trunk is `main`; feature work happens on `claude/*` branches (cloud sessions).
   `release.yml` / `export-room-schema.yml` trigger on `["main", "claude/**"]`.
+- **CI trigger tokens match ANYWHERE in the commit message** — never write
+  `[release]` / `[uitest]` / `[schema]` in commit-message prose (a body line
+  *mentioning* the release trigger once cut an accidental release). Spell them
+  out ("the release trigger") unless you mean to fire them.
 
 ## Coding lessons / gotchas (learned the hard way)
 **Reward economy & data**
@@ -136,7 +140,62 @@ QuestLoop: a gamified quest/habit Android app. Gradle multi-module:
 - No developer-facing text in the UI. Follow `docs/CONTENT_STYLE.md` (warm,
   plain, brief, non-shaming).
 
-## Process
-- Review → fix → test → push → watch CI → fix failures. For substantial features,
-  also run a code review and `[uitest]` before releasing.
-- Don't commit secrets. The OpenRouter key lives only in on-device storage.
+## Process — mandatory workflow for every change
+
+Spec → Implement → Verify → Review → Push. The review gate is enforced by a
+hook: `git push` is blocked until `.git/questloop-review-stamp` matches HEAD.
+Reviews run by default — never wait for the user to ask for one.
+
+**0. Spec (before writing code).** Restate the task as acceptance criteria
+(≤10 lines). Sweep the edge-case matrix (`.claude/rules/edge-cases.md`) and
+mark every dimension in-scope / out-of-scope / N/A — "didn't think about it"
+is not a state. Classify risk:
+- **Risky** if any of: reward economy / completion ledger / Room schema;
+  credentials or the AI pipeline; widget / reminders / boot (code that runs
+  without the app open); a new user-facing feature or behavior change;
+  >~150 changed lines of product source.
+- **Standard** otherwise (small fixes, refactors, copy tweaks).
+- Docs/CI-only changes skip phases 0–3 (stamp directly before pushing).
+
+**1. Implement** per the conventions above; add tests alongside (prefer
+`:core` — it gates every push).
+
+**2. Verify.** Run the affected suites (`:core:test`; `:app:testDebugUnitTest`
+when `:app` changed). For UI-behavior changes, judge whether a `[uitest]` run
+is warranted.
+
+**3. Review gate (always, unasked).**
+- Spawn the **`code-reviewer`** agent on the final diff — for every code change.
+- For **risky** changes, also spawn the **`skeptic`** agent — in the same
+  message so they run in parallel.
+- Hand each agent only: the phase-0 acceptance criteria, the base ref
+  (e.g. `origin/main`), and the risk class. Never paste the diff or file
+  contents into the prompt — the agents read `git diff` themselves.
+- Fix confirmed findings, re-run tests, then re-review **only the fix diff**
+  (`git diff <reviewed-sha>..HEAD`) — not the whole feature again. After a
+  history rewrite (amend/rebase) the old sha no longer describes the branch:
+  re-diff against `origin/main` instead.
+- Once the final state is reviewed and committed, stamp (its own command;
+  works in linked worktrees too):
+  `git rev-parse HEAD > "$(git rev-parse --git-path questloop-review-stamp)"`
+- HEAD moves that add no new code — empty `[release]` commits, merges from
+  `origin/main`, clean rebases of already-reviewed work — re-stamp directly.
+- The gate certifies HEAD only: review, stamp, and push from the same
+  checkout; never wrap `git push` in scripts or `bash -c`; don't delegate the
+  review/stamp/push step to a subagent (subagents can't spawn the reviewers).
+
+**4. Push & watch CI**; fix failures (re-review only non-trivial fixes, then
+re-stamp). For substantial features, run `[uitest]` before releasing.
+
+Don't commit secrets. The OpenRouter key lives only in on-device storage.
+
+### Token discipline
+- Review once, on the final diff — not per-commit while developing.
+- Subagent handoffs are pointers, not payloads: acceptance criteria + refs;
+  no code dumps. Reviewers return findings only (`file:line`, severity, why).
+- Reuse the phase-0 spec everywhere (plan, reviewer prompts, PR body) instead
+  of re-deriving requirements at each step.
+- Orient before searching: graphify when the graph exists (the hint hook fires
+  once per session), else `docs/ARCHITECTURE.md` — don't re-read files you've
+  already seen this session, and don't grep broadly for what a scoped query
+  answers.
