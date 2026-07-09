@@ -8,6 +8,7 @@ keyed by session_id) and only when graphify-out/graph.json actually exists.
 """
 import json
 import os
+import re
 import sys
 
 SRC_EXTS = (
@@ -15,7 +16,7 @@ SRC_EXTS = (
     ".c", ".h", ".cpp", ".hpp", ".cc", ".cs", ".kt", ".kts", ".swift",
     ".php", ".scala", ".lua", ".sh", ".md", ".rst", ".txt", ".mdx",
 )
-SEARCH_CMDS = ("grep", "rg ", "ripgrep", "find ", "fd ", "ack ", "ag ")
+SEARCH_CMD_RE = re.compile(r"(?:^|[\s;|&(])(?:grep|rg|ripgrep|find|fd|ack|ag)\b")
 
 HINT = (
     "graphify-out/graph.json exists. Orient with `graphify query \"<question>\"` "
@@ -30,13 +31,15 @@ def wants_hint(data):
     tool = data.get("tool_name") or ""
     tool_input = data.get("tool_input") or {}
     if tool == "Bash":
-        cmd = str(tool_input.get("command") or "")
-        return any(k in cmd for k in SEARCH_CMDS)
-    # Read / Glob
-    s = " ".join(
-        str(tool_input.get(k) or "") for k in ("file_path", "pattern", "path")
-    ).lower().replace("\\", "/")
-    return "graphify-out/" not in s and any(e in s for e in SRC_EXTS)
+        return bool(SEARCH_CMD_RE.search(str(tool_input.get("command") or "")))
+    # Read / Glob: match on the actual extension, not substrings (".claude/x"
+    # must not count as ".c").
+    targets = (str(tool_input.get(k) or "") for k in ("file_path", "pattern"))
+    for t in targets:
+        t = t.lower().replace("\\", "/")
+        if t and "graphify-out/" not in t and t.endswith(SRC_EXTS):
+            return True
+    return False
 
 
 def main():

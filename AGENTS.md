@@ -168,9 +168,17 @@ is warranted.
   (e.g. `origin/main`), and the risk class. Never paste the diff or file
   contents into the prompt — the agents read `git diff` themselves.
 - Fix confirmed findings, re-run tests, then re-review **only the fix diff**
-  (`git diff <reviewed-sha>..HEAD`) — not the whole feature again.
-- Once the final state is reviewed and committed, stamp (its own command):
-  `git rev-parse HEAD > .git/questloop-review-stamp`
+  (`git diff <reviewed-sha>..HEAD`) — not the whole feature again. After a
+  history rewrite (amend/rebase) the old sha no longer describes the branch:
+  re-diff against `origin/main` instead.
+- Once the final state is reviewed and committed, stamp (its own command;
+  works in linked worktrees too):
+  `git rev-parse HEAD > "$(git rev-parse --git-path questloop-review-stamp)"`
+- HEAD moves that add no new code — empty `[release]` commits, merges from
+  `origin/main`, clean rebases of already-reviewed work — re-stamp directly.
+- The gate certifies HEAD only: review, stamp, and push from the same
+  checkout; never wrap `git push` in scripts or `bash -c`; don't delegate the
+  review/stamp/push step to a subagent (subagents can't spawn the reviewers).
 
 **4. Push & watch CI**; fix failures (re-review only non-trivial fixes, then
 re-stamp). For substantial features, run `[uitest]` before releasing.

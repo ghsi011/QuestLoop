@@ -6,6 +6,10 @@ paths:
 
 # Edge-case matrix — sweep before coding, verify at review
 
+<!-- Loaded two ways: as a path-scoped rule when product source is touched, and
+     by explicit reference from AGENTS.md phase 0 + both reviewer agents. Keep
+     those references — rule auto-attachment is belt, they are braces. -->
+
 For any change touching quests/completions/UI surfaces, state per dimension:
 **in-scope** (handled where?), **out-of-scope** (degrades how?), or **N/A**
 (why). Reviewers check this list; "didn't consider it" is itself a finding.
