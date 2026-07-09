@@ -7,6 +7,8 @@ import com.questloop.app.data.QuestRepository
 import com.questloop.app.data.ReminderConfig
 import com.questloop.app.data.local.QuestLoopDatabase
 import com.questloop.core.model.BadHabit
+import com.questloop.core.model.CompletionStyle
+import com.questloop.core.model.DayPart
 import com.questloop.core.model.Difficulty
 import com.questloop.core.model.EnergyCheckIn
 import com.questloop.core.model.Goal
@@ -77,6 +79,21 @@ class QuickCompleteViewModelTest {
         difficulty = Difficulty.MEDIUM,
     )
 
+    private fun quantitativeQuest(id: String, target: Int) = quest(id).copy(
+        completionStyle = CompletionStyle.QUANTITATIVE,
+        targetCount = target,
+        unit = "glasses",
+    )
+
+    private fun durationQuest(id: String, minutes: Int) = quest(id).copy(
+        completionStyle = CompletionStyle.DURATION,
+        estimatedMinutes = minutes,
+    )
+
+    private fun subjectiveQuest(id: String) = quest(id).copy(
+        completionStyle = CompletionStyle.SUBJECTIVE,
+    )
+
     @Before
     fun setUp() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
@@ -115,5 +132,59 @@ class QuickCompleteViewModelTest {
 
         assertFalse(vm.state.value.loading)
         assertTrue(vm.state.value.notFound)
+    }
+
+    @Test
+    fun `loads a measured quest with its style and resumed progress`() = runTest {
+        repo.addQuest(quantitativeQuest("q", target = 8))
+        // A prior partial log this interval: the stepper should resume from it.
+        repo.completeMeasured(repo.activeQuestById("q")!!, epochDay = 1, value = 3)
+
+        val vm = QuickCompleteViewModel(repo, questId = "q", epochDay = 1)
+
+        assertFalse(vm.state.value.loading)
+        assertEquals(CompletionStyle.QUANTITATIVE, vm.state.value.quest?.completionStyle)
+        assertEquals("resumes from the logged count", 3, vm.state.value.progress)
+    }
+
+    @Test
+    fun `logMeasured credits a partial value without marking the quest fully done`() = runTest {
+        repo.addQuest(quantitativeQuest("q", target = 8))
+        val vm = QuickCompleteViewModel(repo, questId = "q", epochDay = 1)
+
+        vm.logMeasured(2)
+
+        assertNotNull("the activity is told to confirm + close", vm.state.value.doneMessage)
+        assertNull(vm.state.value.error)
+        assertTrue("partial progress earns proportional XP", repo.totalXp() > 0)
+        // A 2-of-8 log is still due — not dismissed like a full completion would be.
+        val stillDue = repo.widgetQuickTasks(epochDay = 1, dayPart = DayPart.MORNING).map { it.id }
+        assertTrue("a partial log keeps the quest tickable", stillDue.contains("q"))
+    }
+
+    @Test
+    fun `a duration quest resumes from its logged minutes`() = runTest {
+        repo.addQuest(durationQuest("d", minutes = 50))
+        repo.completeMeasured(repo.activeQuestById("d")!!, epochDay = 1, value = 20)
+
+        val vm = QuickCompleteViewModel(repo, questId = "d", epochDay = 1)
+
+        assertFalse(vm.state.value.loading)
+        assertEquals(CompletionStyle.DURATION, vm.state.value.quest?.completionStyle)
+        assertEquals("resumes from the logged minutes", 20, vm.state.value.progress)
+    }
+
+    @Test
+    fun `logMeasured records the chosen subjective rating`() = runTest {
+        repo.addQuest(subjectiveQuest("s"))
+        val vm = QuickCompleteViewModel(repo, questId = "s", epochDay = 1)
+
+        assertEquals(CompletionStyle.SUBJECTIVE, vm.state.value.quest?.completionStyle)
+
+        vm.logMeasured(4)
+
+        assertNotNull("the activity is told to confirm + close", vm.state.value.doneMessage)
+        assertNull(vm.state.value.error)
+        assertTrue("a rated log earns XP", repo.totalXp() > 0)
     }
 }

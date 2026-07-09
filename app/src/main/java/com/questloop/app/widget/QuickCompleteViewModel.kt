@@ -18,7 +18,15 @@ data class QuickCompleteUiState(
     val loading: Boolean = true,
     /** The quest to act on couldn't be found (already done elsewhere, or archived). */
     val notFound: Boolean = false,
+    /** The loaded quest — drives the style-aware controls (stepper / rating / binary). */
+    val quest: Quest? = null,
     val title: String = "",
+    /**
+     * Accumulated progress this interval for a measured quest (count for
+     * QUANTITATIVE, minutes for DURATION), so the stepper resumes from where the
+     * user left off instead of restarting at zero.
+     */
+    val progress: Int = 0,
     /** True while a complete/skip is in flight (guards double-tap). */
     val submitting: Boolean = false,
     /** Inline error that keeps the menu open so the user can retry. */
@@ -47,13 +55,25 @@ class QuickCompleteViewModel(
         launchSafely(onError = { _state.update { it.copy(loading = false, notFound = true) } }) {
             val q = repository.activeQuestById(questId)
             quest = q
-            _state.update {
-                if (q == null) it.copy(loading = false, notFound = true)
-                else it.copy(loading = false, title = q.title)
+            if (q == null) {
+                _state.update { it.copy(loading = false, notFound = true) }
+            } else {
+                // Seed the stepper from the interval's accumulated progress so a measured
+                // quest resumes mid-log rather than restarting at zero. A progress-read
+                // failure degrades to a zero seed — the quest was found, so it must NOT
+                // fall through to onError's notFound (which would close the menu as if
+                // the quest were gone and drop a completion the user could still make).
+                val progress = runCatching { repository.todayProgress(epochDay)[q.id] }.getOrNull() ?: 0
+                _state.update { it.copy(loading = false, quest = q, title = q.title, progress = progress) }
             }
         }
     }
 
+    /**
+     * Full-credit "done". Wired to the BINARY control's Complete button (measured
+     * styles log via [logMeasured] instead); still routes through [completeMeasured]
+     * with a full-target value so it credits correctly for any style if reused.
+     */
     fun complete() {
         val q = quest ?: return
         // Route measured quests through completeMeasured so a counting/timed/subjective
@@ -66,6 +86,16 @@ class QuickCompleteViewModel(
             CompletionStyle.BINARY -> 1
         }
         perform("Nice — marked done ✓") { repository.completeMeasured(q, epochDay, value) }
+    }
+
+    /**
+     * Logs a measured value for a non-binary quest: a running count (QUANTITATIVE),
+     * minutes (DURATION), or a 1..5 rating (SUBJECTIVE). Progress is monotonic and
+     * credited proportionally — a partial log is never a skip.
+     */
+    fun logMeasured(value: Int) {
+        val q = quest ?: return
+        perform("Progress logged ✓") { repository.completeMeasured(q, epochDay, value) }
     }
 
     fun skip() {
