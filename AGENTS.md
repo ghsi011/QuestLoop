@@ -54,6 +54,10 @@ QuestLoop: a gamified quest/habit Android app. Gradle multi-module:
   the environment's egress allowlist to enable agent-side visual review.
 - Trunk is `main`; feature work happens on `claude/*` branches (cloud sessions).
   `release.yml` / `export-room-schema.yml` trigger on `["main", "claude/**"]`.
+- **CI trigger tokens match ANYWHERE in the commit message** — never write
+  `[release]` / `[uitest]` / `[schema]` in commit-message prose (a body line
+  *mentioning* the release trigger once cut an accidental release). Spell them
+  out ("the release trigger") unless you mean to fire them.
 
 ## Coding lessons / gotchas (learned the hard way)
 **Reward economy & data**
