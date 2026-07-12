@@ -782,19 +782,29 @@ class QuestRepository(
         // "nothing to credit" and post a spurious couldn't-log notification right
         // after a successful mark-done.
         if (tapToken != null && completionMutex.withLock { tapToken in consumedReminderTaps }) return true
-        val quest = reminderDueQuest(questId, epochDay) ?: return false
+        // Not-due can also mean "the concurrent duplicate of this tap just credited
+        // and finished the quest" (its consume lands after our pre-check). Re-check
+        // the token before calling it a failure, so that interleaving stays a quiet
+        // success instead of a spurious couldn't-log notification.
+        val quest = reminderDueQuest(questId, epochDay)
+            ?: return tapToken != null && completionMutex.withLock { tapToken in consumedReminderTaps }
         when (quest.completionStyle) {
-            CompletionStyle.BINARY -> {
-                // Idempotent per day-slot, so a pre-consume race is harmless.
-                completeQuest(quest, epochDay, CompletionResult.COMPLETED)
-                completionMutex.withLock { consumeReminderTapLocked(tapToken) }
+            // Credit and consume in ONE mutex hold (via the *Locked variants), with a
+            // token re-check first: two duplicates can both pass the unlocked
+            // pre-check and serialize here, and a consume in a separate lock hold
+            // would leave a sliver where the loser sees "credited but not consumed".
+            CompletionStyle.BINARY -> completionMutex.withLock {
+                if (tapToken != null && tapToken in consumedReminderTaps) return true
+                completeQuestLocked(
+                    quest, epochDay, CompletionResult.COMPLETED,
+                    fraction = 1.0, verification = VerificationMethod.MANUAL,
+                )
+                consumeReminderTapLocked(tapToken)
             }
-            // Read-progress + write must share one mutex hold: an unlocked
+            // Read-progress + write must also share the hold: an unlocked
             // progress+1 racing a concurrent log (widget, in-app, a second tap)
             // would silently drop one of the units (the AGENTS ledger invariant).
             CompletionStyle.QUANTITATIVE -> completionMutex.withLock {
-                // Re-check under the lock: two duplicates can both pass the
-                // unlocked pre-check and serialize here.
                 if (tapToken != null && tapToken in consumedReminderTaps) return true
                 val progress = intervalProgress(quest, epochDay, firstDayOfWeek())
                 completeMeasuredLocked(quest, epochDay, progress + 1)
