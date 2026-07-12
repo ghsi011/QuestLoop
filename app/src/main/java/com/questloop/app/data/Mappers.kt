@@ -35,6 +35,17 @@ fun QuestEntity.toModel(): Quest = Quest(
     tags = if (tags.isBlank()) emptyList() else tags.split(",").map { it.trim() },
     rationale = rationale,
     allowOverCompletion = allowOverCompletion,
+    scheduledTimes = if (scheduledTimes.isBlank()) {
+        emptyList()
+    } else {
+        scheduledTimes.split(",").mapNotNull { it.trim().toIntOrNull() }
+    },
+    // Tolerant like the enum parsing: an out-of-range stored value degrades to
+    // "no anchor" rather than crashing (DayOfWeek.of throws outside 1..7).
+    scheduledDayOfWeek = scheduledDayOfWeek?.let { iso -> runCatching { java.time.DayOfWeek.of(iso) }.getOrNull() },
+    scheduledDayOfMonth = scheduledDayOfMonth,
+    totalOccurrences = totalOccurrences,
+    remindersEnabled = remindersEnabled,
 )
 
 fun Quest.toEntity(archived: Boolean = false): QuestEntity = QuestEntity(
@@ -55,6 +66,11 @@ fun Quest.toEntity(archived: Boolean = false): QuestEntity = QuestEntity(
     rationale = rationale,
     archived = archived,
     allowOverCompletion = allowOverCompletion,
+    scheduledTimes = scheduledTimes.joinToString(","),
+    scheduledDayOfWeek = scheduledDayOfWeek?.value,
+    scheduledDayOfMonth = scheduledDayOfMonth,
+    totalOccurrences = totalOccurrences,
+    remindersEnabled = remindersEnabled,
 )
 
 fun CompletionEntity.toModel(): CompletionRecord = CompletionRecord(

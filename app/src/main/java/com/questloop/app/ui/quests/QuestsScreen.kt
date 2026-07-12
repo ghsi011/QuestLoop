@@ -39,6 +39,7 @@ import com.questloop.app.ui.components.DifficultyPips
 import com.questloop.app.ui.components.InfoCard
 import com.questloop.app.ui.components.QuestCompletionControls
 import com.questloop.app.ui.components.UndoableSnackbarEffect
+import com.questloop.app.ui.components.scheduleSummary
 import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestFrequency
 
@@ -160,6 +161,14 @@ private fun QuestBacklogRow(
                         Text(
                             "${frequencyLabel(quest.frequency)} · ${quest.estimatedMinutes}m",
                             style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    scheduleSummary(quest, status.completedOccurrences)?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp),
                         )
                     }
                 }

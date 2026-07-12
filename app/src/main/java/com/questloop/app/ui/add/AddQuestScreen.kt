@@ -94,6 +94,20 @@ fun AddQuestScreen(viewModel: AddQuestViewModel, onDone: () -> Unit) {
         Text("Frequency", fontWeight = FontWeight.SemiBold)
         ChipGroup(pickableFrequencies, draft.frequency) { sel -> viewModel.updateDraft { it.copy(frequency = sel) } }
 
+        ScheduleEditor(
+            frequency = draft.frequency,
+            scheduledTimes = draft.scheduledTimes,
+            scheduledDayOfWeek = draft.scheduledDayOfWeek,
+            scheduledDayOfMonth = draft.scheduledDayOfMonth,
+            totalOccurrences = draft.totalOccurrences,
+            remindersEnabled = draft.remindersEnabled,
+            onTimesChange = { v -> viewModel.updateDraft { it.copy(scheduledTimes = v) } },
+            onDayOfWeekChange = { v -> viewModel.updateDraft { it.copy(scheduledDayOfWeek = v) } },
+            onDayOfMonthChange = { v -> viewModel.updateDraft { it.copy(scheduledDayOfMonth = v) } },
+            onTotalOccurrencesChange = { v -> viewModel.updateDraft { it.copy(totalOccurrences = v) } },
+            onRemindersChange = { v -> viewModel.updateDraft { it.copy(remindersEnabled = v) } },
+        )
+
         Text("How is it completed?", fontWeight = FontWeight.SemiBold)
         ChipGroup(CompletionStyle.entries, draft.completionStyle) { sel ->
             viewModel.updateDraft { it.copy(completionStyle = sel) }
@@ -380,6 +394,20 @@ private fun SuggestionCard(
 
             Text("Frequency", style = MaterialTheme.typography.labelMedium)
             ChipGroup(pickableFrequencies, quest.frequency) { onChange(quest.copy(frequency = it)) }
+
+            ScheduleEditor(
+                frequency = quest.frequency,
+                scheduledTimes = quest.scheduledTimes,
+                scheduledDayOfWeek = quest.scheduledDayOfWeek,
+                scheduledDayOfMonth = quest.scheduledDayOfMonth,
+                totalOccurrences = quest.totalOccurrences,
+                remindersEnabled = quest.remindersEnabled,
+                onTimesChange = { onChange(quest.copy(scheduledTimes = it)) },
+                onDayOfWeekChange = { onChange(quest.copy(scheduledDayOfWeek = it)) },
+                onDayOfMonthChange = { onChange(quest.copy(scheduledDayOfMonth = it)) },
+                onTotalOccurrencesChange = { onChange(quest.copy(totalOccurrences = it)) },
+                onRemindersChange = { onChange(quest.copy(remindersEnabled = it)) },
+            )
 
             Text("How is it completed?", style = MaterialTheme.typography.labelMedium)
             ChipGroup(CompletionStyle.entries, quest.completionStyle) {

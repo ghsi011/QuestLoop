@@ -1,0 +1,198 @@
+package com.questloop.core.generation
+
+import com.questloop.core.completion.CompletionSlots
+import com.questloop.core.model.CompletionStyle
+import com.questloop.core.model.Quest
+import com.questloop.core.model.QuestFrequency
+import java.time.DayOfWeek
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+
+/**
+ * Quest-level scheduling on top of [QuestScheduler]'s frequency cadence (SPEC §4):
+ * set times of day, a weekly/monthly anchor day ("rent on the 1st"), and a total
+ * occurrence limit ("medicine for 5 days") after which the quest retires.
+ *
+ * Pure and deterministic like the rest of `:core`: days are epoch days, times are
+ * minutes since local midnight, and the only wall-clock conversion —
+ * [nextTriggerMillis], for the app's reminder alarms — takes `now` and the zone
+ * as parameters.
+ *
+ * Semantics:
+ * - **Anchors** apply to *non-accumulating* WEEKLY/MONTHLY quests: the quest
+ *   becomes due on the anchor day of each calendar interval (week per the user's
+ *   first-day-of-week; calendar month) and stays due until completed within that
+ *   interval — a missed rent day keeps nagging until paid, then rests until next
+ *   month. Measured (count/duration) weekly/monthly quests keep their existing
+ *   interval-accumulation visibility ([CompletionSlots.hasCalendarInterval]);
+ *   an anchor on them only shapes reminders, never dueness.
+ * - **Occurrence limits** count COMPLETED ledger records (one per interval slot,
+ *   since records are keyed `questId@slot`). Partial/skipped/failed intervals
+ *   never advance the count, so a missed day extends the run instead of silently
+ *   consuming it.
+ */
+object QuestSchedule {
+
+    /** Upper bound on scheduled times per quest — keeps the alarm fan-out (and the
+     *  per-quest PendingIntent space the scheduler must cancel) small and fixed. */
+    const val MAX_TIMES_PER_DAY = 6
+
+    private const val MINUTES_RANGE_MAX = 24 * 60 - 1
+
+    /** Frequencies a schedule (times / anchor / occurrence limit) can apply to. */
+    val schedulableFrequencies: Set<QuestFrequency> = setOf(
+        QuestFrequency.DAILY,
+        QuestFrequency.WEEKLY,
+        QuestFrequency.MONTHLY,
+        QuestFrequency.RECURRING,
+    )
+
+    /** True once a limited quest has all its occurrences completed — it then
+     *  disappears from plans/backlogs/widget like a finished one-off. */
+    fun isRetired(quest: Quest, completedOccurrences: Int): Boolean {
+        val total = quest.totalOccurrences ?: return false
+        return completedOccurrences >= total
+    }
+
+    /** Whether an anchor day governs this quest's dueness (see class doc: measured
+     *  interval quests accumulate instead, so their anchor never gates dueness). */
+    fun hasDueAnchor(quest: Quest): Boolean =
+        !CompletionSlots.hasCalendarInterval(quest) &&
+            ((quest.frequency == QuestFrequency.WEEKLY && quest.scheduledDayOfWeek != null) ||
+                (quest.frequency == QuestFrequency.MONTHLY && quest.scheduledDayOfMonth != null))
+
+    /**
+     * The anchor day within the calendar interval containing [epochDay], or null
+     * when the quest has no anchor for its frequency. A monthly day-of-month is
+     * clamped to the month's length (the 31st anchors to Feb 28/29).
+     */
+    fun anchorDayIn(quest: Quest, epochDay: Long, firstDayOfWeek: DayOfWeek): Long? = when {
+        quest.frequency == QuestFrequency.WEEKLY && quest.scheduledDayOfWeek != null -> {
+            val start = CompletionSlots.startOfWeek(epochDay, firstDayOfWeek)
+            val startDow = LocalDate.ofEpochDay(start).dayOfWeek
+            start + ((quest.scheduledDayOfWeek.value - startDow.value + 7) % 7)
+        }
+        quest.frequency == QuestFrequency.MONTHLY && quest.scheduledDayOfMonth != null -> {
+            val date = LocalDate.ofEpochDay(epochDay)
+            date.withDayOfMonth(quest.scheduledDayOfMonth.coerceIn(1, date.lengthOfMonth())).toEpochDay()
+        }
+        else -> null
+    }
+
+    /**
+     * Quest-aware dueness: retirement first, then the anchor-day calendar gate for
+     * anchored weekly/monthly quests, else the plain [QuestScheduler] cadence.
+     *
+     * Callers that gate measured interval quests by dismissal (the plan/backlog
+     * paths) should keep doing so — for those quests this simply defers to the
+     * rolling cadence exactly as [QuestScheduler.isDue] did before.
+     */
+    fun isDue(
+        quest: Quest,
+        today: Long,
+        lastCompletedEpochDay: Long?,
+        completedOccurrences: Int,
+        firstDayOfWeek: DayOfWeek,
+    ): Boolean {
+        if (isRetired(quest, completedOccurrences)) return false
+        if (!hasDueAnchor(quest)) {
+            return QuestScheduler.isDue(quest.frequency, today, lastCompletedEpochDay)
+        }
+        val intervalStart = CompletionSlots.intervalStartFor(quest.frequency, today, firstDayOfWeek)
+        val intervalEnd = CompletionSlots.nextIntervalStart(quest.frequency, today, firstDayOfWeek) - 1
+        // A completion anywhere in the current interval satisfies it — completing
+        // early (rent on the 28th for the 1st) must not re-nag on the anchor day.
+        val completedThisInterval =
+            lastCompletedEpochDay != null && lastCompletedEpochDay in intervalStart..intervalEnd
+        if (completedThisInterval) return false
+        val anchor = anchorDayIn(quest, today, firstDayOfWeek) ?: return false
+        return today >= anchor
+    }
+
+    /**
+     * Canonicalises a quest's schedule fields before persisting:
+     * - times are validated (0..1439), deduped, sorted, and capped at [MAX_TIMES_PER_DAY];
+     *   non-recurring frequencies carry no schedule at all;
+     * - anchors are kept only on their matching frequency; day-of-month is clamped to 1..31;
+     * - a non-positive occurrence limit means "no limit";
+     * - reminders require at least one time;
+     * - a BINARY quest with several times becomes a QUANTITATIVE count of its time
+     *   slots (one loggable unit per time) so "twice a day" is per-slot loggable
+     *   without changing how completion records are keyed. An explicitly measured
+     *   quest keeps its own target.
+     */
+    fun normalized(quest: Quest): Quest {
+        val schedulable = quest.frequency in schedulableFrequencies
+        val times =
+            if (schedulable) {
+                quest.scheduledTimes.filter { it in 0..MINUTES_RANGE_MAX }
+                    .distinct().sorted().take(MAX_TIMES_PER_DAY)
+            } else {
+                emptyList()
+            }
+        val multiSlotBinary = times.size > 1 && quest.completionStyle == CompletionStyle.BINARY
+        return quest.copy(
+            scheduledTimes = times,
+            scheduledDayOfWeek = quest.scheduledDayOfWeek.takeIf { quest.frequency == QuestFrequency.WEEKLY },
+            scheduledDayOfMonth = quest.scheduledDayOfMonth?.takeIf { quest.frequency == QuestFrequency.MONTHLY }
+                ?.coerceIn(1, 31),
+            totalOccurrences = quest.totalOccurrences?.takeIf { schedulable && it > 0 },
+            remindersEnabled = quest.remindersEnabled && times.isNotEmpty(),
+            completionStyle = if (multiSlotBinary) CompletionStyle.QUANTITATIVE else quest.completionStyle,
+            targetCount = if (multiSlotBinary) times.size else quest.targetCount,
+            unit = if (multiSlotBinary) "times" else quest.unit,
+        )
+    }
+
+    /**
+     * The first day at or after [fromEpochDay] this quest's schedule can land on,
+     * ignoring completion state (a fire-time dueness check handles that): every day
+     * for daily/rolling cadences, the next anchor day for anchored weekly/monthly.
+     */
+    fun nextScheduledDay(quest: Quest, fromEpochDay: Long, firstDayOfWeek: DayOfWeek): Long = when {
+        quest.frequency == QuestFrequency.WEEKLY && quest.scheduledDayOfWeek != null -> {
+            val inWeek = anchorDayIn(quest, fromEpochDay, firstDayOfWeek)!!
+            if (inWeek >= fromEpochDay) inWeek else inWeek + 7
+        }
+        quest.frequency == QuestFrequency.MONTHLY && quest.scheduledDayOfMonth != null -> {
+            val inMonth = anchorDayIn(quest, fromEpochDay, firstDayOfWeek)!!
+            if (inMonth >= fromEpochDay) {
+                inMonth
+            } else {
+                val nextMonth = LocalDate.ofEpochDay(fromEpochDay).withDayOfMonth(1).plusMonths(1)
+                anchorDayIn(quest, nextMonth.toEpochDay(), firstDayOfWeek)!!
+            }
+        }
+        else -> fromEpochDay
+    }
+
+    /**
+     * Next epoch-millis one of [Quest.scheduledTimes] occurs on a scheduled day,
+     * strictly after [nowEpochMillis] — the app's reminder alarm instant. Null when
+     * the quest has no valid times. Deterministic given `now` + [zone]; a DST gap
+     * resolves forward per [java.time] rules.
+     */
+    fun nextTriggerMillis(
+        quest: Quest,
+        nowEpochMillis: Long,
+        firstDayOfWeek: DayOfWeek,
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): Long? {
+        val times = quest.scheduledTimes.filter { it in 0..MINUTES_RANGE_MAX }.sorted()
+        if (times.isEmpty()) return null
+        val now = Instant.ofEpochMilli(nowEpochMillis)
+        var day = nextScheduledDay(quest, now.atZone(zone).toLocalDate().toEpochDay(), firstDayOfWeek)
+        // A monthly anchor recurs within ~62 days of any start; a couple of spare
+        // iterations absorb same-day times already past.
+        repeat(64) {
+            val date = LocalDate.ofEpochDay(day)
+            for (minuteOfDay in times) {
+                val candidate = date.atTime(minuteOfDay / 60, minuteOfDay % 60).atZone(zone).toInstant()
+                if (candidate.isAfter(now)) return candidate.toEpochMilli()
+            }
+            day = nextScheduledDay(quest, day + 1, firstDayOfWeek)
+        }
+        return null
+    }
+}

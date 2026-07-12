@@ -13,6 +13,7 @@ import com.questloop.core.generation.HabitQuestFactory
 import com.questloop.core.generation.PeriodPlanner
 import java.time.DayOfWeek
 import com.questloop.core.generation.QuestGenerator
+import com.questloop.core.generation.QuestSchedule
 import com.questloop.core.generation.QuestScheduler
 import com.questloop.core.generation.RewardFundState
 import com.questloop.core.generation.RoutineQuestFactory
@@ -133,7 +134,11 @@ class QuestRepository(
 
     suspend fun totalXp(): Long = completionDao.totalXp().coerceAtLeast(0)
 
-    suspend fun addQuest(quest: Quest) = questDao.upsert(quest.toEntity())
+    // Schedules are canonicalised on every write path (times sorted/capped, anchors
+    // matched to frequency, multi-time binary -> per-slot count) so downstream due/
+    // reminder logic never sees a contradictory combination. A no-op for quests
+    // without schedule fields (bank/sample/AI quests).
+    suspend fun addQuest(quest: Quest) = questDao.upsert(QuestSchedule.normalized(quest).toEntity())
 
     suspend fun archiveQuest(id: String) = questDao.archive(id)
 
@@ -148,6 +153,8 @@ class QuestRepository(
         val done: Boolean,
         /** The current interval's logged count/minutes, for resuming a partial log. */
         val progress: Int,
+        /** Completed intervals so far — pairs with [Quest.totalOccurrences] for "k of N". */
+        val completedOccurrences: Int = 0,
     )
 
     /**
@@ -167,17 +174,27 @@ class QuestRepository(
         // counting/timed quest is NOT done, so it stays visible to keep logging.
         val dismissed = dismissedQuestIds(ctx)
         val progress = progressByQuest(ctx)
+        val firstDay = ctx.profile.preferences.firstDayOfWeek
         return ctx.stored.map { quest ->
+            val occurrences = ctx.completedOccurrences[quest.id] ?: 0
+            val retired = QuestSchedule.isRetired(quest, occurrences)
             QuestStatus(
                 quest = quest,
                 inTodaysPlan = quest.id in inPlan,
                 // Measured weekly/monthly quests are "due" any day of their interval
                 // until the target is hit (mirrors the plan's interval-based gate);
-                // everything else follows the rolling cadence window.
-                dueToday = if (CompletionSlots.hasCalendarInterval(quest)) quest.id !in dismissed
-                else QuestScheduler.isDue(quest.frequency, epochDay, ctx.lastCompleted[quest.id]),
-                done = quest.id in dismissed,
+                // everything else follows the quest-aware cadence (anchor day +
+                // occurrence limit on top of the rolling window). A quest that has
+                // used up its occurrence limit reads as done, never due.
+                dueToday = !retired &&
+                    if (CompletionSlots.hasCalendarInterval(quest)) {
+                        quest.id !in dismissed
+                    } else {
+                        QuestSchedule.isDue(quest, epochDay, ctx.lastCompleted[quest.id], occurrences, firstDay)
+                    },
+                done = retired || quest.id in dismissed,
                 progress = progress[quest.id] ?: 0,
+                completedOccurrences = occurrences,
             )
         }
     }
@@ -264,15 +281,24 @@ class QuestRepository(
         // User-created quests plus quests derived from habits/goals and the
         // reward-fund admin flow.
         val derived = ctx.derivedHabits + adminFundQuests(ctx.epochDay, profile, lastCompleted)
+        val firstDay = profile.preferences.firstDayOfWeek
         val candidates = (ctx.stored + derived)
-            .filter {
+            .filter { quest ->
+                val occurrences = ctx.completedOccurrences[quest.id] ?: 0
+                // A quest past its occurrence limit ("rent for 12 months", all paid)
+                // has retired: gone from the plan for good, like a done one-off.
+                if (QuestSchedule.isRetired(quest, occurrences)) return@filter false
                 // Measured weekly/monthly quests reset on their calendar interval, so
                 // their visibility is governed by interval dismissal (target reached
                 // this week/month) — NOT the rolling isDue window, which keys off the
                 // last completion day and would otherwise keep a fresh interval hidden
-                // for up to a period. Everything else uses the normal cadence gate.
-                if (CompletionSlots.hasCalendarInterval(it)) it.id !in dismissed
-                else QuestScheduler.isDue(it.frequency, ctx.epochDay, lastCompleted[it.id])
+                // for up to a period. Everything else uses the quest-aware cadence
+                // gate (anchor day / rolling window).
+                if (CompletionSlots.hasCalendarInterval(quest)) {
+                    quest.id !in dismissed
+                } else {
+                    QuestSchedule.isDue(quest, ctx.epochDay, lastCompleted[quest.id], occurrences, firstDay)
+                }
             }
         // Recent history is only needed for avoidance scoring (skipped quests).
         val history = completionDao.since(ctx.epochDay - 14).map { it.toModel() }
@@ -341,6 +367,8 @@ class QuestRepository(
          * quest id. Absent → no record this interval. Fetched in one IN-clause query.
          */
         val intervalRecords: Map<String, CompletionRecord>,
+        /** Fully-completed interval count per quest (occurrence limits, "k of N"). */
+        val completedOccurrences: Map<String, Int>,
     )
 
     private suspend fun buildDayContext(epochDay: Long): DayContext {
@@ -367,7 +395,11 @@ class QuestRepository(
         val intervalRecords = instanceIdByQuest.mapNotNull { (questId, instanceId) ->
             recordsById[instanceId]?.let { questId to it }
         }.toMap()
-        return DayContext(epochDay, profile, stored, derivedHabits, candidates, lastCompleted, intervalRecords)
+        val completedOccurrences = completionDao.completedOccurrenceCounts().associate { it.questId to it.n }
+        return DayContext(
+            epochDay, profile, stored, derivedHabits, candidates, lastCompleted, intervalRecords,
+            completedOccurrences,
+        )
     }
 
     /** The user's configured first day of the week (default Sunday). Single accessor
@@ -494,6 +526,8 @@ class QuestRepository(
      */
     suspend fun editQuestAndRescore(updatedQuest: Quest, instanceId: String): CompleteOutcome? =
         completionMutex.withLock {
+            @Suppress("NAME_SHADOWING")
+            val updatedQuest = QuestSchedule.normalized(updatedQuest)
             val existing = completionDao.find(instanceId)?.toModel() ?: return@withLock null
             questDao.getAll().firstOrNull { it.id == updatedQuest.id }?.let { stored ->
                 questDao.upsert(updatedQuest.toEntity(archived = stored.archived))
@@ -652,6 +686,69 @@ class QuestRepository(
         completeQuestLocked(quest, epochDay, scaled.result, scaled.fraction, verification)
     }
 
+    // --- Per-quest timed reminders -------------------------------------------
+
+    /**
+     * The active stored quests whose reminder alarms should be armed: reminders on,
+     * at least one scheduled time, occurrence limit not yet used up. Derived
+     * habit/goal quests never carry schedule fields, so stored quests are the
+     * complete set.
+     */
+    suspend fun reminderQuests(): List<Quest> {
+        val counts = completionDao.completedOccurrenceCounts().associate { it.questId to it.n }
+        return questDao.getActive().map { it.toModel() }.filter {
+            it.remindersEnabled && it.scheduledTimes.isNotEmpty() &&
+                !QuestSchedule.isRetired(it, counts[it.id] ?: 0)
+        }
+    }
+
+    /**
+     * Fire-time gate for a per-quest reminder: returns the quest only if it should
+     * actually notify on [epochDay] — still active with reminders on, not retired,
+     * due by its cadence/anchor, and not already done for the current interval. A
+     * partially-logged multi-time quest (morning dose taken, evening pending) is
+     * still due, so the evening nudge fires.
+     */
+    suspend fun reminderDueQuest(questId: String, epochDay: Long): Quest? {
+        val quest = questDao.getActiveById(questId)?.toModel() ?: return null
+        if (!quest.remindersEnabled || quest.scheduledTimes.isEmpty()) return null
+        val ctx = buildDayContext(epochDay)
+        val occurrences = ctx.completedOccurrences[quest.id] ?: 0
+        if (QuestSchedule.isRetired(quest, occurrences)) return null
+        val dismissed = dismissedQuestIds(ctx)
+        if (quest.id in dismissed) return null
+        val due = if (CompletionSlots.hasCalendarInterval(quest)) {
+            true // interval quest not dismissed above -> still has work this interval
+        } else {
+            QuestSchedule.isDue(
+                quest, epochDay, ctx.lastCompleted[quest.id], occurrences,
+                ctx.profile.preferences.firstDayOfWeek,
+            )
+        }
+        return quest.takeIf { due }
+    }
+
+    /**
+     * Completes one reminder slot from the notification's "Mark done" without
+     * opening the app: a binary quest completes for the day; a counting quest logs
+     * +1 (one dose of "twice a day"). Returns false when there was nothing to
+     * credit (already done, not due, or a style that needs in-app input) — the
+     * caller keeps the notification so the tap can open the app instead.
+     */
+    suspend fun completeFromReminder(questId: String, epochDay: Long): Boolean {
+        val quest = reminderDueQuest(questId, epochDay) ?: return false
+        when (quest.completionStyle) {
+            CompletionStyle.BINARY -> completeQuest(quest, epochDay, CompletionResult.COMPLETED)
+            CompletionStyle.QUANTITATIVE -> {
+                val progress = intervalProgress(quest, epochDay, firstDayOfWeek())
+                completeMeasured(quest, epochDay, progress + 1)
+            }
+            // Duration/subjective need real input (minutes, a rating) — in-app only.
+            CompletionStyle.DURATION, CompletionStyle.SUBJECTIVE -> return false
+        }
+        return true
+    }
+
     /** Aggregate progress for achievements, built from cheap DB queries. */
     private suspend fun progressStats(totalXp: Long, activeDays: Set<Long>): ProgressStats = ProgressStats(
         totalCompleted = completionDao.countCompleted(),
@@ -701,7 +798,12 @@ class QuestRepository(
         val lastCompleted = completionDao.lastCompletedDays().associate { it.questId to it.lastDay }
         val derived = derivedQuests(profile) +
             adminFundQuests(fromEpochDay, profile, lastCompleted)
-        val candidates = questDao.getActive().map { it.toModel() } + derived
+        val occurrences = completionDao.completedOccurrenceCounts().associate { it.questId to it.n }
+        // Retired quests (occurrence limit used up) are done for good — they must
+        // not be projected into future periods. Anchor-precise placement within the
+        // period is out of scope: an anchored quest still slots by its rolling cadence.
+        val candidates = (questDao.getActive().map { it.toModel() } + derived)
+            .filterNot { QuestSchedule.isRetired(it, occurrences[it.id] ?: 0) }
         return periodPlanner.plan(
             periodLabel, fromEpochDay, toEpochDay, candidates, lastCompleted,
             profile.preferences.firstDayOfWeek,

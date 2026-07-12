@@ -189,6 +189,36 @@ data class Quest(
      * earns a small, diminishing bonus (SPEC §8, still anti-farm bounded).
      */
     val allowOverCompletion: Boolean = false,
+    /**
+     * Times of day this quest is scheduled at, as minutes since local midnight
+     * (0..1439), sorted ascending. Empty = untimed (the default). More than one
+     * time on a recurring quest means one loggable unit per time (e.g. medicine
+     * morning + evening), which [com.questloop.core.generation.QuestSchedule.normalized]
+     * models as a QUANTITATIVE count — the completion ledger's keying is untouched.
+     */
+    val scheduledTimes: List<Int> = emptyList(),
+    /**
+     * WEEKLY quests only: the day of week this quest anchors to (e.g. gym every
+     * Monday). Anchored quests become due on that day and stay due until completed
+     * within the calendar week; null keeps the rolling last-completion cadence.
+     */
+    @Serializable(with = IsoDayOfWeekSerializer::class)
+    val scheduledDayOfWeek: DayOfWeek? = null,
+    /**
+     * MONTHLY quests only: the day of month (1..31, clamped to short months) this
+     * quest anchors to (e.g. rent on the 1st). Same due semantics as the weekly
+     * anchor, over the calendar month; null keeps the rolling cadence.
+     */
+    val scheduledDayOfMonth: Int? = null,
+    /**
+     * Stop after this many completed intervals (days/weeks/months): e.g. medicine
+     * for 5 days, rent for 12 months. Counted from COMPLETED ledger records only —
+     * a missed interval extends the run rather than silently consuming it. Null =
+     * no limit. Once reached the quest retires like a finished one-off.
+     */
+    val totalOccurrences: Int? = null,
+    /** Opt-in reminder notifications at [scheduledTimes] on days the quest is due. */
+    val remindersEnabled: Boolean = false,
     val tags: List<String> = emptyList(),
     /** Optional short rationale shown to the user (AI explainability, SPEC 5). */
     val rationale: String? = null,

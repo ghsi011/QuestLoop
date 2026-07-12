@@ -162,6 +162,54 @@ val pickableFrequencies: List<QuestFrequency> = listOf(
     QuestFrequency.ONE_OFF,
 )
 
+/** "8:00 AM" for a minutes-since-midnight value, in the user's locale. */
+fun formatMinuteOfDay(minuteOfDay: Int): String =
+    java.time.LocalTime.of((minuteOfDay / 60).coerceIn(0, 23), (minuteOfDay % 60).coerceIn(0, 59))
+        .format(java.time.format.DateTimeFormatter.ofLocalizedTime(java.time.format.FormatStyle.SHORT))
+
+private fun ordinal(n: Int): String = when {
+    n % 100 in 11..13 -> "${n}th"
+    n % 10 == 1 -> "${n}st"
+    n % 10 == 2 -> "${n}nd"
+    n % 10 == 3 -> "${n}rd"
+    else -> "${n}th"
+}
+
+/**
+ * One-line schedule caption for quest rows — anchor day, times (with a bell when
+ * reminders are on), and "k of N" occurrence progress. Null when the quest has no
+ * schedule, so unscheduled rows render exactly as before.
+ */
+fun scheduleSummary(quest: com.questloop.core.model.Quest, completedOccurrences: Int? = null): String? {
+    val parts = mutableListOf<String>()
+    quest.scheduledDayOfWeek?.takeIf { quest.frequency == QuestFrequency.WEEKLY }?.let {
+        parts += it.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault()) + "s"
+    }
+    quest.scheduledDayOfMonth?.takeIf { quest.frequency == QuestFrequency.MONTHLY }?.let {
+        parts += "the ${ordinal(it)}"
+    }
+    if (quest.scheduledTimes.isNotEmpty()) {
+        val times = quest.scheduledTimes.joinToString(" · ") { formatMinuteOfDay(it) }
+        parts += if (quest.remindersEnabled) "$times 🔔" else times
+    }
+    quest.totalOccurrences?.let { total ->
+        val word = when (quest.frequency) {
+            QuestFrequency.WEEKLY -> "weeks"
+            QuestFrequency.MONTHLY -> "months"
+            QuestFrequency.DAILY, QuestFrequency.RECURRING -> "days"
+            else -> "times"
+        }
+        // Callers without the completed-interval count (the Today rows) pass null
+        // and get the plain total instead of a misleading "0 of N".
+        parts += if (completedOccurrences != null) {
+            "${completedOccurrences.coerceAtMost(total)} of $total $word"
+        } else {
+            "for $total $word"
+        }
+    }
+    return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+}
+
 /** Difficulty shown as filled pips (e.g. ●●●○○) instead of a word. The pip count
  *  is visual-only, so the tier is exposed as a content description for TalkBack. */
 @Composable

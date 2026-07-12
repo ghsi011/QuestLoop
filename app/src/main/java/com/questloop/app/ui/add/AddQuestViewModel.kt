@@ -55,6 +55,16 @@ data class QuestDraft(
     /** Optional due date (SPEC §10), pickable manually or from a calendar event. */
     val deadlineEpochDay: Long? = null,
     val tags: List<String> = emptyList(),
+    /** Scheduled times of day (minutes since midnight), recurring quests only. */
+    val scheduledTimes: List<Int> = emptyList(),
+    /** WEEKLY anchor day; null = any day of the week. */
+    val scheduledDayOfWeek: java.time.DayOfWeek? = null,
+    /** MONTHLY anchor day (1..31); null = any day of the month. */
+    val scheduledDayOfMonth: Int? = null,
+    /** Stop after this many completed days/weeks/months; null = no limit. */
+    val totalOccurrences: Int? = null,
+    /** Per-quest reminder notifications at the scheduled times. */
+    val remindersEnabled: Boolean = false,
 )
 
 class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
@@ -97,6 +107,14 @@ class AddQuestViewModel(private val repository: QuestRepository) : ViewModel() {
                 (d.completionStyle == CompletionStyle.QUANTITATIVE || d.completionStyle == CompletionStyle.DURATION),
             deadlineEpochDay = d.deadlineEpochDay,
             tags = d.tags,
+            // Canonicalised by QuestSchedule.normalized in the repository (times
+            // sorted/capped, anchors matched to frequency, multi-time binary ->
+            // per-slot count, reminders require a time).
+            scheduledTimes = d.scheduledTimes,
+            scheduledDayOfWeek = d.scheduledDayOfWeek,
+            scheduledDayOfMonth = d.scheduledDayOfMonth,
+            totalOccurrences = d.totalOccurrences,
+            remindersEnabled = d.remindersEnabled,
         )
         launchSafely(onError = failed { it.copy(saving = false) }) {
             repository.addQuest(quest)

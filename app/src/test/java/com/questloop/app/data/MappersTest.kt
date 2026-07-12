@@ -97,6 +97,40 @@ class MappersTest {
     }
 
     @Test
+    fun `schedule fields round trip through entity`() {
+        val quest = Quest(
+            id = "q5",
+            title = "Take medicine",
+            category = QuestCategory.HEALTH,
+            frequency = QuestFrequency.DAILY,
+            difficulty = Difficulty.TRIVIAL,
+            scheduledTimes = listOf(8 * 60, 20 * 60),
+            totalOccurrences = 5,
+            remindersEnabled = true,
+        )
+        assertEquals(quest, quest.toEntity().toModel())
+
+        val anchored = quest.copy(
+            frequency = QuestFrequency.WEEKLY,
+            scheduledDayOfWeek = java.time.DayOfWeek.MONDAY,
+            scheduledDayOfMonth = null,
+        )
+        assertEquals(anchored, anchored.toEntity().toModel())
+    }
+
+    @Test
+    fun `out-of-range stored day-of-week degrades to no anchor`() {
+        val entity = Quest(
+            id = "q6",
+            title = "Weekly",
+            category = QuestCategory.CHORES,
+            frequency = QuestFrequency.WEEKLY,
+            difficulty = Difficulty.EASY,
+        ).toEntity().copy(scheduledDayOfWeek = 9)
+        assertEquals(null, entity.toModel().scheduledDayOfWeek)
+    }
+
+    @Test
     fun `completion record round trips and preserves xp`() {
         val record = CompletionRecord(
             instanceId = "q1@100",
