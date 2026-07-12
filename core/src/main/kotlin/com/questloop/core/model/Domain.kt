@@ -221,6 +221,16 @@ data class Quest(
     val totalOccurrences: Int? = null,
     /** Opt-in reminder notifications at [scheduledTimes] on days the quest is due. */
     val remindersEnabled: Boolean = false,
+    /**
+     * True when this quest's QUANTITATIVE target mirrors its [scheduledTimes]
+     * count — the automatic "twice a day becomes a 2-of-2 count" conversion
+     * ([com.questloop.core.generation.QuestSchedule.normalized]). Editing such a
+     * quest's times re-derives the target (and reverts to BINARY at one time).
+     * A persisted flag, not a unit-string heuristic: user-authored counters —
+     * including one whose unit is literally "times" — keep this false and are
+     * never rewritten.
+     */
+    val countsTimeSlots: Boolean = false,
     val tags: List<String> = emptyList(),
     /** Optional short rationale shown to the user (AI explainability, SPEC 5). */
     val rationale: String? = null,

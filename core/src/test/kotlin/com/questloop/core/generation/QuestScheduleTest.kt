@@ -243,25 +243,39 @@ class QuestScheduleTest {
         // keep target and slots in lockstep or a 1-of-2 day could never complete.
         val converted = QuestSchedule.normalized(quest(times = listOf(8 * 60, 20 * 60)))
         assertEquals(2, converted.targetCount)
+        assertTrue(converted.countsTimeSlots) // the persisted marker
 
         val downToOne = QuestSchedule.normalized(converted.copy(scheduledTimes = listOf(8 * 60)))
         assertEquals(CompletionStyle.BINARY, downToOne.completionStyle)
         assertNull(downToOne.targetCount)
         assertNull(downToOne.unit)
+        assertFalse(downToOne.countsTimeSlots)
 
         val upToThree = QuestSchedule.normalized(converted.copy(scheduledTimes = listOf(8 * 60, 14 * 60, 20 * 60)))
         assertEquals(CompletionStyle.QUANTITATIVE, upToThree.completionStyle)
         assertEquals(3, upToThree.targetCount)
+        assertTrue(upToThree.countsTimeSlots)
     }
 
     @Test
-    fun `a genuine counted quest is never rewritten by the slot heuristic`() {
-        // Unscheduled "5 times" counter: no scheduled times -> untouched.
+    fun `a genuine counted quest is never rewritten by the slot conversion`() {
+        // The user can legitimately type "times" as a unit — recognition rides the
+        // persisted countsTimeSlots flag, so authored counters are never rewritten.
         val unscheduled = QuestSchedule.normalized(
             quest(style = CompletionStyle.QUANTITATIVE, targetCount = 5).copy(unit = "times"),
         )
         assertEquals(5, unscheduled.targetCount)
         assertEquals(CompletionStyle.QUANTITATIVE, unscheduled.completionStyle)
+
+        // Scheduled, unit "times", ONE time, target 3 — the exact shape the old
+        // unit-string heuristic destroyed (converted to BINARY): stays intact.
+        val authored = QuestSchedule.normalized(
+            quest(style = CompletionStyle.QUANTITATIVE, targetCount = 3, times = listOf(9 * 60)).copy(unit = "times"),
+        )
+        assertEquals(3, authored.targetCount)
+        assertEquals(CompletionStyle.QUANTITATIVE, authored.completionStyle)
+        assertEquals("times", authored.unit)
+        assertFalse(authored.countsTimeSlots)
 
         // A scheduled counter with its own unit stays intact too.
         val glasses = QuestSchedule.normalized(
@@ -269,6 +283,19 @@ class QuestScheduleTest {
         )
         assertEquals(8, glasses.targetCount)
         assertEquals("glasses", glasses.unit)
+    }
+
+    @Test
+    fun `a flag-less converted shape is re-adopted so it heals across boundaries`() {
+        // An AI refine round-trip rebuilds the quest without the flag; a target
+        // exactly mirroring several slots with the synthetic unit is re-adopted so
+        // its next edit re-derives instead of desyncing.
+        val refined = QuestSchedule.normalized(
+            quest(style = CompletionStyle.QUANTITATIVE, targetCount = 2, times = listOf(9 * 60, 21 * 60))
+                .copy(unit = "times"),
+        )
+        assertTrue(refined.countsTimeSlots)
+        assertEquals(2, refined.targetCount)
     }
 
     @Test

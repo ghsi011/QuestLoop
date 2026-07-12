@@ -45,10 +45,11 @@ object QuestReminderNotifications {
      * The reminder itself. "Mark done" is offered only for styles completable in
      * one tap — binary (done for the day) and counting (+1, e.g. one dose);
      * timed/subjective quests need in-app input, so tapping opens the app instead.
-     * [expectedCount] is the cumulative count this nudge's "Mark done" stands for —
-     * stamped into the action so a duplicated tap can't credit two doses.
+     * Each posting stamps a unique tap token into the action so a duplicated
+     * delivery of one physical tap can't credit two doses (the repository keeps
+     * the consumed tokens).
      */
-    fun show(context: Context, quest: Quest, epochDay: Long, expectedCount: Int) {
+    fun show(context: Context, quest: Quest, epochDay: Long) {
         val builder = builder(context, quest.id, quest.title, "Scheduled for now — whenever you're ready.")
         if (quest.completionStyle == CompletionStyle.BINARY || quest.completionStyle == CompletionStyle.QUANTITATIVE) {
             val doneIntent = Intent(context, QuestReminderActionReceiver::class.java)
@@ -58,7 +59,10 @@ object QuestReminderNotifications {
                 .putExtra(QuestReminderActionReceiver.EXTRA_QUEST_ID, quest.id)
                 // Stamped firing day, so a late tap credits the right day.
                 .putExtra(QuestReminderActionReceiver.EXTRA_DAY, epochDay)
-                .putExtra(QuestReminderActionReceiver.EXTRA_EXPECTED_COUNT, expectedCount)
+                .putExtra(
+                    QuestReminderActionReceiver.EXTRA_TAP_TOKEN,
+                    "${quest.id}@$epochDay#${System.currentTimeMillis()}",
+                )
             val donePending = PendingIntent.getBroadcast(
                 context,
                 0,

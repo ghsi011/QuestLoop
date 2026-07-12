@@ -166,16 +166,22 @@ object QuestSchedule {
             }
         val multiSlotBinary = times.size > 1 && quest.completionStyle == CompletionStyle.BINARY
         // The inverse direction: a quest previously converted by the multi-slot rule
-        // (recognizable by the synthetic unit + a target within the slot cap) whose
-        // times were edited must re-derive its target — otherwise dropping from two
-        // times to one leaves a 1-of-2 day that can never complete. Down to a single
-        // time it converts back to plain BINARY. Only quests still carrying scheduled
-        // times are touched, so a genuine unscheduled "5 times" counter is never
-        // rewritten (a scheduled counter with the literal unit "times" and a small
-        // target is the one accepted ambiguity).
-        val slotDerived = quest.completionStyle == CompletionStyle.QUANTITATIVE &&
-            quest.unit == SLOT_UNIT && times.isNotEmpty() &&
-            (quest.targetCount ?: 0) in 1..MAX_TIMES_PER_DAY
+        // must re-derive its target when its times are edited — otherwise dropping
+        // from two times to one leaves a 1-of-2 day that can never complete. Down to
+        // a single (or no) time it converts back to plain BINARY. Recognition is the
+        // persisted [Quest.countsTimeSlots] flag — never the unit string, which a
+        // user can legitimately type ("do it 3 times"). The one heuristic kept:
+        // a flag-less quest whose target exactly mirrors several scheduled slots
+        // with the synthetic unit is re-adopted, so a conversion that crossed a
+        // boundary that drops the flag (an AI refine round-trip) heals rather than
+        // desyncing on its next edit — for such a quest re-derivation is a no-op
+        // today and correct tomorrow.
+        val slotDerived = !multiSlotBinary && quest.completionStyle == CompletionStyle.QUANTITATIVE &&
+            (
+                quest.countsTimeSlots ||
+                    (quest.unit == SLOT_UNIT && times.size > 1 && quest.targetCount == times.size)
+                )
+        val revertToBinary = slotDerived && times.size <= 1
         return quest.copy(
             scheduledTimes = times,
             scheduledDayOfWeek = quest.scheduledDayOfWeek.takeIf { quest.frequency == QuestFrequency.WEEKLY },
@@ -185,19 +191,20 @@ object QuestSchedule {
             remindersEnabled = quest.remindersEnabled && times.isNotEmpty(),
             completionStyle = when {
                 multiSlotBinary -> CompletionStyle.QUANTITATIVE
-                slotDerived && times.size <= 1 -> CompletionStyle.BINARY
+                revertToBinary -> CompletionStyle.BINARY
                 else -> quest.completionStyle
             },
             targetCount = when {
                 multiSlotBinary || (slotDerived && times.size > 1) -> times.size
-                slotDerived && times.size <= 1 -> null
+                revertToBinary -> null
                 else -> quest.targetCount
             },
             unit = when {
                 multiSlotBinary -> SLOT_UNIT
-                slotDerived && times.size <= 1 -> null
+                revertToBinary -> null
                 else -> quest.unit
             },
+            countsTimeSlots = (multiSlotBinary || slotDerived) && times.size > 1,
         )
     }
 

@@ -737,23 +737,13 @@ class QuestRepository(
     }
 
     /**
-     * A due reminder's payload: the quest plus the cumulative count its "Mark done"
-     * should write ([nextCount] = current interval progress + 1, for counting
-     * quests). The count is stamped into the notification action so a duplicated
-     * delivery of the same tap can be recognized and dropped instead of crediting
-     * a second unit.
+     * Fire-time gate for a per-quest reminder: returns the quest only if it should
+     * actually notify on [epochDay] — still active with reminders on, not retired,
+     * due by its cadence/anchor, and not already done for the current interval. A
+     * partially-logged multi-time quest (morning dose taken, evening pending) is
+     * still due, so the evening nudge fires.
      */
-    data class ReminderDue(val quest: Quest, val nextCount: Int)
-
-    /**
-     * Fire-time gate for a per-quest reminder: returns the quest (with its
-     * expected next count) only if it should actually notify on [epochDay] —
-     * still active with reminders on, not retired, due by its cadence/anchor, and
-     * not already done for the current interval. A partially-logged multi-time
-     * quest (morning dose taken, evening pending) is still due, so the evening
-     * nudge fires.
-     */
-    suspend fun reminderDueQuest(questId: String, epochDay: Long): ReminderDue? {
+    suspend fun reminderDueQuest(questId: String, epochDay: Long): Quest? {
         val quest = questDao.getActiveById(questId)?.toModel() ?: return null
         if (!quest.remindersEnabled || quest.scheduledTimes.isEmpty()) return null
         val ctx = buildDayContext(epochDay)
@@ -769,38 +759,65 @@ class QuestRepository(
                 ctx.profile.preferences.firstDayOfWeek,
             )
         }
-        if (!due) return null
-        return ReminderDue(quest, nextCount = (progressByQuest(ctx)[quest.id] ?: 0) + 1)
+        return quest.takeIf { due }
     }
 
     /**
      * Completes one reminder slot from the notification's "Mark done" without
      * opening the app: a binary quest completes for the day; a counting quest logs
-     * +1 (one dose of "twice a day"). [expectedCount] is the cumulative count the
-     * notification was issued for ([ReminderDue.nextCount]): if progress already
-     * reached it, this tap's unit was credited before (a duplicated broadcast from
-     * a double-tap, most likely on a cold process) and the call is a successful
-     * no-op rather than a second dose. Returns false when there was nothing to
-     * credit at all (already done, not due, or a style that needs in-app input) —
-     * the caller replaces the notification so the tap can open the app instead.
+     * +1 (one dose of "twice a day"). [tapToken] identifies the notification the
+     * tap came from (stamped at show time): once a token's credit has landed, a
+     * duplicated delivery of the same tap — a double-tap enqueues two broadcasts,
+     * most likely on a cold process — is a successful no-op. A token, not a
+     * progress comparison: progress legitimately logged elsewhere after the
+     * notification posted (widget, in-app) must NOT swallow this tap's own unit.
+     * Returns false when there was nothing to credit at all (already done, not
+     * due, or a style that needs in-app input) — the caller replaces the
+     * notification so the tap can open the app instead.
      */
-    suspend fun completeFromReminder(questId: String, epochDay: Long, expectedCount: Int? = null): Boolean {
-        val due = reminderDueQuest(questId, epochDay) ?: return false
-        val quest = due.quest
+    suspend fun completeFromReminder(questId: String, epochDay: Long, tapToken: String? = null): Boolean {
+        // Checked before the dueness gate: the duplicate of an already-credited tap
+        // must be a quiet success even when the quest now reads done (a binary
+        // quest, or the final counting slot) — falling through would report
+        // "nothing to credit" and post a spurious couldn't-log notification right
+        // after a successful mark-done.
+        if (tapToken != null && completionMutex.withLock { tapToken in consumedReminderTaps }) return true
+        val quest = reminderDueQuest(questId, epochDay) ?: return false
         when (quest.completionStyle) {
-            CompletionStyle.BINARY -> completeQuest(quest, epochDay, CompletionResult.COMPLETED)
+            CompletionStyle.BINARY -> {
+                // Idempotent per day-slot, so a pre-consume race is harmless.
+                completeQuest(quest, epochDay, CompletionResult.COMPLETED)
+                completionMutex.withLock { consumeReminderTapLocked(tapToken) }
+            }
             // Read-progress + write must share one mutex hold: an unlocked
             // progress+1 racing a concurrent log (widget, in-app, a second tap)
             // would silently drop one of the units (the AGENTS ledger invariant).
             CompletionStyle.QUANTITATIVE -> completionMutex.withLock {
+                // Re-check under the lock: two duplicates can both pass the
+                // unlocked pre-check and serialize here.
+                if (tapToken != null && tapToken in consumedReminderTaps) return true
                 val progress = intervalProgress(quest, epochDay, firstDayOfWeek())
-                if (expectedCount != null && progress >= expectedCount) return true
                 completeMeasuredLocked(quest, epochDay, progress + 1)
+                consumeReminderTapLocked(tapToken)
             }
             // Duration/subjective need real input (minutes, a rating) — in-app only.
             CompletionStyle.DURATION, CompletionStyle.SUBJECTIVE -> return false
         }
         return true
+    }
+
+    /**
+     * Recently credited reminder taps (see [completeFromReminder]). Guarded by
+     * [completionMutex]; bounded — a handful of reminder taps a day means even the
+     * small cap covers weeks. In-memory is enough: duplicated broadcasts of one
+     * tap are handled by the same process instance.
+     */
+    private val consumedReminderTaps = ArrayDeque<String>()
+
+    private fun consumeReminderTapLocked(token: String?) {
+        if (token == null || token in consumedReminderTaps) return
+        consumedReminderTaps.addLast(token)
+        while (consumedReminderTaps.size > 64) consumedReminderTaps.removeFirst()
     }
 
     /** Aggregate progress for achievements, built from cheap DB queries. */

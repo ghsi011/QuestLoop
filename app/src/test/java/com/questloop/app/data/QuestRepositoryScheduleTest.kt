@@ -215,17 +215,31 @@ class QuestRepositoryScheduleTest {
     fun `a duplicated mark-done delivery credits only one unit`() = runTest {
         val day = LocalDate.of(2024, 3, 4).toEpochDay()
         repo.addQuest(quest(times = listOf(8 * 60, 20 * 60), reminders = true))
-        val morning = repo.reminderDueQuest("q-sched", day)!!.nextCount
-        assertEquals(1, morning)
-        assertTrue(repo.completeFromReminder("q-sched", day, morning))
-        // The double-tap's second broadcast carries the same expected count: a
-        // successful no-op, not a second dose.
-        assertTrue(repo.completeFromReminder("q-sched", day, morning))
+        assertTrue(repo.completeFromReminder("q-sched", day, "tap-morning"))
+        // The double-tap's second broadcast carries the same token: a successful
+        // no-op, not a second dose.
+        assertTrue(repo.completeFromReminder("q-sched", day, "tap-morning"))
         assertEquals(1, repo.todayProgress(day)["q-sched"])
-        // The evening slot still credits normally.
-        val evening = repo.reminderDueQuest("q-sched", day)!!.nextCount
-        assertEquals(2, evening)
-        assertTrue(repo.completeFromReminder("q-sched", day, evening))
+        // The evening tap still credits normally...
+        assertTrue(repo.completeFromReminder("q-sched", day, "tap-evening"))
+        assertTrue(status(day).done)
+        // ...and ITS duplicate is a quiet success too, even though the quest now
+        // reads done (no spurious couldn't-log re-post).
+        assertTrue(repo.completeFromReminder("q-sched", day, "tap-evening"))
+        assertEquals(2, repo.todayProgress(day)["q-sched"])
+    }
+
+    @Test
+    fun `a tap keeps its own unit even after progress was logged elsewhere`() = runTest {
+        // Evening notification is up (its token unconsumed); the user then logs the
+        // missed morning dose in-app. Tapping the evening notification must credit
+        // the evening dose — a progress-based guard would swallow it.
+        val day = LocalDate.of(2024, 3, 4).toEpochDay()
+        repo.addQuest(quest(times = listOf(8 * 60, 20 * 60), reminders = true))
+        val stored = repo.activeQuestById("q-sched")!!
+        repo.completeMeasured(stored, day, 1) // in-app morning log
+        assertTrue(repo.completeFromReminder("q-sched", day, "tap-evening"))
+        assertEquals(2, repo.todayProgress(day)["q-sched"])
         assertTrue(status(day).done)
     }
 

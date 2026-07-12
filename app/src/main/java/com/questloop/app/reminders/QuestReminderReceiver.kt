@@ -54,9 +54,7 @@ class QuestReminderReceiver : BroadcastReceiver() {
                             System.currentTimeMillis() + QuestReminderScheduler.POST_FIRE_BUFFER_MILLIS,
                         )
                         val due = repo.reminderDueQuest(questId, epochDay)
-                        if (due != null) {
-                            QuestReminderNotifications.show(context, due.quest, epochDay, due.nextCount)
-                        }
+                        if (due != null) QuestReminderNotifications.show(context, due, epochDay)
                     }
                 }
             } finally {

@@ -28,7 +28,7 @@ class QuestReminderActionReceiver : BroadcastReceiver() {
         runCatching {
             NotificationManagerCompat.from(context).cancel(QuestReminderNotifications.notificationId(questId))
         }
-        val expectedCount = intent.getIntExtra(EXTRA_EXPECTED_COUNT, -1).takeIf { it > 0 }
+        val tapToken = intent.getStringExtra(EXTRA_TAP_TOKEN)
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -38,7 +38,7 @@ class QuestReminderActionReceiver : BroadcastReceiver() {
                 // eat the dose AND the nudge.
                 val landed = runCatching {
                     val repo = (context.applicationContext as QuestLoopApplication).container.repository
-                    repo.completeFromReminder(questId, epochDay, expectedCount)
+                    repo.completeFromReminder(questId, epochDay, tapToken)
                 }.getOrDefault(false)
                 if (!landed) {
                     // Nothing credited (already done in-app, needs in-app input, or
@@ -61,6 +61,6 @@ class QuestReminderActionReceiver : BroadcastReceiver() {
         const val ACTION_QUEST_DONE = "com.questloop.app.QUEST_REMINDER_DONE"
         const val EXTRA_QUEST_ID = "questId"
         const val EXTRA_DAY = "day"
-        const val EXTRA_EXPECTED_COUNT = "expectedCount"
+        const val EXTRA_TAP_TOKEN = "tapToken"
     }
 }

@@ -2,11 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 5,
-    "identityHash": "349c17b4fc843f7027311c21640774a7",
+    "identityHash": "c4c195bdd14fef7da436264cadfafd60",
     "entities": [
       {
         "tableName": "quests",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `category` TEXT NOT NULL, `frequency` TEXT NOT NULL, `difficulty` TEXT NOT NULL, `priority` TEXT NOT NULL, `origin` TEXT NOT NULL, `estimatedMinutes` INTEGER NOT NULL, `deadlineEpochDay` INTEGER, `isReductionQuest` INTEGER NOT NULL, `completionStyle` TEXT NOT NULL, `targetCount` INTEGER, `unit` TEXT, `tags` TEXT NOT NULL, `rationale` TEXT, `archived` INTEGER NOT NULL, `allowOverCompletion` INTEGER NOT NULL, `scheduledTimes` TEXT NOT NULL, `scheduledDayOfWeek` INTEGER, `scheduledDayOfMonth` INTEGER, `totalOccurrences` INTEGER, `remindersEnabled` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `category` TEXT NOT NULL, `frequency` TEXT NOT NULL, `difficulty` TEXT NOT NULL, `priority` TEXT NOT NULL, `origin` TEXT NOT NULL, `estimatedMinutes` INTEGER NOT NULL, `deadlineEpochDay` INTEGER, `isReductionQuest` INTEGER NOT NULL, `completionStyle` TEXT NOT NULL, `targetCount` INTEGER, `unit` TEXT, `tags` TEXT NOT NULL, `rationale` TEXT, `archived` INTEGER NOT NULL, `allowOverCompletion` INTEGER NOT NULL, `scheduledTimes` TEXT NOT NULL, `scheduledDayOfWeek` INTEGER, `scheduledDayOfMonth` INTEGER, `totalOccurrences` INTEGER, `remindersEnabled` INTEGER NOT NULL, `countsTimeSlots` INTEGER NOT NULL, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -132,6 +132,12 @@
             "columnName": "remindersEnabled",
             "affinity": "INTEGER",
             "notNull": true
+          },
+          {
+            "fieldPath": "countsTimeSlots",
+            "columnName": "countsTimeSlots",
+            "affinity": "INTEGER",
+            "notNull": true
           }
         ],
         "primaryKey": {
@@ -251,7 +257,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '349c17b4fc843f7027311c21640774a7')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'c4c195bdd14fef7da436264cadfafd60')"
     ]
   }
 }

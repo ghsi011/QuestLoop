@@ -38,6 +38,8 @@ data class QuestEntity(
     val totalOccurrences: Int? = null,
     /** Per-quest reminder notifications at the scheduled times (v5+). */
     val remindersEnabled: Boolean = false,
+    /** Marks a target auto-derived from the scheduled-times count (v5+). */
+    val countsTimeSlots: Boolean = false,
 )
 
 /** Projection: the last fully-completed day for a quest (recurrence scheduling). */

@@ -64,9 +64,11 @@ abstract class QuestLoopDatabase : RoomDatabase() {
 
         /**
          * v4 → v5: per-quest scheduling — set times of day, weekly/monthly anchor
-         * day, a total-occurrence limit, and a per-quest reminder toggle. Defaults
-         * match the entity's (untimed, unanchored, unlimited, reminders off) so
-         * existing quests behave exactly as before.
+         * day, a total-occurrence limit, a per-quest reminder toggle, and the
+         * marker for a target auto-derived from the times count. Defaults match
+         * the entity's (untimed, unanchored, unlimited, reminders off) so existing
+         * quests behave exactly as before. (All six columns landed in one bump:
+         * v5 was authored on this branch and never shipped in a release.)
          */
         private val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -75,6 +77,7 @@ abstract class QuestLoopDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE quests ADD COLUMN scheduledDayOfMonth INTEGER")
                 db.execSQL("ALTER TABLE quests ADD COLUMN totalOccurrences INTEGER")
                 db.execSQL("ALTER TABLE quests ADD COLUMN remindersEnabled INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE quests ADD COLUMN countsTimeSlots INTEGER NOT NULL DEFAULT 0")
             }
         }
 

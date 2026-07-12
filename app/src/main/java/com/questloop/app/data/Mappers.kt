@@ -46,6 +46,7 @@ fun QuestEntity.toModel(): Quest = Quest(
     scheduledDayOfMonth = scheduledDayOfMonth,
     totalOccurrences = totalOccurrences,
     remindersEnabled = remindersEnabled,
+    countsTimeSlots = countsTimeSlots,
 )
 
 fun Quest.toEntity(archived: Boolean = false): QuestEntity = QuestEntity(
@@ -71,6 +72,7 @@ fun Quest.toEntity(archived: Boolean = false): QuestEntity = QuestEntity(
     scheduledDayOfMonth = scheduledDayOfMonth,
     totalOccurrences = totalOccurrences,
     remindersEnabled = remindersEnabled,
+    countsTimeSlots = countsTimeSlots,
 )
 
 fun CompletionEntity.toModel(): CompletionRecord = CompletionRecord(
