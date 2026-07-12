@@ -212,9 +212,11 @@ data class Quest(
     val scheduledDayOfMonth: Int? = null,
     /**
      * Stop after this many completed intervals (days/weeks/months): e.g. medicine
-     * for 5 days, rent for 12 months. Counted from COMPLETED ledger records only —
-     * a missed interval extends the run rather than silently consuming it. Null =
-     * no limit. Once reached the quest retires like a finished one-off.
+     * for 5 days, rent for 12 months. Counted as the distinct calendar intervals
+     * holding a COMPLETED ledger record — a missed interval extends the run rather
+     * than silently consuming it, and completing twice within one interval is one
+     * occurrence. Null = no limit. Once reached the quest retires like a finished
+     * one-off.
      */
     val totalOccurrences: Int? = null,
     /** Opt-in reminder notifications at [scheduledTimes] on days the quest is due. */

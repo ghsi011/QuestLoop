@@ -20,17 +20,20 @@ class QuestReminderActionReceiver : BroadcastReceiver() {
         if (intent.action != ACTION_QUEST_DONE) return
         val questId = intent.getStringExtra(EXTRA_QUEST_ID) ?: return
         val epochDay = intent.getLongExtra(EXTRA_DAY, LocalDate.now().toEpochDay())
+        // Retract the notification synchronously: action taps don't auto-cancel,
+        // and leaving it up until the async write lands invites a double-tap that
+        // would credit two doses. If the credit can't land, the "already handled"
+        // replacement below (or the quest's next scheduled fire, since it stays
+        // due) brings the nudge back.
+        runCatching {
+            NotificationManagerCompat.from(context).cancel(QuestReminderNotifications.notificationId(questId))
+        }
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 runCatching {
                     val repo = (context.applicationContext as QuestLoopApplication).container.repository
-                    if (repo.completeFromReminder(questId, epochDay)) {
-                        // Clear only once the completion landed; on failure the
-                        // notification (and its idempotent action) stays.
-                        NotificationManagerCompat.from(context)
-                            .cancel(QuestReminderNotifications.notificationId(questId))
-                    } else {
+                    if (!repo.completeFromReminder(questId, epochDay)) {
                         // Nothing to credit (already done in-app, or needs in-app
                         // input). We can't start an activity from here (blocked on
                         // Android 12+) — replace the notification; tapping it opens

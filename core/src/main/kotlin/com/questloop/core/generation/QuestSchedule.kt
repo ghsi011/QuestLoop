@@ -55,6 +55,23 @@ object QuestSchedule {
         return completedOccurrences >= total
     }
 
+    /**
+     * Completed occurrences from the days of the quest's COMPLETED ledger records:
+     * the number of *distinct calendar intervals* those days fall in (day for
+     * daily, week/month for weekly/monthly). A non-measured weekly/monthly quest
+     * keys its records per day, so two completions inside one week/month are one
+     * occurrence, not two — a raw record count would retire "rent for 12 months"
+     * months early. Measured interval quests hold one record per interval, so the
+     * distinct-interval count equals the record count for them.
+     */
+    fun completedOccurrences(
+        quest: Quest,
+        completedEpochDays: Collection<Long>,
+        firstDayOfWeek: DayOfWeek,
+    ): Int = completedEpochDays
+        .mapTo(mutableSetOf()) { CompletionSlots.intervalStartFor(quest.frequency, it, firstDayOfWeek) }
+        .size
+
     /** Whether an anchor day governs this quest's dueness (see class doc: measured
      *  interval quests accumulate instead, so their anchor never gates dueness). */
     fun hasDueAnchor(quest: Quest): Boolean =
@@ -113,7 +130,11 @@ object QuestSchedule {
     /**
      * Canonicalises a quest's schedule fields before persisting:
      * - times are validated (0..1439), deduped, sorted, and capped at [MAX_TIMES_PER_DAY];
-     *   non-recurring frequencies carry no schedule at all;
+     *   non-recurring frequencies carry no schedule at all; WEEKLY/MONTHLY quests
+     *   keep a single time — several times per day would force the multi-slot
+     *   count conversion below, which as a measured quest would stop the anchor
+     *   day from gating dueness ([hasDueAnchor]) and silently diverge from the
+     *   anchor the user just picked;
      * - anchors are kept only on their matching frequency; day-of-month is clamped to 1..31;
      * - a non-positive occurrence limit means "no limit";
      * - reminders require at least one time;
@@ -124,10 +145,12 @@ object QuestSchedule {
      */
     fun normalized(quest: Quest): Quest {
         val schedulable = quest.frequency in schedulableFrequencies
+        val singleTimeOnly =
+            quest.frequency == QuestFrequency.WEEKLY || quest.frequency == QuestFrequency.MONTHLY
         val times =
             if (schedulable) {
                 quest.scheduledTimes.filter { it in 0..MINUTES_RANGE_MAX }
-                    .distinct().sorted().take(MAX_TIMES_PER_DAY)
+                    .distinct().sorted().take(if (singleTimeOnly) 1 else MAX_TIMES_PER_DAY)
             } else {
                 emptyList()
             }
@@ -148,22 +171,17 @@ object QuestSchedule {
     /**
      * The first day at or after [fromEpochDay] this quest's schedule can land on,
      * ignoring completion state (a fire-time dueness check handles that): every day
-     * for daily/rolling cadences, the next anchor day for anchored weekly/monthly.
+     * for daily/rolling cadences; for anchored weekly/monthly, the anchor day OR
+     * any later day of the same interval — an anchored quest stays *due* through
+     * the rest of its interval when missed ("rent unpaid on the 3rd"), so its
+     * reminder must keep landing on those days too. Once the quest is completed,
+     * the fire-time gate keeps those tail fires silent.
      */
     fun nextScheduledDay(quest: Quest, fromEpochDay: Long, firstDayOfWeek: DayOfWeek): Long = when {
-        quest.frequency == QuestFrequency.WEEKLY && quest.scheduledDayOfWeek != null -> {
-            val inWeek = anchorDayIn(quest, fromEpochDay, firstDayOfWeek)!!
-            if (inWeek >= fromEpochDay) inWeek else inWeek + 7
-        }
-        quest.frequency == QuestFrequency.MONTHLY && quest.scheduledDayOfMonth != null -> {
-            val inMonth = anchorDayIn(quest, fromEpochDay, firstDayOfWeek)!!
-            if (inMonth >= fromEpochDay) {
-                inMonth
-            } else {
-                val nextMonth = LocalDate.ofEpochDay(fromEpochDay).withDayOfMonth(1).plusMonths(1)
-                anchorDayIn(quest, nextMonth.toEpochDay(), firstDayOfWeek)!!
-            }
-        }
+        quest.frequency == QuestFrequency.WEEKLY && quest.scheduledDayOfWeek != null ->
+            maxOf(fromEpochDay, anchorDayIn(quest, fromEpochDay, firstDayOfWeek)!!)
+        quest.frequency == QuestFrequency.MONTHLY && quest.scheduledDayOfMonth != null ->
+            maxOf(fromEpochDay, anchorDayIn(quest, fromEpochDay, firstDayOfWeek)!!)
         else -> fromEpochDay
     }
 

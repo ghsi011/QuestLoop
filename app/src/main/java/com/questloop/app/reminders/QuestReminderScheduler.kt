@@ -37,15 +37,23 @@ class QuestReminderScheduler(private val context: Context) {
         quests.forEach { schedule(it, firstDayOfWeek) }
     }
 
-    /** Arms one alarm per scheduled time and clears the unused slot indexes. */
-    fun schedule(quest: Quest, firstDayOfWeek: DayOfWeek) {
+    /**
+     * Arms one alarm per scheduled time and clears the unused slot indexes.
+     *
+     * [fromMillis] is the instant to search forward from. It defaults to *now* —
+     * this path re-runs on every quest/ledger/profile change, and any positive
+     * buffer here would silently skip a slot landing inside it (completing some
+     * other quest at 19:59 must not swallow tonight's 20:00 dose reminder). Only
+     * the receiver's post-fire re-arm passes a buffer, to roll past the instant
+     * that just fired.
+     */
+    fun schedule(quest: Quest, firstDayOfWeek: DayOfWeek, fromMillis: Long = System.currentTimeMillis()) {
         val times = quest.scheduledTimes.take(QuestSchedule.MAX_TIMES_PER_DAY)
         (times.size until QuestSchedule.MAX_TIMES_PER_DAY).forEach { cancelSlot(quest.id, it) }
         times.forEachIndexed { index, minuteOfDay ->
-            // +1 min so re-arming right after a fire rolls to the next occurrence.
             val triggerAt = QuestSchedule.nextTriggerMillis(
                 quest.copy(scheduledTimes = listOf(minuteOfDay)),
-                System.currentTimeMillis() + 60_000L,
+                fromMillis,
                 firstDayOfWeek,
             ) ?: return@forEachIndexed
             alarmManager?.setAndAllowWhileIdle(
@@ -64,7 +72,7 @@ class QuestReminderScheduler(private val context: Context) {
      */
     fun scheduleFallback(questId: String, index: Int, minuteOfDay: Int) {
         val triggerAt = ReminderSchedule.nextTriggerMillis(
-            System.currentTimeMillis() + 60_000L,
+            System.currentTimeMillis() + POST_FIRE_BUFFER_MILLIS,
             minuteOfDay / 60,
             minuteOfDay % 60,
         )
@@ -107,5 +115,9 @@ class QuestReminderScheduler(private val context: Context) {
         const val EXTRA_QUEST_ID = "questId"
         const val EXTRA_INDEX = "timeIndex"
         const val EXTRA_MINUTE = "minuteOfDay"
+
+        /** The post-fire re-arm buffer: rolls past the instant that just fired even
+         *  if the alarm was dispatched marginally early. */
+        const val POST_FIRE_BUFFER_MILLIS: Long = 60_000L
     }
 }

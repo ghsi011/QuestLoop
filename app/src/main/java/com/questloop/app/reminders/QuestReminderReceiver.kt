@@ -47,7 +47,12 @@ class QuestReminderReceiver : BroadcastReceiver() {
                         // deleted: end the series, including the fallback just armed.
                         scheduler.cancelFor(questId)
                     } else {
-                        scheduler.schedule(eligible, repo.firstDayOfWeek())
+                        // Post-fire re-arm: buffer past the instant that just fired.
+                        scheduler.schedule(
+                            eligible,
+                            repo.firstDayOfWeek(),
+                            System.currentTimeMillis() + QuestReminderScheduler.POST_FIRE_BUFFER_MILLIS,
+                        )
                         val due = repo.reminderDueQuest(questId, epochDay)
                         if (due != null) QuestReminderNotifications.show(context, due, epochDay)
                     }

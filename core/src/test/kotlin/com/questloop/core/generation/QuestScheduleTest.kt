@@ -56,6 +56,32 @@ class QuestScheduleTest {
     }
 
     @Test
+    fun `occurrences count distinct intervals, not completion records`() {
+        // Two rent payments logged inside the same calendar month = ONE occurrence;
+        // a raw record count would burn two months of a 12-month run.
+        val rent = quest(frequency = QuestFrequency.MONTHLY, total = 12)
+        val jan5 = LocalDate.of(2024, 1, 5).toEpochDay()
+        val jan20 = LocalDate.of(2024, 1, 20).toEpochDay()
+        val feb1 = LocalDate.of(2024, 2, 1).toEpochDay()
+        assertEquals(1, QuestSchedule.completedOccurrences(rent, listOf(jan5, jan20), DayOfWeek.SUNDAY))
+        assertEquals(2, QuestSchedule.completedOccurrences(rent, listOf(jan5, jan20, feb1), DayOfWeek.SUNDAY))
+
+        // Weekly: same week (Mon-start) = one; across the boundary = two.
+        val weekly = quest(frequency = QuestFrequency.WEEKLY)
+        assertEquals(1, QuestSchedule.completedOccurrences(weekly, listOf(mon, mon + 3), DayOfWeek.MONDAY))
+        assertEquals(2, QuestSchedule.completedOccurrences(weekly, listOf(mon, mon + 7), DayOfWeek.MONDAY))
+        // ...and the week-start preference decides the boundary: Sunday belongs to
+        // the Monday-start week's tail but starts a fresh Sunday-start week.
+        val sat = mon + 5
+        val sun = mon + 6
+        assertEquals(1, QuestSchedule.completedOccurrences(weekly, listOf(sat, sun), DayOfWeek.MONDAY))
+        assertEquals(2, QuestSchedule.completedOccurrences(weekly, listOf(sat, sun), DayOfWeek.SUNDAY))
+
+        // Daily: every day is its own interval.
+        assertEquals(3, QuestSchedule.completedOccurrences(quest(), listOf(mon, mon + 1, mon + 2), DayOfWeek.MONDAY))
+    }
+
+    @Test
     fun `retired quest is never due`() {
         val q = quest(frequency = QuestFrequency.DAILY, total = 5)
         assertTrue(
@@ -212,6 +238,23 @@ class QuestScheduleTest {
     }
 
     @Test
+    fun `normalized keeps a single time on weekly and monthly quests`() {
+        // Several times/day on a weekly quest would convert it to a measured count,
+        // which would stop the anchor from gating dueness — so the earliest time
+        // wins, the quest stays BINARY, and the anchor keeps working.
+        val q = QuestSchedule.normalized(
+            quest(
+                frequency = QuestFrequency.WEEKLY,
+                dayOfWeek = DayOfWeek.WEDNESDAY,
+                times = listOf(20 * 60, 8 * 60),
+            ),
+        )
+        assertEquals(listOf(8 * 60), q.scheduledTimes)
+        assertEquals(CompletionStyle.BINARY, q.completionStyle)
+        assertTrue(QuestSchedule.hasDueAnchor(q))
+    }
+
+    @Test
     fun `normalized clamps a monthly day-of-month into range`() {
         val q = QuestSchedule.normalized(quest(frequency = QuestFrequency.MONTHLY, dayOfMonth = 45))
         assertEquals(31, q.scheduledDayOfMonth)
@@ -220,22 +263,24 @@ class QuestScheduleTest {
     // --- next scheduled day / reminder instant ---------------------------------
 
     @Test
-    fun `nextScheduledDay is the day itself for daily and the coming anchor otherwise`() {
+    fun `nextScheduledDay is the day itself for daily, the anchor or its due tail otherwise`() {
         assertEquals(mon, QuestSchedule.nextScheduledDay(quest(), mon, DayOfWeek.MONDAY))
         val wed = quest(frequency = QuestFrequency.WEEKLY, dayOfWeek = DayOfWeek.WEDNESDAY)
         assertEquals(mon + 2, QuestSchedule.nextScheduledDay(wed, mon, DayOfWeek.MONDAY))
-        // From Thursday, this week's Wednesday is past -> next week's.
-        assertEquals(mon + 9, QuestSchedule.nextScheduledDay(wed, mon + 3, DayOfWeek.MONDAY))
+        // From Thursday the anchor is past but the quest can still be due (missed
+        // Wednesday) — the reminder keeps landing through the interval's tail; the
+        // fire-time gate silences it once completed.
+        assertEquals(mon + 3, QuestSchedule.nextScheduledDay(wed, mon + 3, DayOfWeek.MONDAY))
 
         val rent = quest(frequency = QuestFrequency.MONTHLY, dayOfMonth = 1)
         val jan15 = LocalDate.of(2024, 1, 15).toEpochDay()
-        assertEquals(LocalDate.of(2024, 2, 1).toEpochDay(), QuestSchedule.nextScheduledDay(rent, jan15, DayOfWeek.SUNDAY))
+        assertEquals(jan15, QuestSchedule.nextScheduledDay(rent, jan15, DayOfWeek.SUNDAY)) // due tail
         val feb1 = LocalDate.of(2024, 2, 1).toEpochDay()
         assertEquals(feb1, QuestSchedule.nextScheduledDay(rent, feb1, DayOfWeek.SUNDAY))
     }
 
     @Test
-    fun `monthly nextScheduledDay clamps and then returns to the real anchor`() {
+    fun `monthly nextScheduledDay clamps and waits for the anchor before the tail`() {
         val q = quest(frequency = QuestFrequency.MONTHLY, dayOfMonth = 31)
         val feb10 = LocalDate.of(2024, 2, 10).toEpochDay()
         assertEquals(LocalDate.of(2024, 2, 29).toEpochDay(), QuestSchedule.nextScheduledDay(q, feb10, DayOfWeek.SUNDAY))

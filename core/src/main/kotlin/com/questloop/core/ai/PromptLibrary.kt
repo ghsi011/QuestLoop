@@ -9,7 +9,7 @@ package com.questloop.core.ai
  */
 object PromptLibrary {
 
-    const val QUEST_GENERATION_VERSION = "quest-gen/v1"
+    const val QUEST_GENERATION_VERSION = "quest-gen/v2"
     const val REVIEW_VERSION = "review/v1"
     const val REVIEW_NARRATION_VERSION = "review-narration/v1"
     const val PLAN_RATIONALE_VERSION = "plan-rationale/v1"
@@ -149,6 +149,19 @@ object PromptLibrary {
 
         4) priority — LOW, NORMAL, HIGH, or CRITICAL, from urgency/importance.
 
+        5) schedule — ONLY when the user's wording gives one; otherwise leave the
+           schedule fields out entirely:
+           - scheduledTimes: stated or clearly implied times of day. "Take medicine
+             morning and evening" -> ["08:00", "20:00"] on a DAILY quest (each time
+             becomes one check-off). WEEKLY/MONTHLY quests take at most one time.
+           - scheduledDayOfWeek (WEEKLY) / scheduledDayOfMonth (MONTHLY): a named
+             day, e.g. "gym every Monday", "pay rent on the 1st".
+           - totalOccurrences: a bounded run — "antibiotics for 5 days" -> 5 (DAILY),
+             "rent for the 12-month lease" -> 12 (MONTHLY). Whole days/weeks/months.
+           - remindersEnabled: false by DEFAULT. Set true ONLY when the quest is
+             medication or treatment that must happen on time, or the user explicitly
+             asks to be reminded/notified. Never turn it on just because a time is set.
+
         Rules (must follow):
         - Keep the list realistic. Respect the user's available time and energy.
         - Prefer a few meaningful quests over many trivial ones.
@@ -163,7 +176,9 @@ object PromptLibrary {
         lack information, produce fewer quests rather than guessing.
     """.trimIndent()
 
-    const val QUICK_ADD_VERSION = "quick-add/v1"
+    // v2: the shared response schema gained the schedule fields (times of day,
+    // anchor day, occurrence limit, reminders-off-by-default rule).
+    const val QUICK_ADD_VERSION = "quick-add/v2"
 
     /**
      * System prompt for the home-screen widget's quick-add: the user jotted a single
@@ -187,7 +202,8 @@ object PromptLibrary {
         provided schema.
     """.trimIndent()
 
-    const val GOAL_DECOMPOSITION_VERSION = "goal-decomp/v1"
+    // v2: shared schema gained the schedule fields (see QUICK_ADD_VERSION).
+    const val GOAL_DECOMPOSITION_VERSION = "goal-decomp/v2"
 
     /**
      * System prompt for breaking ONE goal into a short, ordered ladder of quests.

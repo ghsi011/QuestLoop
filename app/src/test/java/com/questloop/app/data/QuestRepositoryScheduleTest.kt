@@ -132,6 +132,22 @@ class QuestRepositoryScheduleTest {
     }
 
     @Test
+    fun `two completions inside one month are a single occurrence`() = runTest {
+        // A monthly quest completed early AND on the anchor day must burn ONE month
+        // of a bounded run, not two (records are keyed per day for binary quests).
+        repo.addQuest(quest(frequency = QuestFrequency.MONTHLY, dayOfMonth = 5, total = 12))
+        val stored = repo.activeQuestById("q-sched")!!
+        val jan5 = LocalDate.of(2024, 1, 5).toEpochDay()
+        val jan20 = LocalDate.of(2024, 1, 20).toEpochDay()
+        repo.completeQuest(stored, jan5, CompletionResult.COMPLETED)
+        repo.completeQuest(stored, jan20, CompletionResult.COMPLETED)
+        assertEquals(1, status(jan20 + 1).completedOccurrences)
+        val feb6 = LocalDate.of(2024, 2, 6).toEpochDay()
+        repo.completeQuest(stored, feb6, CompletionResult.COMPLETED)
+        assertEquals(2, status(feb6 + 1).completedOccurrences)
+    }
+
+    @Test
     fun `skips and partials never advance the occurrence count`() = runTest {
         val day = LocalDate.of(2024, 3, 4).toEpochDay()
         repo.addQuest(quest(total = 2))

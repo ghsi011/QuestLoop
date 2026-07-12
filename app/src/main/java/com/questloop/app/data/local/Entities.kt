@@ -46,10 +46,10 @@ data class LastCompletion(
     val lastDay: Long,
 )
 
-/** Projection: how many intervals a quest has fully completed (occurrence limits). */
-data class QuestOccurrenceCount(
+/** Projection: one fully-completed record's day (occurrence-limit counting). */
+data class CompletedDay(
     val questId: String,
-    val n: Int,
+    val epochDay: Long,
 )
 
 // The ledger grows without bound and each Today refresh runs ~10 windowed/

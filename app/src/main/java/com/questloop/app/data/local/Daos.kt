@@ -118,12 +118,13 @@ interface CompletionDao {
     suspend fun lastCompletedDays(): List<LastCompletion>
 
     /**
-     * Fully-completed interval count per quest (records are keyed one-per-slot, so
-     * COUNT(*) of COMPLETED rows = completed intervals). Drives the occurrence
-     * limit ("medicine for 5 days") and its "k of N" progress display.
+     * The day of every fully-completed record, per quest. Occurrence limits count
+     * *distinct calendar intervals* over these days (QuestSchedule.completedOccurrences)
+     * — a raw COMPLETED row count would over-count non-measured weekly/monthly
+     * quests, whose records are keyed per day, when completed twice in one interval.
      */
-    @Query("SELECT questId, COUNT(*) AS n FROM completions WHERE result = 'COMPLETED' GROUP BY questId")
-    suspend fun completedOccurrenceCounts(): List<QuestOccurrenceCount>
+    @Query("SELECT questId, epochDay FROM completions WHERE result = 'COMPLETED'")
+    suspend fun completedDays(): List<CompletedDay>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(completion: CompletionEntity)

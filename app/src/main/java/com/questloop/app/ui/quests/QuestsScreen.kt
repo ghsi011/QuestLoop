@@ -9,8 +9,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -40,6 +43,8 @@ import com.questloop.app.ui.components.InfoCard
 import com.questloop.app.ui.components.QuestCompletionControls
 import com.questloop.app.ui.components.UndoableSnackbarEffect
 import com.questloop.app.ui.components.scheduleSummary
+import com.questloop.app.ui.add.ScheduleEditor
+import com.questloop.core.generation.QuestSchedule
 import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestFrequency
 
@@ -51,6 +56,7 @@ fun QuestsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var pendingDelete by remember { mutableStateOf<Quest?>(null) }
+    var editingSchedule by remember { mutableStateOf<Quest?>(null) }
 
     UndoableSnackbarEffect(
         hostState = snackbarHostState,
@@ -112,10 +118,14 @@ fun QuestsScreen(
                 QuestBacklogRow(
                     status = status,
                     enabled = !state.completing,
+                    // A finished run has nothing left to log — the row stays for
+                    // review/edit/delete only.
+                    showControls = group.title != "Finished",
                     onComplete = { viewModel.complete(status.quest) },
                     onSkip = { viewModel.skip(status.quest) },
                     onMeasured = { viewModel.completeMeasured(status.quest, it) },
                     onDelete = { pendingDelete = status.quest },
+                    onEditSchedule = { editingSchedule = status.quest },
                 )
             }
         }
@@ -134,16 +144,51 @@ fun QuestsScreen(
             dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Cancel") } },
         )
     }
+
+    editingSchedule?.let { original ->
+        // Local working copy; persisted only on Save (repository normalizes).
+        var draft by remember(original.id) { mutableStateOf(original) }
+        AlertDialog(
+            onDismissRequest = { editingSchedule = null },
+            title = { Text("Schedule \"${original.title}\"") },
+            text = {
+                Column(
+                    Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    ScheduleEditor(
+                        frequency = draft.frequency,
+                        scheduledTimes = draft.scheduledTimes,
+                        scheduledDayOfWeek = draft.scheduledDayOfWeek,
+                        scheduledDayOfMonth = draft.scheduledDayOfMonth,
+                        totalOccurrences = draft.totalOccurrences,
+                        remindersEnabled = draft.remindersEnabled,
+                        onTimesChange = { draft = draft.copy(scheduledTimes = it) },
+                        onDayOfWeekChange = { draft = draft.copy(scheduledDayOfWeek = it) },
+                        onDayOfMonthChange = { draft = draft.copy(scheduledDayOfMonth = it) },
+                        onTotalOccurrencesChange = { draft = draft.copy(totalOccurrences = it) },
+                        onRemindersChange = { draft = draft.copy(remindersEnabled = it) },
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = { viewModel.updateQuest(draft); editingSchedule = null }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { editingSchedule = null }) { Text("Cancel") } },
+        )
+    }
 }
 
 @Composable
 private fun QuestBacklogRow(
     status: QuestRepository.QuestStatus,
     enabled: Boolean,
+    showControls: Boolean,
     onComplete: () -> Unit,
     onSkip: () -> Unit,
     onMeasured: (Int) -> Unit,
     onDelete: () -> Unit,
+    onEditSchedule: () -> Unit,
 ) {
     val quest = status.quest
     Card(Modifier.fillMaxWidth()) {
@@ -172,19 +217,27 @@ private fun QuestBacklogRow(
                         )
                     }
                 }
+                // Schedule only applies to recurring cadences (see QuestSchedule).
+                if (quest.frequency in QuestSchedule.schedulableFrequencies) {
+                    IconButton(onClick = onEditSchedule) {
+                        Icon(Icons.Outlined.Schedule, contentDescription = "Edit schedule for ${quest.title}")
+                    }
+                }
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Outlined.Delete, contentDescription = "Delete ${quest.title}")
                 }
             }
-            // Real completion control per quest style (counting, timed, rating, binary).
-            QuestCompletionControls(
-                quest = quest,
-                progress = status.progress,
-                onComplete = onComplete,
-                onSkip = onSkip,
-                onMeasured = onMeasured,
-                enabled = enabled,
-            )
+            if (showControls) {
+                // Real completion control per quest style (counting, timed, rating, binary).
+                QuestCompletionControls(
+                    quest = quest,
+                    progress = status.progress,
+                    onComplete = onComplete,
+                    onSkip = onSkip,
+                    onMeasured = onMeasured,
+                    enabled = enabled,
+                )
+            }
         }
     }
 }

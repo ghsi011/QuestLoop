@@ -395,11 +395,33 @@ class QuestRepository(
         val intervalRecords = instanceIdByQuest.mapNotNull { (questId, instanceId) ->
             recordsById[instanceId]?.let { questId to it }
         }.toMap()
-        val completedOccurrences = completionDao.completedOccurrenceCounts().associate { it.questId to it.n }
+        val completedOccurrences = completedOccurrencesFor(candidates.values, firstDay)
         return DayContext(
             epochDay, profile, stored, derivedHabits, candidates, lastCompleted, intervalRecords,
             completedOccurrences,
         )
+    }
+
+    /**
+     * Completed occurrences per quest — the distinct calendar intervals holding a
+     * COMPLETED record, per the quest's frequency and the user's week start (see
+     * [QuestSchedule.completedOccurrences]). Rows for quests outside [quests]
+     * (archived, or a deleted-then-recreated id) are ignored — occurrence limits
+     * only ever gate quests that are still live.
+     */
+    private suspend fun completedOccurrencesFor(
+        quests: Collection<Quest>,
+        firstDayOfWeek: DayOfWeek,
+    ): Map<String, Int> {
+        val questsById = quests.associateBy { it.id }
+        return completionDao.completedDays()
+            .groupBy({ it.questId }, { it.epochDay })
+            .mapNotNull { (questId, days) ->
+                questsById[questId]?.let { quest ->
+                    questId to QuestSchedule.completedOccurrences(quest, days, firstDayOfWeek)
+                }
+            }
+            .toMap()
     }
 
     /** The user's configured first day of the week (default Sunday). Single accessor
@@ -666,6 +688,11 @@ class QuestRepository(
      * and credited proportionally — never penalised (SPEC §8).
      */
     suspend fun completeMeasured(quest: Quest, epochDay: Long, value: Int): CompleteOutcome = completionMutex.withLock {
+        completeMeasuredLocked(quest, epochDay, value)
+    }
+
+    /** Caller MUST hold [completionMutex]. */
+    private suspend fun completeMeasuredLocked(quest: Quest, epochDay: Long, value: Int): CompleteOutcome {
         val existingProgress = intervalProgress(quest, epochDay, firstDayOfWeek())
         val allowOver = quest.allowOverCompletion
         val scaled = when (quest.completionStyle) {
@@ -683,7 +710,7 @@ class QuestRepository(
             CompletionStyle.QUANTITATIVE -> VerificationMethod.CHECKLIST
             else -> VerificationMethod.MANUAL
         }
-        completeQuestLocked(quest, epochDay, scaled.result, scaled.fraction, verification)
+        return completeQuestLocked(quest, epochDay, scaled.result, scaled.fraction, verification)
     }
 
     // --- Per-quest timed reminders -------------------------------------------
@@ -695,8 +722,9 @@ class QuestRepository(
      * complete set.
      */
     suspend fun reminderQuests(): List<Quest> {
-        val counts = completionDao.completedOccurrenceCounts().associate { it.questId to it.n }
-        return questDao.getActive().map { it.toModel() }.filter {
+        val active = questDao.getActive().map { it.toModel() }
+        val counts = completedOccurrencesFor(active, firstDayOfWeek())
+        return active.filter {
             it.remindersEnabled && it.scheduledTimes.isNotEmpty() &&
                 !QuestSchedule.isRetired(it, counts[it.id] ?: 0)
         }
@@ -739,9 +767,12 @@ class QuestRepository(
         val quest = reminderDueQuest(questId, epochDay) ?: return false
         when (quest.completionStyle) {
             CompletionStyle.BINARY -> completeQuest(quest, epochDay, CompletionResult.COMPLETED)
-            CompletionStyle.QUANTITATIVE -> {
+            // Read-progress + write must share one mutex hold: an unlocked
+            // progress+1 racing a concurrent log (widget, in-app, a second tap)
+            // would silently drop one of the units (the AGENTS ledger invariant).
+            CompletionStyle.QUANTITATIVE -> completionMutex.withLock {
                 val progress = intervalProgress(quest, epochDay, firstDayOfWeek())
-                completeMeasured(quest, epochDay, progress + 1)
+                completeMeasuredLocked(quest, epochDay, progress + 1)
             }
             // Duration/subjective need real input (minutes, a rating) — in-app only.
             CompletionStyle.DURATION, CompletionStyle.SUBJECTIVE -> return false
@@ -798,12 +829,14 @@ class QuestRepository(
         val lastCompleted = completionDao.lastCompletedDays().associate { it.questId to it.lastDay }
         val derived = derivedQuests(profile) +
             adminFundQuests(fromEpochDay, profile, lastCompleted)
-        val occurrences = completionDao.completedOccurrenceCounts().associate { it.questId to it.n }
+        val pool = questDao.getActive().map { it.toModel() } + derived
+        val occurrences = completedOccurrencesFor(pool, profile.preferences.firstDayOfWeek)
         // Retired quests (occurrence limit used up) are done for good — they must
-        // not be projected into future periods. Anchor-precise placement within the
-        // period is out of scope: an anchored quest still slots by its rolling cadence.
-        val candidates = (questDao.getActive().map { it.toModel() } + derived)
-            .filterNot { QuestSchedule.isRetired(it, occurrences[it.id] ?: 0) }
+        // not be projected into future periods. Anchor-precise placement and capping
+        // a nearly-finished run's projected occurrences (e.g. "1 day of medicine
+        // left" still projects across the window) are out of scope: an anchored or
+        // limited quest still slots by its rolling cadence until it retires.
+        val candidates = pool.filterNot { QuestSchedule.isRetired(it, occurrences[it.id] ?: 0) }
         return periodPlanner.plan(
             periodLabel, fromEpochDay, toEpochDay, candidates, lastCompleted,
             profile.preferences.firstDayOfWeek,
@@ -978,7 +1011,10 @@ class QuestRepository(
             var imported = 0
             var skipped = 0
             completionMutex.withLock {
-                snapshot.quests.forEach { questDao.upsert(it.toEntity()) }
+                // Same canonicalisation as addQuest: a hand-edited or cross-version
+                // backup can't smuggle in a schedule the editor can't produce
+                // (multi-time binary, out-of-range times, mismatched anchors).
+                snapshot.quests.forEach { questDao.upsert(QuestSchedule.normalized(it).toEntity()) }
                 snapshot.archivedIds.forEach { questDao.archive(it) }
                 snapshot.completions.forEach { record ->
                     if (record.questId in validQuestIds) {

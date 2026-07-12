@@ -59,12 +59,19 @@ fun ScheduleEditor(
     if (frequency !in QuestSchedule.schedulableFrequencies) return
     var showTimePicker by remember { mutableStateOf(false) }
 
-    // Posting notifications needs a runtime grant on Android 13+. The result isn't
-    // acted on: alarms arm either way, and posting is permission-guarded — same
-    // pattern as the daily reminders in Settings.
+    // Posting notifications needs a runtime grant on Android 13+. A denial snaps
+    // the toggle back off — a switch that stays on while nothing can ever fire
+    // would be lying (the summary would even show a bell).
     val notifPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) { }
+    ) { granted -> if (!granted) onRemindersChange(false) }
+
+    // Weekly/monthly quests keep one time (several would convert them to a
+    // measured count, which stops the anchor day from gating dueness — see
+    // QuestSchedule.normalized); dailies can have up to MAX_TIMES_PER_DAY.
+    val maxTimes =
+        if (frequency == QuestFrequency.WEEKLY || frequency == QuestFrequency.MONTHLY) 1
+        else QuestSchedule.MAX_TIMES_PER_DAY
 
     Text("Schedule (optional)", fontWeight = FontWeight.SemiBold)
 
@@ -119,7 +126,10 @@ fun ScheduleEditor(
         }
     }
 
-    Text("Times of day", style = MaterialTheme.typography.labelMedium)
+    Text(
+        if (maxTimes == 1) "Time of day" else "Times of day",
+        style = MaterialTheme.typography.labelMedium,
+    )
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         scheduledTimes.forEach { minute ->
             FilterChip(
@@ -128,7 +138,7 @@ fun ScheduleEditor(
                 label = { Text("${formatMinuteOfDay(minute)}  ✕") },
             )
         }
-        if (scheduledTimes.size < QuestSchedule.MAX_TIMES_PER_DAY) {
+        if (scheduledTimes.size < maxTimes) {
             FilterChip(
                 selected = false,
                 onClick = { showTimePicker = true },

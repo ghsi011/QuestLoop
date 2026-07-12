@@ -296,6 +296,83 @@ class AiQuestServiceTest {
     }
 
     @Test
+    fun `parses a medicine-style schedule into a per-slot counted quest`() = runTest {
+        val svc = service(
+            """[{"title":"Take antibiotics","category":"HEALTH","difficulty":"TRIVIAL",
+               "frequency":"DAILY","completionStyle":"BINARY",
+               "scheduledTimes":["20:00","08:00"],"totalOccurrences":5,"remindersEnabled":true}]""",
+        )
+        val q = svc.suggest(AiQuestService.Input(todos = listOf("antibiotics twice a day for 5 days"))).quests.single()
+        assertEquals(listOf(8 * 60, 20 * 60), q.scheduledTimes) // parsed + sorted
+        assertEquals(5, q.totalOccurrences)
+        assertTrue(q.remindersEnabled)
+        // Two times on a binary daily quest arrive already normalized to a per-slot
+        // count — the review card shows exactly what would be saved.
+        assertEquals(CompletionStyle.QUANTITATIVE, q.completionStyle)
+        assertEquals(2, q.targetCount)
+    }
+
+    @Test
+    fun `parses a monthly anchor and defaults reminders off`() = runTest {
+        val svc = service(
+            """[{"title":"Pay rent","category":"LIFE_ADMIN","difficulty":"EASY",
+               "frequency":"MONTHLY","scheduledDayOfMonth":1,"totalOccurrences":12,
+               "scheduledTimes":["09:00"]}]""",
+        )
+        val q = svc.suggest(AiQuestService.Input(todos = listOf("rent on the 1st, 12 month lease"))).quests.single()
+        assertEquals(1, q.scheduledDayOfMonth)
+        assertEquals(12, q.totalOccurrences)
+        assertEquals(listOf(9 * 60), q.scheduledTimes)
+        assertFalse(q.remindersEnabled) // never on unless the model was told to
+    }
+
+    @Test
+    fun `scrubs unparseable or contradictory schedule output`() = runTest {
+        val svc = service(
+            """[{"title":"Stretch","category":"HEALTH","difficulty":"TRIVIAL","frequency":"ONE_OFF",
+               "scheduledTimes":["25:99","soon","07:15"],"scheduledDayOfWeek":"FUNDAY",
+               "totalOccurrences":-3,"remindersEnabled":true}]""",
+        )
+        val q = svc.suggest(AiQuestService.Input(todos = listOf("stretch"))).quests.single()
+        // ONE_OFF carries no schedule at all; junk values never survive to the UI.
+        assertTrue(q.scheduledTimes.isEmpty())
+        assertNull(q.scheduledDayOfWeek)
+        assertNull(q.totalOccurrences)
+        assertFalse(q.remindersEnabled)
+    }
+
+    @Test
+    fun `refine round-trips an existing schedule through the model payload`() = runTest {
+        var sent: String? = null
+        val svc = AiQuestService(
+            client = object : LlmClient {
+                override suspend fun complete(systemPrompt: String, userPrompt: String): String {
+                    sent = userPrompt
+                    return """[{"title":"Take antibiotics","category":"HEALTH","difficulty":"TRIVIAL",
+                       "frequency":"DAILY","scheduledTimes":["09:00","21:00"],"totalOccurrences":5,
+                       "remindersEnabled":true}]"""
+                }
+            },
+        )
+        val original = Quest(
+            id = "med",
+            title = "Take antibiotics",
+            category = QuestCategory.HEALTH,
+            frequency = QuestFrequency.DAILY,
+            difficulty = Difficulty.TRIVIAL,
+            scheduledTimes = listOf(8 * 60, 20 * 60),
+            totalOccurrences = 5,
+            remindersEnabled = true,
+        )
+        val result = svc.refine(original, "an hour later please")
+        // The current schedule was in the payload the model saw...
+        assertTrue(sent!!.contains("08:00"))
+        // ...and the revision came back with the shifted times intact.
+        assertEquals(listOf(9 * 60, 21 * 60), result.quest?.scheduledTimes)
+        assertEquals(true, result.quest?.remindersEnabled)
+    }
+
+    @Test
     fun `refine revises a quest and keeps its id`() = runTest {
         val svc = service(
             """[{"title":"Call mum","category":"SOCIAL","difficulty":"EASY","frequency":"WEEKLY"}]""",
