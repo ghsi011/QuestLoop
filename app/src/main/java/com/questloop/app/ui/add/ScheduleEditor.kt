@@ -163,9 +163,12 @@ fun ScheduleEditor(
             Text("Repeat for a set number of times", style = MaterialTheme.typography.labelMedium)
             Text(
                 when (frequency) {
-                    QuestFrequency.WEEKLY -> "e.g. 8 = eight completed weeks, then it's done."
-                    QuestFrequency.MONTHLY -> "e.g. 12 = twelve completed months, then it's done."
-                    else -> "e.g. 5 = five completed days, then it's done."
+                    QuestFrequency.WEEKLY -> "e.g. 8 = eight completed weeks, then it's done. " +
+                        "Weeks you've already completed count too."
+                    QuestFrequency.MONTHLY -> "e.g. 12 = twelve completed months, then it's done. " +
+                        "Months you've already completed count too."
+                    else -> "e.g. 5 = five completed days, then it's done. " +
+                        "Days you've already completed count too."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

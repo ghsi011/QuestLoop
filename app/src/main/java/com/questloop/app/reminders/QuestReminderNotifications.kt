@@ -45,8 +45,10 @@ object QuestReminderNotifications {
      * The reminder itself. "Mark done" is offered only for styles completable in
      * one tap — binary (done for the day) and counting (+1, e.g. one dose);
      * timed/subjective quests need in-app input, so tapping opens the app instead.
+     * [expectedCount] is the cumulative count this nudge's "Mark done" stands for —
+     * stamped into the action so a duplicated tap can't credit two doses.
      */
-    fun show(context: Context, quest: Quest, epochDay: Long) {
+    fun show(context: Context, quest: Quest, epochDay: Long, expectedCount: Int) {
         val builder = builder(context, quest.id, quest.title, "Scheduled for now — whenever you're ready.")
         if (quest.completionStyle == CompletionStyle.BINARY || quest.completionStyle == CompletionStyle.QUANTITATIVE) {
             val doneIntent = Intent(context, QuestReminderActionReceiver::class.java)
@@ -56,6 +58,7 @@ object QuestReminderNotifications {
                 .putExtra(QuestReminderActionReceiver.EXTRA_QUEST_ID, quest.id)
                 // Stamped firing day, so a late tap credits the right day.
                 .putExtra(QuestReminderActionReceiver.EXTRA_DAY, epochDay)
+                .putExtra(QuestReminderActionReceiver.EXTRA_EXPECTED_COUNT, expectedCount)
             val donePending = PendingIntent.getBroadcast(
                 context,
                 0,
@@ -67,13 +70,15 @@ object QuestReminderNotifications {
         post(context, quest.id, builder.build())
     }
 
-    /** Replaces the reminder when "Mark done" found nothing left to credit —
-     *  tapping still opens the app (a receiver can't start an activity itself). */
+    /** Replaces the reminder when "Mark done" couldn't credit anything — already
+     *  handled in-app, needs in-app input, or the write failed. Tapping opens the
+     *  app (a receiver can't start an activity itself), so the tap stays
+     *  recoverable either way. */
     fun showAlreadyHandled(context: Context, questId: String, title: String?) {
         post(
             context,
             questId,
-            builder(context, questId, title ?: "Quest", "Already handled — tap to see today's plan.").build(),
+            builder(context, questId, title ?: "Quest", "Couldn't log that from here — tap to check it in the app.").build(),
         )
     }
 

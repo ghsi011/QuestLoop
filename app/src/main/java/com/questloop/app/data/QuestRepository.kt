@@ -405,16 +405,22 @@ class QuestRepository(
     /**
      * Completed occurrences per quest — the distinct calendar intervals holding a
      * COMPLETED record, per the quest's frequency and the user's week start (see
-     * [QuestSchedule.completedOccurrences]). Rows for quests outside [quests]
-     * (archived, or a deleted-then-recreated id) are ignored — occurrence limits
-     * only ever gate quests that are still live.
+     * [QuestSchedule.completedOccurrences]). Only occurrence-*limited* quests are
+     * counted: they're the sole consumers (retirement + "k of N"), and scoping the
+     * ledger query to their ids keeps the hot Today/widget/reminder paths from
+     * materializing the whole (unbounded) completion history. Quests without a
+     * limit simply have no entry (callers default to 0).
      */
     private suspend fun completedOccurrencesFor(
         quests: Collection<Quest>,
         firstDayOfWeek: DayOfWeek,
     ): Map<String, Int> {
-        val questsById = quests.associateBy { it.id }
-        return completionDao.completedDays()
+        val limited = quests.filter { it.totalOccurrences != null }
+        if (limited.isEmpty()) return emptyMap()
+        val questsById = limited.associateBy { it.id }
+        return questsById.keys
+            .chunked(SQLITE_MAX_IN_VARIABLES)
+            .flatMap { completionDao.completedDaysFor(it) }
             .groupBy({ it.questId }, { it.epochDay })
             .mapNotNull { (questId, days) ->
                 questsById[questId]?.let { quest ->
@@ -731,13 +737,23 @@ class QuestRepository(
     }
 
     /**
-     * Fire-time gate for a per-quest reminder: returns the quest only if it should
-     * actually notify on [epochDay] — still active with reminders on, not retired,
-     * due by its cadence/anchor, and not already done for the current interval. A
-     * partially-logged multi-time quest (morning dose taken, evening pending) is
-     * still due, so the evening nudge fires.
+     * A due reminder's payload: the quest plus the cumulative count its "Mark done"
+     * should write ([nextCount] = current interval progress + 1, for counting
+     * quests). The count is stamped into the notification action so a duplicated
+     * delivery of the same tap can be recognized and dropped instead of crediting
+     * a second unit.
      */
-    suspend fun reminderDueQuest(questId: String, epochDay: Long): Quest? {
+    data class ReminderDue(val quest: Quest, val nextCount: Int)
+
+    /**
+     * Fire-time gate for a per-quest reminder: returns the quest (with its
+     * expected next count) only if it should actually notify on [epochDay] —
+     * still active with reminders on, not retired, due by its cadence/anchor, and
+     * not already done for the current interval. A partially-logged multi-time
+     * quest (morning dose taken, evening pending) is still due, so the evening
+     * nudge fires.
+     */
+    suspend fun reminderDueQuest(questId: String, epochDay: Long): ReminderDue? {
         val quest = questDao.getActiveById(questId)?.toModel() ?: return null
         if (!quest.remindersEnabled || quest.scheduledTimes.isEmpty()) return null
         val ctx = buildDayContext(epochDay)
@@ -753,18 +769,24 @@ class QuestRepository(
                 ctx.profile.preferences.firstDayOfWeek,
             )
         }
-        return quest.takeIf { due }
+        if (!due) return null
+        return ReminderDue(quest, nextCount = (progressByQuest(ctx)[quest.id] ?: 0) + 1)
     }
 
     /**
      * Completes one reminder slot from the notification's "Mark done" without
      * opening the app: a binary quest completes for the day; a counting quest logs
-     * +1 (one dose of "twice a day"). Returns false when there was nothing to
-     * credit (already done, not due, or a style that needs in-app input) — the
-     * caller keeps the notification so the tap can open the app instead.
+     * +1 (one dose of "twice a day"). [expectedCount] is the cumulative count the
+     * notification was issued for ([ReminderDue.nextCount]): if progress already
+     * reached it, this tap's unit was credited before (a duplicated broadcast from
+     * a double-tap, most likely on a cold process) and the call is a successful
+     * no-op rather than a second dose. Returns false when there was nothing to
+     * credit at all (already done, not due, or a style that needs in-app input) —
+     * the caller replaces the notification so the tap can open the app instead.
      */
-    suspend fun completeFromReminder(questId: String, epochDay: Long): Boolean {
-        val quest = reminderDueQuest(questId, epochDay) ?: return false
+    suspend fun completeFromReminder(questId: String, epochDay: Long, expectedCount: Int? = null): Boolean {
+        val due = reminderDueQuest(questId, epochDay) ?: return false
+        val quest = due.quest
         when (quest.completionStyle) {
             CompletionStyle.BINARY -> completeQuest(quest, epochDay, CompletionResult.COMPLETED)
             // Read-progress + write must share one mutex hold: an unlocked
@@ -772,6 +794,7 @@ class QuestRepository(
             // would silently drop one of the units (the AGENTS ledger invariant).
             CompletionStyle.QUANTITATIVE -> completionMutex.withLock {
                 val progress = intervalProgress(quest, epochDay, firstDayOfWeek())
+                if (expectedCount != null && progress >= expectedCount) return true
                 completeMeasuredLocked(quest, epochDay, progress + 1)
             }
             // Duration/subjective need real input (minutes, a rating) — in-app only.
@@ -1213,6 +1236,12 @@ class QuestRepository(
         val quest = first.copy(
             id = "user-${java.util.UUID.randomUUID()}",
             title = first.title.trim(),
+            // This path saves with NO review step, so a model-chosen reminder would
+            // arm notifications the user never approved (and on Android 13+ nothing
+            // here can request POST_NOTIFICATIONS). Times/anchors/limits are kept —
+            // they're inert without reminders — and the reviewed Add flow is where
+            // reminders can be turned on.
+            remindersEnabled = false,
         )
         // Non-cancellable: the widget dialog stays dismissable during the (slow) AI
         // round trip above, and dismissing cancels the caller — cancelling cleanly

@@ -28,19 +28,28 @@ class QuestReminderActionReceiver : BroadcastReceiver() {
         runCatching {
             NotificationManagerCompat.from(context).cancel(QuestReminderNotifications.notificationId(questId))
         }
+        val expectedCount = intent.getIntExtra(EXTRA_EXPECTED_COUNT, -1).takeIf { it > 0 }
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                runCatching {
+                // Failures count as "not credited": the notification was already
+                // retracted above, so anything short of a landed write must bring a
+                // tappable notification back — a swallowed exception would silently
+                // eat the dose AND the nudge.
+                val landed = runCatching {
                     val repo = (context.applicationContext as QuestLoopApplication).container.repository
-                    if (!repo.completeFromReminder(questId, epochDay)) {
-                        // Nothing to credit (already done in-app, or needs in-app
-                        // input). We can't start an activity from here (blocked on
-                        // Android 12+) — replace the notification; tapping it opens
-                        // the app via its activity PendingIntent.
-                        val title = repo.activeQuestById(questId)?.title
-                        QuestReminderNotifications.showAlreadyHandled(context, questId, title)
-                    }
+                    repo.completeFromReminder(questId, epochDay, expectedCount)
+                }.getOrDefault(false)
+                if (!landed) {
+                    // Nothing credited (already done in-app, needs in-app input, or
+                    // the write failed). We can't start an activity from here
+                    // (blocked on Android 12+) — replace the notification; tapping
+                    // it opens the app via its activity PendingIntent.
+                    val title = runCatching {
+                        (context.applicationContext as QuestLoopApplication)
+                            .container.repository.activeQuestById(questId)?.title
+                    }.getOrNull()
+                    runCatching { QuestReminderNotifications.showAlreadyHandled(context, questId, title) }
                 }
             } finally {
                 pending.finish()
@@ -52,5 +61,6 @@ class QuestReminderActionReceiver : BroadcastReceiver() {
         const val ACTION_QUEST_DONE = "com.questloop.app.QUEST_REMINDER_DONE"
         const val EXTRA_QUEST_ID = "questId"
         const val EXTRA_DAY = "day"
+        const val EXTRA_EXPECTED_COUNT = "expectedCount"
     }
 }

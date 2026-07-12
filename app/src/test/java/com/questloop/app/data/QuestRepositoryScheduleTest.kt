@@ -212,6 +212,24 @@ class QuestRepositoryScheduleTest {
     }
 
     @Test
+    fun `a duplicated mark-done delivery credits only one unit`() = runTest {
+        val day = LocalDate.of(2024, 3, 4).toEpochDay()
+        repo.addQuest(quest(times = listOf(8 * 60, 20 * 60), reminders = true))
+        val morning = repo.reminderDueQuest("q-sched", day)!!.nextCount
+        assertEquals(1, morning)
+        assertTrue(repo.completeFromReminder("q-sched", day, morning))
+        // The double-tap's second broadcast carries the same expected count: a
+        // successful no-op, not a second dose.
+        assertTrue(repo.completeFromReminder("q-sched", day, morning))
+        assertEquals(1, repo.todayProgress(day)["q-sched"])
+        // The evening slot still credits normally.
+        val evening = repo.reminderDueQuest("q-sched", day)!!.nextCount
+        assertEquals(2, evening)
+        assertTrue(repo.completeFromReminder("q-sched", day, evening))
+        assertTrue(status(day).done)
+    }
+
+    @Test
     fun `reminderDueQuest respects the anchor day`() = runTest {
         repo.addQuest(
             quest(frequency = QuestFrequency.MONTHLY, dayOfMonth = 5, times = listOf(9 * 60), reminders = true),

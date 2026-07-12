@@ -31,8 +31,15 @@ data class QuestsUiState(
     val completing: Boolean = false,
 )
 
-/** A titled section of the backlog (e.g. "Today's plan", "Scheduled for later"). */
-data class QuestGroup(val title: String, val items: List<QuestRepository.QuestStatus>)
+/** A titled section of the backlog (e.g. "Today's plan", "Scheduled for later").
+ *  [completable] gates the rows' completion controls — false for a finished
+ *  occurrence run, so retired quests can't re-log past their limit. A flag, not
+ *  a title comparison: display copy must stay free to change. */
+data class QuestGroup(
+    val title: String,
+    val items: List<QuestRepository.QuestStatus>,
+    val completable: Boolean = true,
+)
 
 /**
  * Backs the Quests screen: the full, transparent backlog of everything the user
@@ -169,7 +176,7 @@ class QuestsViewModel(private val repository: QuestRepository) : ViewModel() {
             if (inPlan.isNotEmpty()) add(QuestGroup("Today's plan", inPlan))
             if (alsoDue.isNotEmpty()) add(QuestGroup("Also due today", alsoDue))
             if (later.isNotEmpty()) add(QuestGroup("Scheduled for later", later))
-            if (retired.isNotEmpty()) add(QuestGroup("Finished", retired))
+            if (retired.isNotEmpty()) add(QuestGroup("Finished", retired, completable = false))
         }
     }
 }

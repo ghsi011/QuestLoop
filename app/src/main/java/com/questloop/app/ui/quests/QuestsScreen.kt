@@ -120,7 +120,7 @@ fun QuestsScreen(
                     enabled = !state.completing,
                     // A finished run has nothing left to log — the row stays for
                     // review/edit/delete only.
-                    showControls = group.title != "Finished",
+                    showControls = group.completable,
                     onComplete = { viewModel.complete(status.quest) },
                     onSkip = { viewModel.skip(status.quest) },
                     onMeasured = { viewModel.completeMeasured(status.quest, it) },

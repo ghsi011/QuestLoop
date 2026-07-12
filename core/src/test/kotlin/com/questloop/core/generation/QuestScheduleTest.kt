@@ -238,6 +238,58 @@ class QuestScheduleTest {
     }
 
     @Test
+    fun `editing a slot-derived quest's times re-derives target and style`() {
+        // "Twice a day" was converted to a 2-of-2 count; edits to its times must
+        // keep target and slots in lockstep or a 1-of-2 day could never complete.
+        val converted = QuestSchedule.normalized(quest(times = listOf(8 * 60, 20 * 60)))
+        assertEquals(2, converted.targetCount)
+
+        val downToOne = QuestSchedule.normalized(converted.copy(scheduledTimes = listOf(8 * 60)))
+        assertEquals(CompletionStyle.BINARY, downToOne.completionStyle)
+        assertNull(downToOne.targetCount)
+        assertNull(downToOne.unit)
+
+        val upToThree = QuestSchedule.normalized(converted.copy(scheduledTimes = listOf(8 * 60, 14 * 60, 20 * 60)))
+        assertEquals(CompletionStyle.QUANTITATIVE, upToThree.completionStyle)
+        assertEquals(3, upToThree.targetCount)
+    }
+
+    @Test
+    fun `a genuine counted quest is never rewritten by the slot heuristic`() {
+        // Unscheduled "5 times" counter: no scheduled times -> untouched.
+        val unscheduled = QuestSchedule.normalized(
+            quest(style = CompletionStyle.QUANTITATIVE, targetCount = 5).copy(unit = "times"),
+        )
+        assertEquals(5, unscheduled.targetCount)
+        assertEquals(CompletionStyle.QUANTITATIVE, unscheduled.completionStyle)
+
+        // A scheduled counter with its own unit stays intact too.
+        val glasses = QuestSchedule.normalized(
+            quest(style = CompletionStyle.QUANTITATIVE, targetCount = 8, times = listOf(9 * 60)).copy(unit = "glasses"),
+        )
+        assertEquals(8, glasses.targetCount)
+        assertEquals("glasses", glasses.unit)
+    }
+
+    @Test
+    fun `measured anchored quests get anchor-day reminders only, not the due tail`() {
+        // "Swim 2x/week, nudge me Wednesdays": the anchor never gates dueness for a
+        // measured quest, so the reminder must stay weekly — tailing it through the
+        // interval would turn one chosen nudge day into a daily nag.
+        val swim = quest(
+            frequency = QuestFrequency.WEEKLY,
+            style = CompletionStyle.QUANTITATIVE,
+            targetCount = 2,
+            dayOfWeek = DayOfWeek.WEDNESDAY,
+        ).copy(unit = "swims")
+        // From Thursday: next week's Wednesday, not Thursday itself.
+        assertEquals(mon + 9, QuestSchedule.nextScheduledDay(swim, mon + 3, DayOfWeek.MONDAY))
+        // A binary (due-anchored) sibling keeps the tail behaviour.
+        val binary = quest(frequency = QuestFrequency.WEEKLY, dayOfWeek = DayOfWeek.WEDNESDAY)
+        assertEquals(mon + 3, QuestSchedule.nextScheduledDay(binary, mon + 3, DayOfWeek.MONDAY))
+    }
+
+    @Test
     fun `normalized keeps a single time on weekly and monthly quests`() {
         // Several times/day on a weekly quest would convert it to a measured count,
         // which would stop the anchor from gating dueness — so the earliest time

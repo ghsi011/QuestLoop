@@ -40,6 +40,10 @@ object QuestSchedule {
 
     private const val MINUTES_RANGE_MAX = 24 * 60 - 1
 
+    /** The synthetic unit stamped on a multi-time binary quest converted to a
+     *  per-slot count — also the marker for recognizing such quests on re-edit. */
+    const val SLOT_UNIT = "times"
+
     /** Frequencies a schedule (times / anchor / occurrence limit) can apply to. */
     val schedulableFrequencies: Set<QuestFrequency> = setOf(
         QuestFrequency.DAILY,
@@ -63,6 +67,12 @@ object QuestSchedule {
      * occurrence, not two — a raw record count would retire "rent for 12 months"
      * months early. Measured interval quests hold one record per interval, so the
      * distinct-interval count equals the record count for them.
+     *
+     * The count spans the quest's whole history: adding a limit to a quest with
+     * past completions counts those too (the editor copy says so; the quest then
+     * lands in the backlog's Finished group rather than vanishing). A
+     * [firstDayOfWeek] change re-buckets weekly history — the same documented
+     * cost as the preference's other week-anchored behaviours.
      */
     fun completedOccurrences(
         quest: Quest,
@@ -155,6 +165,17 @@ object QuestSchedule {
                 emptyList()
             }
         val multiSlotBinary = times.size > 1 && quest.completionStyle == CompletionStyle.BINARY
+        // The inverse direction: a quest previously converted by the multi-slot rule
+        // (recognizable by the synthetic unit + a target within the slot cap) whose
+        // times were edited must re-derive its target — otherwise dropping from two
+        // times to one leaves a 1-of-2 day that can never complete. Down to a single
+        // time it converts back to plain BINARY. Only quests still carrying scheduled
+        // times are touched, so a genuine unscheduled "5 times" counter is never
+        // rewritten (a scheduled counter with the literal unit "times" and a small
+        // target is the one accepted ambiguity).
+        val slotDerived = quest.completionStyle == CompletionStyle.QUANTITATIVE &&
+            quest.unit == SLOT_UNIT && times.isNotEmpty() &&
+            (quest.targetCount ?: 0) in 1..MAX_TIMES_PER_DAY
         return quest.copy(
             scheduledTimes = times,
             scheduledDayOfWeek = quest.scheduledDayOfWeek.takeIf { quest.frequency == QuestFrequency.WEEKLY },
@@ -162,27 +183,48 @@ object QuestSchedule {
                 ?.coerceIn(1, 31),
             totalOccurrences = quest.totalOccurrences?.takeIf { schedulable && it > 0 },
             remindersEnabled = quest.remindersEnabled && times.isNotEmpty(),
-            completionStyle = if (multiSlotBinary) CompletionStyle.QUANTITATIVE else quest.completionStyle,
-            targetCount = if (multiSlotBinary) times.size else quest.targetCount,
-            unit = if (multiSlotBinary) "times" else quest.unit,
+            completionStyle = when {
+                multiSlotBinary -> CompletionStyle.QUANTITATIVE
+                slotDerived && times.size <= 1 -> CompletionStyle.BINARY
+                else -> quest.completionStyle
+            },
+            targetCount = when {
+                multiSlotBinary || (slotDerived && times.size > 1) -> times.size
+                slotDerived && times.size <= 1 -> null
+                else -> quest.targetCount
+            },
+            unit = when {
+                multiSlotBinary -> SLOT_UNIT
+                slotDerived && times.size <= 1 -> null
+                else -> quest.unit
+            },
         )
     }
 
     /**
      * The first day at or after [fromEpochDay] this quest's schedule can land on,
-     * ignoring completion state (a fire-time dueness check handles that): every day
-     * for daily/rolling cadences; for anchored weekly/monthly, the anchor day OR
-     * any later day of the same interval — an anchored quest stays *due* through
-     * the rest of its interval when missed ("rent unpaid on the 3rd"), so its
-     * reminder must keep landing on those days too. Once the quest is completed,
-     * the fire-time gate keeps those tail fires silent.
+     * ignoring completion state (a fire-time dueness check handles that):
+     * - daily/rolling cadences: every day;
+     * - *due-anchored* weekly/monthly ([hasDueAnchor]): the anchor day OR any later
+     *   day of the same interval — the quest stays *due* through the interval's
+     *   tail when missed ("rent unpaid on the 3rd"), so its reminder keeps landing
+     *   there too (the fire-time gate silences it once completed);
+     * - *measured* anchored quests: the next anchor day only. Their anchor never
+     *   gates dueness (they accumulate all interval), so the user's chosen day is
+     *   purely "when to nudge me" — tailing would turn a weekly nudge into a
+     *   daily nag.
      */
-    fun nextScheduledDay(quest: Quest, fromEpochDay: Long, firstDayOfWeek: DayOfWeek): Long = when {
-        quest.frequency == QuestFrequency.WEEKLY && quest.scheduledDayOfWeek != null ->
-            maxOf(fromEpochDay, anchorDayIn(quest, fromEpochDay, firstDayOfWeek)!!)
-        quest.frequency == QuestFrequency.MONTHLY && quest.scheduledDayOfMonth != null ->
-            maxOf(fromEpochDay, anchorDayIn(quest, fromEpochDay, firstDayOfWeek)!!)
-        else -> fromEpochDay
+    fun nextScheduledDay(quest: Quest, fromEpochDay: Long, firstDayOfWeek: DayOfWeek): Long {
+        val anchorInInterval = anchorDayIn(quest, fromEpochDay, firstDayOfWeek) ?: return fromEpochDay
+        return when {
+            hasDueAnchor(quest) -> maxOf(fromEpochDay, anchorInInterval)
+            anchorInInterval >= fromEpochDay -> anchorInInterval
+            quest.frequency == QuestFrequency.WEEKLY -> anchorInInterval + 7
+            else -> {
+                val nextMonth = LocalDate.ofEpochDay(fromEpochDay).withDayOfMonth(1).plusMonths(1)
+                anchorDayIn(quest, nextMonth.toEpochDay(), firstDayOfWeek)!!
+            }
+        }
     }
 
     /**

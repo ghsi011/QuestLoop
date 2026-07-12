@@ -241,7 +241,11 @@ class AiQuestService(
         unit = q.unit,
         rationale = q.rationale,
         // Round-trip the schedule so "remind me at 9 instead" style refinements work.
-        scheduledTimes = q.scheduledTimes.map { "%02d:%02d".format(it / 60, it % 60) },
+        // Locale.ROOT: the default locale can emit non-ASCII digits (e.g. Arabic-
+        // Indic), which minuteOfDay's ASCII \d parse would then drop on the way back.
+        scheduledTimes = q.scheduledTimes.map {
+            String.format(java.util.Locale.ROOT, "%02d:%02d", it / 60, it % 60)
+        },
         scheduledDayOfWeek = q.scheduledDayOfWeek?.name,
         scheduledDayOfMonth = q.scheduledDayOfMonth,
         totalOccurrences = q.totalOccurrences,
