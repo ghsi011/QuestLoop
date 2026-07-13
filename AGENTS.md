@@ -40,7 +40,8 @@ QuestLoop: a gamified quest/habit Android app. Gradle multi-module:
   screen to Test Storage, uploaded as the **`ui-screenshots`** artifact (+ HTML report).
 - **Releases**: tag pushes are 403-blocked, so releases are cut server-side by
   putting **`[release]`** in the commit message (empty commit is fine). It
-  refreshes the rolling `v0.1.0-experimental` prerelease APK (debug-signed).
+  refreshes the rolling prerelease APK (debug-signed; tag set in release.yml,
+  currently `v0.5.0`).
   The release job gates on `:core:test` + `:app:testDebugUnitTest` + `lintDebug`
   before publishing (full-tests only fires after a release is public), and a
   release-signed build also attaches R8's `mapping.txt` to the release so
