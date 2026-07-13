@@ -31,8 +31,15 @@ data class QuestsUiState(
     val completing: Boolean = false,
 )
 
-/** A titled section of the backlog (e.g. "Today's plan", "Scheduled for later"). */
-data class QuestGroup(val title: String, val items: List<QuestRepository.QuestStatus>)
+/** A titled section of the backlog (e.g. "Today's plan", "Scheduled for later").
+ *  [completable] gates the rows' completion controls — false for a finished
+ *  occurrence run, so retired quests can't re-log past their limit. A flag, not
+ *  a title comparison: display copy must stay free to change. */
+data class QuestGroup(
+    val title: String,
+    val items: List<QuestRepository.QuestStatus>,
+    val completable: Boolean = true,
+)
 
 /**
  * Backs the Quests screen: the full, transparent backlog of everything the user
@@ -133,15 +140,31 @@ class QuestsViewModel(private val repository: QuestRepository) : ViewModel() {
         }
     }
 
+    /** Persists an edited quest definition (the schedule editor dialog). Reuses the
+     *  normalizing upsert path, so reminder alarms re-derive via the quests flow. */
+    fun updateQuest(quest: Quest) {
+        launchSafely(onError = ::refreshFailed) {
+            repository.addQuest(quest)
+            _state.update { it.copy(toast = "Updated \"${quest.title}\".", toastId = it.toastId + 1) }
+            recompute()
+        }
+    }
+
     fun consumeToast() = _state.update { it.copy(toast = null, pendingUndo = null) }
 
     /**
      * Groups the not-yet-done backlog: what's on for today, what else is due, and
      * what's scheduled for later. Done quests drop out entirely (they reappear
-     * tomorrow if they recur).
+     * tomorrow if they recur) — except quests that finished their whole occurrence
+     * run ("5 of 5 days"), which stay listed under "Finished" so they can still be
+     * seen, re-extended (edit the limit), or deleted rather than vanishing.
      */
     private fun group(items: List<QuestRepository.QuestStatus>): List<QuestGroup> {
-        val open = items.filterNot { it.done }
+        val (retired, live) = items.partition {
+            val total = it.quest.totalOccurrences
+            total != null && it.completedOccurrences >= total
+        }
+        val open = live.filterNot { it.done }
         val inPlan = open.filter { it.inTodaysPlan }
         val alsoDue = open.filter { !it.inTodaysPlan && it.dueToday }
         // A not-due ONE_OFF has already been done, so it's finished — don't list it
@@ -153,6 +176,7 @@ class QuestsViewModel(private val repository: QuestRepository) : ViewModel() {
             if (inPlan.isNotEmpty()) add(QuestGroup("Today's plan", inPlan))
             if (alsoDue.isNotEmpty()) add(QuestGroup("Also due today", alsoDue))
             if (later.isNotEmpty()) add(QuestGroup("Scheduled for later", later))
+            if (retired.isNotEmpty()) add(QuestGroup("Finished", retired, completable = false))
         }
     }
 }

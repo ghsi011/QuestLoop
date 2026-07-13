@@ -3,6 +3,7 @@ package com.questloop.app
 import android.app.Application
 import androidx.glance.appwidget.updateAll
 import com.questloop.app.di.AppContainer
+import com.questloop.app.reminders.QuestReminderScheduler
 import com.questloop.app.widget.QuestWidget
 import com.questloop.app.widget.WidgetRefreshScheduler
 import kotlinx.coroutines.CoroutineScope
@@ -25,6 +26,7 @@ class QuestLoopApplication : Application() {
         super.onCreate()
         container = AppContainer(this)
         keepWidgetFresh()
+        keepQuestRemindersArmed()
         // The flows below only emit on writes: nothing re-renders the widget when
         // a date/day-part boundary passes, so also arm the self-healing boundary
         // alarm. Every process start doubles as its re-arm safety net (alarms are
@@ -61,6 +63,34 @@ class QuestLoopApplication : Application() {
             .debounce(500)
             .onEach { runCatching { QuestWidget().updateAll(this@QuestLoopApplication) } }
             .catch { /* crash-guard only; see above — does not resume the collector */ }
+            .launchIn(appScope)
+    }
+
+    /**
+     * Keep the per-quest reminder alarms matching the data they derive from:
+     * re-arm on every quest change (add/edit/archive/import), ledger change (a
+     * completion can retire an occurrence-limited quest or shift an anchored
+     * quest's next due day), and profile change (the first-day-of-week preference
+     * moves weekly anchors). The initial flow emission doubles as the app-start
+     * re-arm safety net; alarms set with FLAG_UPDATE_CURRENT replace in place, so
+     * re-applying is idempotent. Same debounce/crash-guard shape as the widget
+     * refresher above.
+     */
+    private fun keepQuestRemindersArmed() {
+        val repo = container.repository
+        merge(
+            repo.quests.map { },
+            repo.completionsChanged,
+            repo.profile.map { },
+        )
+            .debounce(500)
+            .onEach {
+                runCatching {
+                    QuestReminderScheduler(this@QuestLoopApplication)
+                        .applyAll(repo.reminderQuests(), repo.firstDayOfWeek())
+                }
+            }
+            .catch { /* crash-guard; reminders re-arm on next app start / boot / fire */ }
             .launchIn(appScope)
     }
 }

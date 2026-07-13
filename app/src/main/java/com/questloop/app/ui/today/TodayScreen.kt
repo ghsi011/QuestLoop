@@ -385,6 +385,16 @@ private fun QuestRow(instance: QuestInstance, actions: TodayActions, progress: I
                     )
                 }
             }
+            // Times / anchor / reminder bell (occurrence progress lives on the
+            // Quests screen, which has the completed-interval counts).
+            com.questloop.app.ui.components.scheduleSummary(quest)?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
             if (showWhy) {
                 quest.rationale?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))

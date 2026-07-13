@@ -117,6 +117,18 @@ interface CompletionDao {
     @Query("SELECT questId, MAX(epochDay) AS lastDay FROM completions WHERE result = 'COMPLETED' GROUP BY questId")
     suspend fun lastCompletedDays(): List<LastCompletion>
 
+    /**
+     * The day of every fully-completed record for the given quests. Occurrence
+     * limits count *distinct calendar intervals* over these days
+     * (QuestSchedule.completedOccurrences) — a raw COMPLETED row count would
+     * over-count non-measured weekly/monthly quests, whose records are keyed per
+     * day, when completed twice in one interval. Scoped to an id list (callers
+     * pass only occurrence-limited quests, chunked) so the unbounded ledger is
+     * never materialized wholesale on the hot Today/widget/reminder paths.
+     */
+    @Query("SELECT questId, epochDay FROM completions WHERE result = 'COMPLETED' AND questId IN (:questIds)")
+    suspend fun completedDaysFor(questIds: List<String>): List<CompletedDay>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(completion: CompletionEntity)
 

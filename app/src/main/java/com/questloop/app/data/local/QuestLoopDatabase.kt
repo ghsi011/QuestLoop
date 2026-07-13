@@ -24,7 +24,7 @@ abstract class QuestLoopDatabase : RoomDatabase() {
          * below and committing the exported `schemas/<n>.json`; the migration test
          * walks every version up to here, so a forgotten migration fails in CI.
          */
-        const val SCHEMA_VERSION = 4
+        const val SCHEMA_VERSION = 5
 
         /**
          * Migrations between schema versions. Add a [Migration] for every version
@@ -62,7 +62,26 @@ abstract class QuestLoopDatabase : RoomDatabase() {
             }
         }
 
-        internal val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_2_3, MIGRATION_3_4)
+        /**
+         * v4 → v5: per-quest scheduling — set times of day, weekly/monthly anchor
+         * day, a total-occurrence limit, a per-quest reminder toggle, and the
+         * marker for a target auto-derived from the times count. Defaults match
+         * the entity's (untimed, unanchored, unlimited, reminders off) so existing
+         * quests behave exactly as before. (All six columns landed in one bump:
+         * v5 was authored on this branch and never shipped in a release.)
+         */
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE quests ADD COLUMN scheduledTimes TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE quests ADD COLUMN scheduledDayOfWeek INTEGER")
+                db.execSQL("ALTER TABLE quests ADD COLUMN scheduledDayOfMonth INTEGER")
+                db.execSQL("ALTER TABLE quests ADD COLUMN totalOccurrences INTEGER")
+                db.execSQL("ALTER TABLE quests ADD COLUMN remindersEnabled INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE quests ADD COLUMN countsTimeSlots INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        internal val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 
         @Volatile
         private var instance: QuestLoopDatabase? = null

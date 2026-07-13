@@ -28,12 +28,30 @@ data class QuestEntity(
     val archived: Boolean = false,
     /** Measured quests only: allow logging past the target for the interval (v3+). */
     val allowOverCompletion: Boolean = false,
+    /** Comma-separated minutes-of-day (0..1439) the quest is scheduled at (v5+). */
+    val scheduledTimes: String = "",
+    /** WEEKLY anchor as ISO day-of-week 1..7 (Mon..Sun), null = rolling (v5+). */
+    val scheduledDayOfWeek: Int? = null,
+    /** MONTHLY anchor day 1..31, null = rolling (v5+). */
+    val scheduledDayOfMonth: Int? = null,
+    /** Retire after this many completed intervals; null = no limit (v5+). */
+    val totalOccurrences: Int? = null,
+    /** Per-quest reminder notifications at the scheduled times (v5+). */
+    val remindersEnabled: Boolean = false,
+    /** Marks a target auto-derived from the scheduled-times count (v5+). */
+    val countsTimeSlots: Boolean = false,
 )
 
 /** Projection: the last fully-completed day for a quest (recurrence scheduling). */
 data class LastCompletion(
     val questId: String,
     val lastDay: Long,
+)
+
+/** Projection: one fully-completed record's day (occurrence-limit counting). */
+data class CompletedDay(
+    val questId: String,
+    val epochDay: Long,
 )
 
 // The ledger grows without bound and each Today refresh runs ~10 windowed/

@@ -31,6 +31,11 @@ class BootReceiver : BroadcastReceiver() {
                     val repo = (context.applicationContext as QuestLoopApplication).container.repository
                     ReminderScheduler(context).apply(repo.reminderConfig())
                 }
+                // The per-quest reminder series has the same stale-instant property.
+                runCatching {
+                    val repo = (context.applicationContext as QuestLoopApplication).container.repository
+                    QuestReminderScheduler(context).applyAll(repo.reminderQuests(), repo.firstDayOfWeek())
+                }
                 // The widget's day-boundary alarm is a fixed epoch instant with the
                 // same stale-on-reboot/zone-change property, and its other re-arm
                 // paths (Application.onCreate, widget add) don't run here when the

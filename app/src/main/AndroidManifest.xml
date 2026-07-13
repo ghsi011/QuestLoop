@@ -49,6 +49,14 @@
         <receiver
             android:name=".reminders.ReminderActionReceiver"
             android:exported="false" />
+        <!-- Per-quest timed reminders (quests scheduled at set times of day) and
+             their notification "Mark done" action. -->
+        <receiver
+            android:name=".reminders.QuestReminderReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".reminders.QuestReminderActionReceiver"
+            android:exported="false" />
         <!-- Re-arms the reminder alarms whenever their fixed trigger instants go
              stale: reboot, timezone change, or a clock correction. All three are
              protected system broadcasts, exempt from implicit-broadcast limits. -->

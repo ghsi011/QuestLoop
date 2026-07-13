@@ -1,5 +1,6 @@
 package com.questloop.core.ai
 
+import com.questloop.core.generation.QuestSchedule
 import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.Difficulty
 import com.questloop.core.model.Priority
@@ -29,6 +30,17 @@ internal data class AiQuestDto(
     val targetCount: Int? = null,
     val unit: String? = null,
     val rationale: String? = null,
+    /** "HH:MM" 24-hour times of day (recurring quests only); unparseable entries drop. */
+    val scheduledTimes: List<String> = emptyList(),
+    /** MONDAY..SUNDAY, only for WEEKLY quests when the user names a day. */
+    val scheduledDayOfWeek: String? = null,
+    /** 1..31, only for MONTHLY quests when the user names a day. */
+    val scheduledDayOfMonth: Int? = null,
+    /** Bounded runs: "for 5 days" -> 5, "for 12 months" -> 12. */
+    val totalOccurrences: Int? = null,
+    /** Off by default; the prompt allows it only for medication-style timing or an
+     *  explicit "remind me" — and the user still reviews before saving. */
+    val remindersEnabled: Boolean = false,
 )
 
 /**
@@ -228,6 +240,16 @@ class AiQuestService(
         targetCount = q.targetCount,
         unit = q.unit,
         rationale = q.rationale,
+        // Round-trip the schedule so "remind me at 9 instead" style refinements work.
+        // Locale.ROOT: the default locale can emit non-ASCII digits (e.g. Arabic-
+        // Indic), which minuteOfDay's ASCII \d parse would then drop on the way back.
+        scheduledTimes = q.scheduledTimes.map {
+            String.format(java.util.Locale.ROOT, "%02d:%02d", it / 60, it % 60)
+        },
+        scheduledDayOfWeek = q.scheduledDayOfWeek?.name,
+        scheduledDayOfMonth = q.scheduledDayOfMonth,
+        totalOccurrences = q.totalOccurrences,
+        remindersEnabled = q.remindersEnabled,
     )
 
     /**
@@ -300,7 +322,7 @@ class AiQuestService(
         val category = enumOrDefault(dto.category, QuestCategory.LIFE_ADMIN)
         val difficulty = enumOrDefault(dto.difficulty, Difficulty.EASY)
         val style = enumOrDefault(dto.completionStyle, CompletionStyle.BINARY)
-        return Quest(
+        val quest = Quest(
             // Batch-unique id so suggestions from different calls can't collide on
             // their instance id (questId@day) if persisted directly.
             id = "ai-${java.util.UUID.randomUUID()}-$index",
@@ -316,7 +338,26 @@ class AiQuestService(
             targetCount = if (style == CompletionStyle.QUANTITATIVE) (dto.targetCount ?: 1).coerceIn(1, 1000) else null,
             unit = if (style == CompletionStyle.QUANTITATIVE) dto.unit?.trim()?.ifBlank { null } else null,
             rationale = dto.rationale?.trim()?.ifBlank { null },
+            scheduledTimes = dto.scheduledTimes.mapNotNull(::minuteOfDay),
+            scheduledDayOfWeek = dto.scheduledDayOfWeek?.let {
+                runCatching { java.time.DayOfWeek.valueOf(it.trim().uppercase()) }.getOrNull()
+            },
+            scheduledDayOfMonth = dto.scheduledDayOfMonth?.coerceIn(1, 31),
+            totalOccurrences = dto.totalOccurrences?.coerceIn(1, 999),
+            remindersEnabled = dto.remindersEnabled,
         )
+        // Same canonicalisation as every persist path (times sorted/capped, anchors
+        // matched to frequency, multi-time binary -> per-slot count), applied here
+        // too so the review card already shows exactly what would be saved.
+        return QuestSchedule.normalized(quest)
+    }
+
+    /** "8:30"/"08:30" -> minutes since midnight; null for anything else. */
+    private fun minuteOfDay(raw: String): Int? {
+        val match = Regex("""^\s*(\d{1,2}):(\d{2})\s*$""").find(raw) ?: return null
+        val hour = match.groupValues[1].toInt()
+        val minute = match.groupValues[2].toInt()
+        return if (hour in 0..23 && minute in 0..59) hour * 60 + minute else null
     }
 
     private inline fun <reified T : Enum<T>> enumOrDefault(name: String, default: T): T =
@@ -330,7 +371,10 @@ class AiQuestService(
          *  plus at most a few bracketed asides; beyond this it's garbage. */
         private const val MAX_PARSE_CANDIDATES = 20
 
-        /** The object-shape spec shared by the multi- and single-quest instructions. */
+        /** The object-shape spec shared by the multi- and single-quest instructions.
+         *  The schedule rules ride along here (not only in the quest-design system
+         *  prompt) because every call path — quick add, goal decomposition, refine —
+         *  sends its own system prompt but shares this schema. */
         private val SCHEMA_BODY: String = buildString {
             appendLine("Respond with ONLY a JSON array (no prose, no markdown fences).")
             appendLine("Each element is an object:")
@@ -344,8 +388,24 @@ class AiQuestService(
             appendLine("    \"estimatedMinutes\": integer (the target for DURATION),")
             appendLine("    \"targetCount\": integer (only for QUANTITATIVE),")
             appendLine("    \"unit\": short string (only for QUANTITATIVE, e.g. \"glasses\"),")
+            appendLine("    \"scheduledTimes\": array of \"HH:MM\" 24-hour strings (recurring quests only),")
+            appendLine("    \"scheduledDayOfWeek\": MONDAY..SUNDAY (WEEKLY only),")
+            appendLine("    \"scheduledDayOfMonth\": integer 1-31 (MONTHLY only),")
+            appendLine("    \"totalOccurrences\": integer (how many days/weeks/months in total),")
+            appendLine("    \"remindersEnabled\": boolean,")
             appendLine("    \"rationale\": short string")
-            append("  }")
+            appendLine("  }")
+            appendLine("Schedule rules — set these ONLY when the user's wording gives them:")
+            appendLine("- scheduledTimes for stated or clearly implied times of day (\"at 8\",")
+            appendLine("  \"morning and evening\" -> [\"08:00\", \"20:00\"]). A DAILY quest may have up")
+            appendLine("  to ${QuestSchedule.MAX_TIMES_PER_DAY} times (each becomes one check-off); WEEKLY/MONTHLY at most one.")
+            appendLine("- scheduledDayOfWeek / scheduledDayOfMonth when a day is named")
+            appendLine("  (\"every Monday\", \"rent on the 1st\").")
+            appendLine("- totalOccurrences when the run is bounded: \"for 5 days\" -> 5 on a DAILY")
+            appendLine("  quest, \"for 12 months\" -> 12 on a MONTHLY one.")
+            appendLine("- remindersEnabled is false by DEFAULT. Set true ONLY for medication or")
+            appendLine("  treatment that must happen on time, or when the user explicitly asks to")
+            append("  be reminded/notified. It requires at least one scheduled time.")
         }
 
         val SCHEMA_INSTRUCTION: String = "$SCHEMA_BODY\nReturn at most 6 quests."

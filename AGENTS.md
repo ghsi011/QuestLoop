@@ -40,7 +40,8 @@ QuestLoop: a gamified quest/habit Android app. Gradle multi-module:
   screen to Test Storage, uploaded as the **`ui-screenshots`** artifact (+ HTML report).
 - **Releases**: tag pushes are 403-blocked, so releases are cut server-side by
   putting **`[release]`** in the commit message (empty commit is fine). It
-  refreshes the rolling `v0.1.0-experimental` prerelease APK (debug-signed).
+  refreshes the rolling prerelease APK (debug-signed; tag set in release.yml,
+  currently `v0.5.0`).
   The release job gates on `:core:test` + `:app:testDebugUnitTest` + `lintDebug`
   before publishing (full-tests only fires after a release is public), and a
   release-signed build also attaches R8's `mapping.txt` to the release so
@@ -114,11 +115,25 @@ QuestLoop: a gamified quest/habit Android app. Gradle multi-module:
 - Surface the provider's error body; never silently echo the deterministic
   fallback as if it were AI output. Pass the user's existing quests for dedup.
 - The prompt asks the model to choose difficulty (→ XP), `completionStyle`,
-  `frequency`, and `priority`. Default model `openrouter/free` (auto-router)
+  `frequency`, `priority`, and (when the wording gives one) the schedule fields
+  (times of day, anchor day, occurrence limit, reminders). Default model
+  `openrouter/free` (auto-router)
   avoids stale-slug 404s; specific free-model slugs go stale often. OpenAI sends our
   own `originator`/User-Agent (`questloop`/`QuestLoop`, like opencode sends `opencode`),
   and the Codex model line rotates (default `gpt-5.4`; the field is free-text).
 - Generated quests are reviewed/edited before saving — never auto-persisted.
+- **AI quick-add is the user's primary way to create quests — keep it in lockstep
+  with quest creation.** Any change to the Quest model or creation semantics (new
+  fields, completion styles, scheduling/recurrence, defaults) MUST update, in the
+  same change: the shared response schema + inference rules
+  (`AiQuestService.SCHEMA_BODY` — it rides on every call path: quick add, goal
+  decomposition, refine), the quest-design rules in
+  `PromptLibrary.QUEST_GENERATION_SYSTEM` (and bump the prompt versions),
+  `AiQuestDto` + `toQuest` + `dtoFrom` (refine must round-trip new fields),
+  normalization/validator guardrails, the suggestion-card editor, and
+  `AiQuestServiceTest`. If a field is deliberately not AI-inferable, leave a
+  comment saying why. Convention for anything notification-like: default OFF
+  unless it's medication/treatment-critical timing or the user explicitly asked.
 
 **Security / privacy**
 - Credentials (OpenRouter key + OpenAI OAuth tokens): `EncryptedSharedPreferences`
