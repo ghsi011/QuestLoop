@@ -1,6 +1,7 @@
 package com.questloop.core.reward
 
 import com.questloop.core.model.CompletionResult
+import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.Difficulty
 
 /**
@@ -44,20 +45,32 @@ object CompletionSoundCues {
      * Decides the sound for one recorded completion, or null for silence.
      *
      * @param result the recorded outcome (only COMPLETED/PARTIAL ever sound).
-     * @param fraction 0..1 progress carried by the record (PARTIAL logs).
+     * @param fraction cumulative progress carried by the record (can exceed 1.0
+     *   for over-completion logs).
+     * @param completionStyle how "done" is defined — a SUBJECTIVE log is a
+     *   one-shot reflection, so it's terminal even when recorded PARTIAL.
      * @param difficulty the quest's difficulty tier (picks the chime).
      * @param xpAwarded XP the ledger actually granted — post-multiplier,
      *   post-cap — so the loudness tracks real earned value.
      * @param leveledUp whether this completion crossed a level boundary.
      * @param unlockedAchievement whether it unlocked a new achievement.
+     * @param previousFraction the fraction the instance's prior record carried
+     *   (null when this is its first log). A re-log that adds no progress is
+     *   silent — confirming "+0" must not re-bling.
+     * @param previouslyCompleted whether the instance was already COMPLETED
+     *   before this log — extra over-completion logs get a quiet progress tick,
+     *   not the full chime again.
      */
     fun cueFor(
         result: CompletionResult,
         fraction: Double,
+        completionStyle: CompletionStyle,
         difficulty: Difficulty,
         xpAwarded: Long,
         leveledUp: Boolean,
         unlockedAchievement: Boolean,
+        previousFraction: Double?,
+        previouslyCompleted: Boolean,
     ): CompletionSound? {
         val positive = result == CompletionResult.COMPLETED || result == CompletionResult.PARTIAL
         // Skips/failures/reschedules are silent — no negative conditioning. So is
@@ -70,10 +83,21 @@ object CompletionSoundCues {
         if (leveledUp) return CompletionSound(CompletionChime.LEVEL_UP, 1f)
         if (unlockedAchievement) return CompletionSound(CompletionChime.TRIUMPH, 1f)
 
-        if (result == CompletionResult.PARTIAL) {
-            // A small bling for progress, gently louder as the quest nears done.
-            val volume = (0.35f + 0.25f * fraction.toFloat()).coerceAtMost(0.6f)
-            return CompletionSound(CompletionChime.PROGRESS, volume)
+        // A re-log that didn't move progress forward (confirming "+0", or writing
+        // the same total again) won nothing new — stay silent.
+        if (previousFraction != null && fraction <= previousFraction) return null
+
+        // The target was already reached earlier; this is an over-completion
+        // extra ("3rd swim on a 2×/week"). Real progress, but not the completion
+        // moment again — a quiet tick, so the full chime stays a once-per-win event.
+        if (previouslyCompleted) return CompletionSound(CompletionChime.PROGRESS, progressVolume(fraction))
+
+        // Counting/timed partials are mid-way logs: a small bling, gently louder
+        // as the quest nears done. A SUBJECTIVE partial falls through instead —
+        // a reflection is one-shot for the day (CompletionPolicy), so a 4/5
+        // self-rating IS that quest's completion moment, not "keep going".
+        if (result == CompletionResult.PARTIAL && completionStyle != CompletionStyle.SUBJECTIVE) {
+            return CompletionSound(CompletionChime.PROGRESS, progressVolume(fraction))
         }
 
         val chime = when (difficulty) {
@@ -87,4 +111,7 @@ object CompletionSoundCues {
             .coerceIn(MIN_COMPLETE_VOLUME, 1f)
         return CompletionSound(chime, volume)
     }
+
+    private fun progressVolume(fraction: Double): Float =
+        (0.35f + 0.25f * fraction.toFloat()).coerceIn(0.35f, 0.6f)
 }

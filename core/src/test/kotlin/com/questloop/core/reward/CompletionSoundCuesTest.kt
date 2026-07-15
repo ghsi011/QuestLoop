@@ -1,6 +1,7 @@
 package com.questloop.core.reward
 
 import com.questloop.core.model.CompletionResult
+import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.Difficulty
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -12,11 +13,17 @@ class CompletionSoundCuesTest {
     private fun cue(
         result: CompletionResult = CompletionResult.COMPLETED,
         fraction: Double = if (result == CompletionResult.COMPLETED) 1.0 else 0.5,
+        style: CompletionStyle = CompletionStyle.BINARY,
         difficulty: Difficulty = Difficulty.MEDIUM,
         xpAwarded: Long = difficulty.baseXp.toLong(),
         leveledUp: Boolean = false,
         unlockedAchievement: Boolean = false,
-    ) = CompletionSoundCues.cueFor(result, fraction, difficulty, xpAwarded, leveledUp, unlockedAchievement)
+        previousFraction: Double? = null,
+        previouslyCompleted: Boolean = false,
+    ) = CompletionSoundCues.cueFor(
+        result, fraction, style, difficulty, xpAwarded,
+        leveledUp, unlockedAchievement, previousFraction, previouslyCompleted,
+    )
 
     @Test
     fun `misses are silent - never punish`() {
@@ -32,8 +39,67 @@ class CompletionSoundCuesTest {
 
     @Test
     fun `partial progress gets the small progress bling`() {
-        val sound = cue(result = CompletionResult.PARTIAL, fraction = 0.5, xpAwarded = 10)
+        val sound = cue(
+            result = CompletionResult.PARTIAL, fraction = 0.5,
+            style = CompletionStyle.QUANTITATIVE, xpAwarded = 10,
+        )
         assertEquals(CompletionChime.PROGRESS, sound?.chime)
+    }
+
+    @Test
+    fun `a subjective self-rating below max is that quest's completion moment`() {
+        // 4/5 on a HARD reflection records PARTIAL but dismisses the quest for the
+        // day — it must earn the difficulty-tier chime, not a "keep going" bling.
+        val sound = cue(
+            result = CompletionResult.PARTIAL, fraction = 0.8,
+            style = CompletionStyle.SUBJECTIVE, difficulty = Difficulty.HARD, xpAwarded = 28,
+        )
+        assertEquals(CompletionChime.MAJOR, sound?.chime)
+    }
+
+    @Test
+    fun `a zero self-rating stays silent even for subjective quests`() {
+        assertNull(cue(result = CompletionResult.PARTIAL, fraction = 0.0, style = CompletionStyle.SUBJECTIVE))
+    }
+
+    @Test
+    fun `a re-log that adds no progress is silent`() {
+        assertNull(
+            cue(
+                result = CompletionResult.PARTIAL, fraction = 0.5,
+                style = CompletionStyle.QUANTITATIVE, previousFraction = 0.5,
+            ),
+        )
+        assertNull(cue(fraction = 1.0, previousFraction = 1.0, previouslyCompleted = true))
+    }
+
+    @Test
+    fun `over-completion extras get a quiet progress tick, not the full chime again`() {
+        val sound = cue(
+            result = CompletionResult.COMPLETED, fraction = 1.5,
+            style = CompletionStyle.QUANTITATIVE, difficulty = Difficulty.HARD,
+            previousFraction = 1.0, previouslyCompleted = true,
+        )!!
+        assertEquals(CompletionChime.PROGRESS, sound.chime)
+        assertTrue(sound.volume <= 0.6f)
+    }
+
+    @Test
+    fun `first crossing of the target still earns the full chime`() {
+        val sound = cue(
+            result = CompletionResult.COMPLETED, fraction = 1.0,
+            style = CompletionStyle.QUANTITATIVE, difficulty = Difficulty.MEDIUM,
+            previousFraction = 0.6, previouslyCompleted = false,
+        )
+        assertEquals(CompletionChime.MAJOR, sound?.chime)
+    }
+
+    @Test
+    fun `a level-up celebrates even when the log adds no progress`() {
+        // XP re-scoring on a re-log can cross a level boundary; the level-up is
+        // a real event and outranks the no-new-progress silence.
+        val sound = cue(fraction = 1.0, previousFraction = 1.0, previouslyCompleted = true, leveledUp = true)
+        assertEquals(CompletionChime.LEVEL_UP, sound?.chime)
     }
 
     @Test

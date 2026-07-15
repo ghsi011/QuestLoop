@@ -1,5 +1,6 @@
 package com.questloop.app.util
 
+import android.app.NotificationManager
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioManager
@@ -15,8 +16,9 @@ import com.questloop.core.reward.CompletionSound
  * A process-wide singleton so every surface (Today, Quests backlog, widget
  * quick-complete sheet, Rewards) shares one lazily-built [SoundPool]. Playback
  * is best-effort: any audio failure is swallowed — a chime must never break or
- * delay recording the completion itself. Silent/vibrate ringer modes are
- * respected (celebration is never worth an interruption the user muted).
+ * delay recording the completion itself. Silent/vibrate ringer modes and Do Not
+ * Disturb are respected (celebration is never worth an interruption the user
+ * muted).
  */
 object CompletionSoundPlayer {
 
@@ -29,20 +31,19 @@ object CompletionSoundPlayer {
     )
 
     private val lock = Any()
+    private var appContext: Context? = null
     private var pool: SoundPool? = null
     private var sampleByChime = emptyMap<CompletionChime, Int>()
     private val loadedSamples = mutableSetOf<Int>()
 
-    /** The most recent request that arrived before its sample finished loading —
-     *  played from the load callback so the very first completion still chimes. */
-    private var pendingSample: Int? = null
-    private var pendingVolume: Float = 0f
+    /** Requests that arrived before their sample finished loading — played from
+     *  the load callback so a first-launch burst of completions still chimes. */
+    private val pendingPlays = mutableListOf<Pair<Int, Float>>()
 
     fun play(context: Context, sound: CompletionSound) {
         runCatching {
             val app = context.applicationContext
-            val audio = app.getSystemService(AudioManager::class.java) ?: return
-            if (audio.ringerMode != AudioManager.RINGER_MODE_NORMAL) return
+            if (!audible(app)) return
             synchronized(lock) {
                 val p = pool ?: build(app)
                 val sample = sampleByChime[sound.chime] ?: return
@@ -50,11 +51,21 @@ object CompletionSoundPlayer {
                 if (sample in loadedSamples) {
                     p.play(sample, volume, volume, 1, 0, 1f)
                 } else {
-                    pendingSample = sample
-                    pendingVolume = volume
+                    pendingPlays += sample to volume
                 }
             }
         }
+    }
+
+    /** True when a celebration chime is welcome: ringer on and no DND filter. */
+    private fun audible(app: Context): Boolean {
+        val audio = app.getSystemService(AudioManager::class.java) ?: return false
+        if (audio.ringerMode != AudioManager.RINGER_MODE_NORMAL) return false
+        val filter = app.getSystemService(NotificationManager::class.java)?.currentInterruptionFilter
+        // UNKNOWN means we can't tell — allow rather than silently drop forever.
+        return filter == null ||
+            filter == NotificationManager.INTERRUPTION_FILTER_ALL ||
+            filter == NotificationManager.INTERRUPTION_FILTER_UNKNOWN
     }
 
     /** Caller must hold [lock]. */
@@ -72,12 +83,18 @@ object CompletionSoundPlayer {
             if (status != 0) return@setOnLoadCompleteListener
             synchronized(lock) {
                 loadedSamples += sampleId
-                if (pendingSample == sampleId) {
-                    runCatching { p.play(sampleId, pendingVolume, pendingVolume, 1, 0, 1f) }
-                    pendingSample = null
+                val due = pendingPlays.filter { it.first == sampleId }
+                pendingPlays.removeAll { it.first == sampleId }
+                // Re-check audibility: the user may have muted during the load window.
+                val context = appContext
+                if (context != null && runCatching { audible(context) }.getOrDefault(false)) {
+                    due.forEach { (sample, volume) ->
+                        runCatching { p.play(sample, volume, volume, 1, 0, 1f) }
+                    }
                 }
             }
         }
+        appContext = app
         sampleByChime = rawByChime.mapValues { (_, res) -> built.load(app, res, 1) }
         pool = built
         return built

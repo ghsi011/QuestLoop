@@ -141,6 +141,23 @@ class QuestRepositoryCompletionSoundTest {
     }
 
     @Test
+    fun `a re-log that adds no progress is silent`() = runTest {
+        seedFirstCompletion()
+        val q = quest(style = CompletionStyle.QUANTITATIVE, targetCount = 8)
+        repo.completeMeasured(q, today, value = 3)
+        val outcome = repo.completeMeasured(q, today, value = 3)
+        assertNull(outcome.sound)
+    }
+
+    @Test
+    fun `a below-max subjective rating earns the tier chime`() = runTest {
+        seedFirstCompletion()
+        val q = quest(difficulty = Difficulty.HARD, style = CompletionStyle.SUBJECTIVE)
+        val outcome = repo.completeMeasured(q, today, value = 4)
+        assertEquals(CompletionChime.MAJOR, outcome.sound?.chime)
+    }
+
+    @Test
     fun `sounds off silences every completion`() = runTest {
         prefs.state.value = UserProfile(preferences = UserPreferences(completionSoundsEnabled = false))
         val outcome = repo.completeQuest(quest(Difficulty.EPIC), today, CompletionResult.COMPLETED)

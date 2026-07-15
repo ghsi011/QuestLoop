@@ -241,6 +241,11 @@ class QuestRepository(
     /**
      * Completes a first-run guide quest (awarding its XP) and then archives it so
      * it's gone for good. No-op if it's already been completed/archived.
+     *
+     * The outcome (and its celebration chime) is deliberately discarded: this
+     * fires as a side effect of another action (creating a quest, browsing the
+     * bank), so a "quest completed" chime would celebrate something the user
+     * didn't consciously do.
      */
     suspend fun completeOnboardingQuest(id: String, epochDay: Long) {
         val quest = questDao.getActive().firstOrNull { it.id == id }?.toModel() ?: return
@@ -685,19 +690,23 @@ class QuestRepository(
         )
         val after = progressStats(newTotal, completionDao.activeDays().toSet())
         val newlyUnlocked = AchievementEngine.newlyUnlocked(before, after)
+        val previous = existing?.toModel()
         return CompleteOutcome(
             effect = corrected,
             newlyUnlocked = newlyUnlocked,
             instanceId = instanceId,
-            previousRecord = existing?.toModel(),
+            previousRecord = previous,
             sound = if (prefs.completionSoundsEnabled) {
                 CompletionSoundCues.cueFor(
                     result = result,
                     fraction = fraction,
+                    completionStyle = quest.completionStyle,
                     difficulty = quest.difficulty,
                     xpAwarded = effect.outcome.xp,
                     leveledUp = corrected.leveledUp,
                     unlockedAchievement = newlyUnlocked.isNotEmpty(),
+                    previousFraction = previous?.fraction,
+                    previouslyCompleted = previous?.result == CompletionResult.COMPLETED,
                 )
             } else {
                 null
