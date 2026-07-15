@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.questloop.app.data.QuestRepository
 import com.questloop.app.ui.components.CategoryDot
+import com.questloop.app.ui.components.CompletionSoundEffect
 import com.questloop.app.ui.components.DifficultyPips
 import com.questloop.app.ui.components.InfoCard
 import com.questloop.app.ui.components.QuestCompletionControls
@@ -57,6 +58,13 @@ fun QuestsScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var pendingDelete by remember { mutableStateOf<Quest?>(null) }
     var editingSchedule by remember { mutableStateOf<Quest?>(null) }
+
+    // Celebration chime for the completion behind this toast; same one-shot key.
+    CompletionSoundEffect(
+        soundId = state.toastId,
+        sound = state.sound,
+        consume = viewModel::consumeSound,
+    )
 
     UndoableSnackbarEffect(
         hostState = snackbarHostState,

@@ -46,6 +46,7 @@ import com.questloop.app.ui.components.CategoryDot
 import com.questloop.app.ui.components.DifficultyPips
 import com.questloop.app.ui.components.InfoCard
 import com.questloop.app.ui.components.LevelRing
+import com.questloop.app.ui.components.CompletionSoundEffect
 import com.questloop.app.ui.components.UndoableSnackbarEffect
 import com.questloop.core.model.CompletionResult
 import com.questloop.core.model.Quest
@@ -81,6 +82,14 @@ fun TodayScreen(
     // Refresh when re-entering Today so XP/level/plan reflect changes made on other
     // tabs (e.g. completing a quest from the Quests backlog).
     LaunchedEffect(Unit) { viewModel.refresh() }
+
+    // Celebration chime for the completion behind this toast (classic conditioning:
+    // bigger wins sound bigger). Same one-shot key as the snackbar below.
+    CompletionSoundEffect(
+        soundId = state.toastId,
+        sound = state.sound,
+        consume = viewModel::consumeSound,
+    )
 
     UndoableSnackbarEffect(
         hostState = snackbarHostState,

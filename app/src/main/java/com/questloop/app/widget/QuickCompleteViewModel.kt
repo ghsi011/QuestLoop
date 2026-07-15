@@ -6,6 +6,7 @@ import com.questloop.app.util.launchSafely
 import com.questloop.core.model.CompletionResult
 import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.Quest
+import com.questloop.core.reward.CompletionSound
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +34,8 @@ data class QuickCompleteUiState(
     val error: String? = null,
     /** Set once the action lands; the host activity confirms it and closes. */
     val doneMessage: String? = null,
+    /** Celebration chime the landed completion earned; played with [doneMessage]. */
+    val sound: CompletionSound? = null,
 )
 
 /**
@@ -103,18 +106,18 @@ class QuickCompleteViewModel(
         perform("Skipped for today.") { repository.completeQuest(q, epochDay, CompletionResult.SKIPPED) }
     }
 
-    private fun perform(message: String, action: suspend () -> Unit) {
+    private fun perform(message: String, action: suspend () -> QuestRepository.CompleteOutcome) {
         if (_state.value.submitting) return
         launchSafely(onError = { _state.update { it.copy(submitting = false, error = "Something went wrong — try again.") } }) {
             _state.update { it.copy(submitting = true, error = null) }
             // Non-cancellable: the dialog stays dismissable while submitting, and
             // finishing the activity cancels viewModelScope — a started complete/skip
             // must still land rather than be silently dropped mid-write.
-            withContext(NonCancellable) { action() }
-            _state.update { it.copy(submitting = false, doneMessage = message) }
+            val outcome = withContext(NonCancellable) { action() }
+            _state.update { it.copy(submitting = false, doneMessage = message, sound = outcome.sound) }
         }
     }
 
     /** Clears the one-shot [QuickCompleteUiState.doneMessage] after the activity shows it. */
-    fun consumeDone() = _state.update { it.copy(doneMessage = null) }
+    fun consumeDone() = _state.update { it.copy(doneMessage = null, sound = null) }
 }

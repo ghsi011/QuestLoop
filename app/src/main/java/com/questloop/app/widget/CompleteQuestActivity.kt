@@ -24,6 +24,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -32,6 +33,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.questloop.app.QuestLoopApplication
 import com.questloop.app.ui.components.QuestCompletionControls
 import com.questloop.app.ui.theme.QuestLoopTheme
+import com.questloop.app.util.CompletionSoundPlayer
 import com.questloop.core.model.CompletionStyle
 import java.time.LocalDate
 
@@ -80,12 +82,16 @@ private fun QuickCompleteDialog(
     onDismiss: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     // Success is a one-shot: consume it (so it can't replay on recomposition), then
-    // confirm and close.
+    // chime, confirm and close. The player outlives this activity's finish() —
+    // playback is process-wide, so the celebration isn't cut off by closing.
     LaunchedEffect(state.doneMessage) {
         state.doneMessage?.let { message ->
+            val sound = state.sound
             viewModel.consumeDone()
+            sound?.let { CompletionSoundPlayer.play(context, it) }
             onDone(message)
         }
     }

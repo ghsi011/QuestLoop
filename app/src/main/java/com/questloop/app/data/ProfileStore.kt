@@ -46,6 +46,9 @@ interface ProfilePreferences {
     /** Opt-in to using the device calendar's free time as today's budget (SPEC §10).
      *  Defaulted so test fakes need not implement it; [ProfileStore] persists it. */
     suspend fun setCalendarBudgetEnabled(value: Boolean) {}
+    /** Celebration chimes on completion (default on). Defaulted so test fakes
+     *  need not implement it; [ProfileStore] persists it. */
+    suspend fun setCompletionSoundsEnabled(value: Boolean) {}
     /** The day the user's week starts on (default Sunday). Defaulted so test fakes
      *  need not implement it; [ProfileStore] persists it. */
     suspend fun setFirstDayOfWeek(day: DayOfWeek) {}
@@ -105,6 +108,7 @@ class ProfileStore(
         val GRACE_DAYS = intPreferencesKey("streak_grace_days")
         val SENSITIVE_OPT_IN = intPreferencesKey("sensitive_opt_in")
         val CALENDAR_BUDGET = intPreferencesKey("calendar_budget_enabled")
+        val COMPLETION_SOUNDS = intPreferencesKey("completion_sounds_enabled")
         val FIRST_DAY_OF_WEEK = intPreferencesKey("first_day_of_week")
         val FOCUS = stringSetPreferencesKey("focus_categories")
         val HABITS = stringPreferencesKey("habits_json")
@@ -137,6 +141,7 @@ class ProfileStore(
                 streakGraceDays = prefs[Keys.GRACE_DAYS] ?: 1,
                 sensitiveNotificationsOptIn = (prefs[Keys.SENSITIVE_OPT_IN] ?: 0) == 1,
                 calendarBudgetEnabled = (prefs[Keys.CALENDAR_BUDGET] ?: 0) == 1,
+                completionSoundsEnabled = (prefs[Keys.COMPLETION_SOUNDS] ?: 1) == 1,
                 firstDayOfWeek = prefs[Keys.FIRST_DAY_OF_WEEK]
                     ?.let { runCatching { DayOfWeek.of(it) }.getOrNull() }
                     ?: DayOfWeek.SUNDAY,
@@ -204,6 +209,10 @@ class ProfileStore(
 
     override suspend fun setCalendarBudgetEnabled(value: Boolean) {
         dataStore.edit { it[Keys.CALENDAR_BUDGET] = if (value) 1 else 0 }
+    }
+
+    override suspend fun setCompletionSoundsEnabled(value: Boolean) {
+        dataStore.edit { it[Keys.COMPLETION_SOUNDS] = if (value) 1 else 0 }
     }
 
     override suspend fun setFirstDayOfWeek(day: DayOfWeek) {

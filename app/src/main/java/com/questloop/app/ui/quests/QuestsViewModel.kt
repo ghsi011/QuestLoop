@@ -10,6 +10,7 @@ import com.questloop.app.ui.today.PendingUndo
 import com.questloop.core.model.CompletionResult
 import com.questloop.core.model.Quest
 import com.questloop.core.model.QuestFrequency
+import com.questloop.core.reward.CompletionSound
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,6 +28,8 @@ data class QuestsUiState(
     val toastId: Long = 0,
     /** Data to reverse the last completion via the snackbar "Undo". */
     val pendingUndo: PendingUndo? = null,
+    /** One-shot celebration chime for the last completion; consumed by the UI. */
+    val sound: CompletionSound? = null,
     /** True while a completion is being recorded; guards double-taps. */
     val completing: Boolean = false,
 )
@@ -84,6 +87,7 @@ class QuestsViewModel(private val repository: QuestRepository) : ViewModel() {
                 toast = "Couldn't refresh your quests — please try again.",
                 toastId = it.toastId + 1,
                 pendingUndo = null,
+                sound = null,
             )
         }
     }
@@ -113,6 +117,7 @@ class QuestsViewModel(private val repository: QuestRepository) : ViewModel() {
                         toast = toast,
                         toastId = it.toastId + 1,
                         pendingUndo = PendingUndo(outcome.instanceId, outcome.previousRecord),
+                        sound = outcome.sound,
                     )
                 }
                 recompute()
@@ -135,7 +140,7 @@ class QuestsViewModel(private val repository: QuestRepository) : ViewModel() {
     fun delete(quest: Quest) {
         launchSafely {
             repository.archiveQuest(quest.id)
-            _state.update { it.copy(toast = "Deleted \"${quest.title}\".", toastId = it.toastId + 1, pendingUndo = null) }
+            _state.update { it.copy(toast = "Deleted \"${quest.title}\".", toastId = it.toastId + 1, pendingUndo = null, sound = null) }
             recompute()
         }
     }
@@ -145,12 +150,14 @@ class QuestsViewModel(private val repository: QuestRepository) : ViewModel() {
     fun updateQuest(quest: Quest) {
         launchSafely(onError = ::refreshFailed) {
             repository.addQuest(quest)
-            _state.update { it.copy(toast = "Updated \"${quest.title}\".", toastId = it.toastId + 1) }
+            _state.update { it.copy(toast = "Updated \"${quest.title}\".", toastId = it.toastId + 1, sound = null) }
             recompute()
         }
     }
 
     fun consumeToast() = _state.update { it.copy(toast = null, pendingUndo = null) }
+
+    fun consumeSound() = _state.update { it.copy(sound = null) }
 
     /**
      * Groups the not-yet-done backlog: what's on for today, what else is due, and

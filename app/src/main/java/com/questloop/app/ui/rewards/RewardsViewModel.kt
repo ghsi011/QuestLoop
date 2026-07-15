@@ -9,6 +9,7 @@ import com.questloop.app.ui.AppClock
 import com.questloop.app.ui.Money
 import com.questloop.core.model.CompletionResult
 import com.questloop.core.model.Quest
+import com.questloop.core.reward.CompletionSound
 import com.questloop.core.reward.RewardAllowanceCalculator
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,6 +35,8 @@ data class RewardsUiState(
      * same budget twice) both show instead of the second being swallowed.
      */
     val messageId: Long = 0,
+    /** One-shot celebration chime for a just-completed fund step; consumed by the UI. */
+    val sound: CompletionSound? = null,
 )
 
 class RewardsViewModel(private val repository: QuestRepository) : ViewModel() {
@@ -71,6 +74,7 @@ class RewardsViewModel(private val repository: QuestRepository) : ViewModel() {
                 loading = false,
                 savedMessage = "Couldn't load your rewards — please try again.",
                 messageId = it.messageId + 1,
+                sound = null,
             )
         }
     }
@@ -80,7 +84,7 @@ class RewardsViewModel(private val repository: QuestRepository) : ViewModel() {
             repository.setBudgetCap(value)
             load()
             val msg = if (value > 0) "Budget saved: ${Money.format(value)}." else "Budget cleared."
-            _state.update { it.copy(savedMessage = msg, messageId = it.messageId + 1) }
+            _state.update { it.copy(savedMessage = msg, messageId = it.messageId + 1, sound = null) }
         }
     }
 
@@ -91,9 +95,11 @@ class RewardsViewModel(private val repository: QuestRepository) : ViewModel() {
         _state.update { it.copy(fundStepInFlight = true) }
         launchSafely {
             try {
-                repository.completeQuest(quest, AppClock.todayEpochDay(), CompletionResult.COMPLETED)
+                val outcome = repository.completeQuest(quest, AppClock.todayEpochDay(), CompletionResult.COMPLETED)
                 load()
-                _state.update { it.copy(savedMessage = "Marked done — nice.", messageId = it.messageId + 1) }
+                _state.update {
+                    it.copy(savedMessage = "Marked done — nice.", messageId = it.messageId + 1, sound = outcome.sound)
+                }
             } finally {
                 _state.update { it.copy(fundStepInFlight = false) }
             }
@@ -101,4 +107,6 @@ class RewardsViewModel(private val repository: QuestRepository) : ViewModel() {
     }
 
     fun consumeSavedMessage() = _state.update { it.copy(savedMessage = null) }
+
+    fun consumeSound() = _state.update { it.copy(sound = null) }
 }

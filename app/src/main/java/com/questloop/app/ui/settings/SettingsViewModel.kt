@@ -231,6 +231,12 @@ class SettingsViewModel(private val repository: QuestRepository) : ViewModel() {
         }
     }
 
+    /** Turns the quest-completion chimes on/off. */
+    fun setCompletionSounds(enabled: Boolean) =
+        update(if (enabled) "Completion sounds on" else "Completion sounds off") {
+            repository.setCompletionSoundsEnabled(enabled)
+        }
+
     /** Opt in/out of calendar-based time budgeting. The screen secures the
      *  READ_CALENDAR permission before enabling; this just persists the choice. */
     fun setCalendarBudget(enabled: Boolean) =

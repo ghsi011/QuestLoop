@@ -336,6 +336,8 @@ data class UserPreferences(
     val focusCategories: Set<QuestCategory> = emptySet(),
     /** Opt-in: use the device calendar's free time as today's time budget (SPEC §10). */
     val calendarBudgetEnabled: Boolean = false,
+    /** Celebration chimes on quest completion (scaled by difficulty/XP). Default on. */
+    val completionSoundsEnabled: Boolean = true,
     /**
      * The day the user's week starts on. Defaults to Sunday (the Jewish/US week).
      * Anchors weekly-quest interval resets (`questId@weekStart`) and the "this

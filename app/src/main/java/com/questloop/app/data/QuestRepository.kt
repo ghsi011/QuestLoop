@@ -30,6 +30,8 @@ import com.questloop.core.model.UserProfile
 import com.questloop.core.model.VerificationMethod
 import com.questloop.core.reward.Achievement
 import com.questloop.core.reward.AchievementEngine
+import com.questloop.core.reward.CompletionSound
+import com.questloop.core.reward.CompletionSoundCues
 import com.questloop.core.reward.LevelSystem
 import com.questloop.core.reward.ProgressStats
 import com.questloop.core.reward.RewardAllowanceCalculator
@@ -488,6 +490,11 @@ class QuestRepository(
         /** Identifiers to reverse this action (snackbar "Undo"). */
         val instanceId: String,
         val previousRecord: CompletionRecord?,
+        /** Celebration chime this completion earned — null for silence (misses,
+         *  zero-progress logs, or the user turned completion sounds off). Only
+         *  foreground surfaces play it; background paths (notification actions)
+         *  simply ignore it. */
+        val sound: CompletionSound? = null,
     )
 
     // --- Completed-quest history (Completed screen) --------------------------
@@ -661,8 +668,8 @@ class QuestRepository(
         // streak driving the reward matches the one shown in the UI (which also
         // reads preferences.streakGraceDays); otherwise the engine's default of 1
         // would silently diverge from a user who set a longer grace window.
-        val grace = profileStore.profile.first().preferences.streakGraceDays
-        val context = engine.contextFrom(record, sameDay, activeDays, grace)
+        val prefs = profileStore.profile.first().preferences
+        val context = engine.contextFrom(record, sameDay, activeDays, prefs.streakGraceDays)
 
         val before = progressStats(ledgerSum, activeDays)
         val effect = engine.recordCompletion(baseline, record, context)
@@ -677,11 +684,24 @@ class QuestRepository(
             newTotalXp = newTotal,
         )
         val after = progressStats(newTotal, completionDao.activeDays().toSet())
+        val newlyUnlocked = AchievementEngine.newlyUnlocked(before, after)
         return CompleteOutcome(
             effect = corrected,
-            newlyUnlocked = AchievementEngine.newlyUnlocked(before, after),
+            newlyUnlocked = newlyUnlocked,
             instanceId = instanceId,
             previousRecord = existing?.toModel(),
+            sound = if (prefs.completionSoundsEnabled) {
+                CompletionSoundCues.cueFor(
+                    result = result,
+                    fraction = fraction,
+                    difficulty = quest.difficulty,
+                    xpAwarded = effect.outcome.xp,
+                    leveledUp = corrected.leveledUp,
+                    unlockedAchievement = newlyUnlocked.isNotEmpty(),
+                )
+            } else {
+                null
+            },
         )
     }
 
@@ -952,6 +972,8 @@ class QuestRepository(
 
     suspend fun setCalendarBudgetEnabled(value: Boolean) = profileStore.setCalendarBudgetEnabled(value)
 
+    suspend fun setCompletionSoundsEnabled(value: Boolean) = profileStore.setCompletionSoundsEnabled(value)
+
     suspend fun setFirstDayOfWeek(day: DayOfWeek) = profileStore.setFirstDayOfWeek(day)
 
     suspend fun addHabit(habit: Habit) = profileMutex.withLock {
@@ -1047,6 +1069,7 @@ class QuestRepository(
                 profileStore.setSensitiveOptIn(prefs.sensitiveNotificationsOptIn)
                 profileStore.setFirstDayOfWeek(prefs.firstDayOfWeek)
                 profileStore.setCalendarBudgetEnabled(prefs.calendarBudgetEnabled)
+                profileStore.setCompletionSoundsEnabled(prefs.completionSoundsEnabled)
                 Triple(h, b, g)
             }
 

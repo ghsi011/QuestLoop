@@ -289,6 +289,27 @@ fun SettingsScreen(
             }
         }
 
+        Card(Modifier.fillMaxWidth()) {
+            Row(
+                Modifier.fillMaxWidth().padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Completion sounds", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "A little chime when you finish a quest — bigger wins sound bigger.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = prefs.completionSoundsEnabled,
+                    onCheckedChange = viewModel::setCompletionSounds,
+                )
+            }
+        }
+
         SectionHeader("Daily reminders")
         RemindersSection(
             config = state.reminders,

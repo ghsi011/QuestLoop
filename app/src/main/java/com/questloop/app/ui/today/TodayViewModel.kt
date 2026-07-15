@@ -14,6 +14,7 @@ import com.questloop.core.model.CompletionStyle
 import com.questloop.core.model.EnergyCheckIn
 import com.questloop.core.model.Quest
 import com.questloop.core.reward.Achievement
+import com.questloop.core.reward.CompletionSound
 import com.questloop.core.reward.LevelSystem
 import com.questloop.core.safety.SafetyGuard
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,6 +45,8 @@ data class TodayUiState(
     /** Bumped on every toast so identical consecutive messages still re-fire. */
     val toastId: Long = 0,
     val pendingUndo: PendingUndo? = null,
+    /** One-shot celebration chime for the last completion; consumed by the UI. */
+    val sound: CompletionSound? = null,
     /** True while a completion is being recorded; guards double-taps. */
     val completing: Boolean = false,
 )
@@ -176,6 +179,7 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
                 toast = toast,
                 toastId = it.toastId + 1,
                 pendingUndo = PendingUndo(outcome.instanceId, outcome.previousRecord),
+                sound = outcome.sound,
             )
         }
         refresh()
@@ -192,6 +196,8 @@ class TodayViewModel(private val repository: QuestRepository) : ViewModel() {
     }
 
     fun consumeToast() = _state.update { it.copy(toast = null, pendingUndo = null) }
+
+    fun consumeSound() = _state.update { it.copy(sound = null) }
 }
 
 /** Data needed to reverse the last completion via the snackbar "Undo" action. */

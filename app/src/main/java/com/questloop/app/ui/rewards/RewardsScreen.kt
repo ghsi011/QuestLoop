@@ -30,6 +30,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.questloop.app.ui.Money
+import com.questloop.app.ui.components.CompletionSoundEffect
 import com.questloop.app.ui.components.InfoCard
 import com.questloop.app.ui.components.OneShotSnackbarEffect
 import com.questloop.app.ui.components.SectionHeader
@@ -45,6 +46,12 @@ fun RewardsScreen(viewModel: RewardsViewModel, snackbarHostState: SnackbarHostSt
 
     // Refresh on re-entry so the allowance reflects quests completed elsewhere.
     LaunchedEffect(Unit) { viewModel.load() }
+    // Celebration chime for a just-completed fund step; same one-shot key.
+    CompletionSoundEffect(
+        soundId = state.messageId,
+        sound = state.sound,
+        consume = viewModel::consumeSound,
+    )
     OneShotSnackbarEffect(
         hostState = snackbarHostState,
         messageId = state.messageId,
