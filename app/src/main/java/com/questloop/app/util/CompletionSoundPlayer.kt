@@ -80,7 +80,12 @@ object CompletionSoundPlayer {
             )
             .build()
         built.setOnLoadCompleteListener { p, sampleId, status ->
-            if (status != 0) return@setOnLoadCompleteListener
+            if (status != 0) {
+                // A sample that failed to load will never play: drop its queued
+                // requests too, or they'd accumulate for the life of the process.
+                synchronized(lock) { pendingPlays.removeAll { it.first == sampleId } }
+                return@setOnLoadCompleteListener
+            }
             synchronized(lock) {
                 loadedSamples += sampleId
                 val due = pendingPlays.filter { it.first == sampleId }
@@ -98,5 +103,19 @@ object CompletionSoundPlayer {
         sampleByChime = rawByChime.mapValues { (_, res) -> built.load(app, res, 1) }
         pool = built
         return built
+    }
+
+    /** Test hook: the built pool (null when a mute gate stopped [play] early). */
+    internal fun poolForTesting(): SoundPool? = synchronized(lock) { pool }
+
+    /** Test hook: releases the cached pool so each test starts cold — the
+     *  singleton otherwise leaks one test's Application into the next. */
+    internal fun resetForTesting(): Unit = synchronized(lock) {
+        runCatching { pool?.release() }
+        pool = null
+        appContext = null
+        sampleByChime = emptyMap()
+        loadedSamples.clear()
+        pendingPlays.clear()
     }
 }
