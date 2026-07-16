@@ -16,7 +16,7 @@ on:
       tag:
         description: "Release tag to create (e.g. v0.5.0)"
         required: true
-        default: "v0.5.0"
+        default: "v0.6.0"
 
 permissions:
   contents: write
@@ -47,7 +47,7 @@ jobs:
           elif [ "${{ github.ref_type }}" = "tag" ]; then
             T="${{ github.ref_name }}"
           else
-            T="v0.5.0"
+            T="v0.6.0"
           fi
           echo "value=$T" >> "$GITHUB_OUTPUT"
 
